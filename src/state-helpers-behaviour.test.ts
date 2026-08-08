@@ -1,0 +1,272 @@
+import { describe, expect, test, beforeEach, afterEach } from 'bun:test'
+import { execFileSync } from 'node:child_process'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+// Four separate bugs shipped where a skill helper prefixed an ABSOLUTE sidecar
+// path with the repo root, writing state back inside the repo. Text guards
+// caught the first three and missed the fourth, because that one assigned the
+// var to an intermediate and joined it on a later line — a data-flow bug no
+// single-line regex can see.
+//
+// So stop reading the scripts and RUN them: whatever a helper resolves or
+// creates must be under the sidecar, and the repo must be untouched. That holds
+// however the path is spelled.
+
+let tmp: string
+let repo: string
+let stateDir: string
+
+const PLUGIN_BIN = join(import.meta.dir, '..', 'plugin', 'bin')
+
+const run = (script: string, args: string[] = []) =>
+  execFileSync('bash', [script, ...args], {
+    cwd: repo,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      HOME: join(tmp, 'home'),
+      TERMINAL_REPO_STATE_DIR: stateDir,
+      PATH: `${PLUGIN_BIN}:${process.env.PATH}`,
+      // Deliberately NOT setting TERMINAL_*_DIR: this is the plain-shell case,
+      // where a helper must resolve the sidecar itself.
+    },
+  }).trim()
+
+/** Files anywhere under the repo that look like workflow state. */
+function stateFilesInRepo(): string[] {
+  const out: string[] = []
+  const walk = (dir: string) => {
+    for (const e of readdirSync(dir)) {
+      if (e === '.git') continue
+      const p = join(dir, e)
+      if (statSync(p).isDirectory()) walk(p)
+      else out.push(p.slice(repo.length + 1))
+    }
+  }
+  walk(repo)
+  return out.filter((p) => /(^|\/)(backlog|sessions|reviews|checks|reports)\//.test(p))
+}
+
+beforeEach(() => {
+  tmp = realpathSync(mkdtempSync(join(tmpdir(), 'helper-behaviour-')))
+  stateDir = join(tmp, 'state')
+  mkdirSync(join(tmp, 'home'), { recursive: true })
+  repo = join(tmp, 'repo')
+  mkdirSync(repo, { recursive: true })
+  execFileSync('git', ['-C', repo, 'init', '-q'], { stdio: 'ignore' })
+  execFileSync('git', ['-C', repo, 'remote', 'add', 'origin', 'https://github.com/o/beh.git'], {
+    stdio: 'ignore',
+  })
+  // A v2 repo: layout marker present, no legacy in-repo dirs.
+  mkdirSync(join(repo, '.TerMinal'), { recursive: true })
+  writeFileSync(join(repo, '.TerMinal', 'template.json'), '{"version":2}\n')
+})
+
+afterEach(() => rmSync(tmp, { recursive: true, force: true }))
+
+const HELPERS = [
+  // `creates` — an id allocator bootstraps its dir; a pure resolver only prints.
+  {
+    name: 'ticket-dir',
+    script: 'plugin/skills/ticket/bin/ticket-dir',
+    area: 'backlog',
+    creates: false,
+  },
+  {
+    name: 'next-ticket-id',
+    script: 'plugin/skills/ticket/bin/next-ticket-id',
+    area: 'backlog',
+    creates: true,
+  },
+  {
+    name: 'next-session-id',
+    script: 'plugin/skills/session-start/bin/next-session-id',
+    area: 'sessions',
+    creates: true,
+  },
+]
+
+describe('skill helpers resolve into the sidecar, never into the repo', () => {
+  for (const { name, script, area, creates } of HELPERS) {
+    test(`${name} writes nothing inside the repo`, () => {
+      const abs = join(import.meta.dir, '..', script)
+      if (!existsSync(abs)) throw new Error(`missing helper: ${script}`)
+      run(abs)
+
+      // The repo must be untouched by workflow state...
+      expect(stateFilesInRepo()).toEqual([])
+      // ...and specifically must not contain a nested absolute path, which is
+      // what "$ROOT/$TERMINAL_<AREA>_DIR" produces.
+      expect(existsSync(join(repo, 'Users'))).toBe(false)
+      expect(existsSync(join(repo, tmp.replace(/^\//, '')))).toBe(false)
+      // Whatever it created belongs to the sidecar.
+      if (creates) expect(existsSync(join(stateDir, 'github.com/o/beh', area))).toBe(true)
+    })
+  }
+
+  test('ticket-dir prints a path inside the sidecar', () => {
+    const out = run(join(import.meta.dir, '..', 'plugin/skills/ticket/bin/ticket-dir'))
+    expect(out).toBe(join(stateDir, 'github.com/o/beh', 'backlog'))
+    expect(out.startsWith(repo)).toBe(false)
+  })
+
+  // This test used to assert the opposite — that a repo carrying a v1
+  // `backlog/` resolved back into the repo — and that is exactly the bug. Every
+  // repo predating the sidecar matches that shape, so the migration was a no-op
+  // on the repos anyone actually used: the shell filed tickets into git while
+  // the app filed them into the sidecar, from two independent id counters.
+  // Migration-free READS are preserved by tm-state-dirs (see below); the WRITE
+  // target is unconditional.
+  test('a legacy in-repo backlog does not capture the write target', () => {
+    rmSync(join(repo, '.TerMinal'), { recursive: true, force: true })
+    mkdirSync(join(repo, 'backlog'), { recursive: true })
+    const out = run(join(import.meta.dir, '..', 'plugin/skills/ticket/bin/ticket-dir'))
+    expect(out).toBe(join(stateDir, 'github.com/o/beh', 'backlog'))
+    expect(out.startsWith(repo)).toBe(false)
+  })
+
+  test('but that legacy backlog is still READ, so nothing disappears', () => {
+    rmSync(join(repo, '.TerMinal'), { recursive: true, force: true })
+    mkdirSync(join(repo, 'backlog'), { recursive: true })
+    const sidecar = join(stateDir, 'github.com/o/beh', 'backlog')
+    const dirs = () =>
+      run(join(import.meta.dir, '..', 'plugin/bin/tm-state-dirs'), ['backlog'])
+        .split('\n')
+        .filter(Boolean)
+
+    // Before anything is migrated the sidecar does not exist yet, so the only
+    // readable root is the one in the repo. Listing a directory that isn't
+    // there would make every caller handle a phantom path.
+    expect(dirs()).toEqual([join(repo, 'backlog')])
+
+    // Once it exists it leads, because that is where writes go — while the
+    // repo copy stays visible, which is what makes the migration free.
+    mkdirSync(sidecar, { recursive: true })
+    expect(dirs()).toEqual([sidecar, join(repo, 'backlog')])
+  })
+})
+
+describe('lister helpers see sidecar state in a plain shell', () => {
+  // These only READ, so the "nothing lands in the repo" check above can't see
+  // them — and with TERMINAL_*_DIR unset they silently listed nothing at all,
+  // which looks like an empty backlog rather than a broken lookup.
+  test('tickets lists a ticket that lives in the sidecar', () => {
+    const backlog = join(stateDir, 'github.com/o/beh', 'backlog')
+    mkdirSync(backlog, { recursive: true })
+    writeFileSync(
+      join(backlog, '0001-from-sidecar.md'),
+      '---\nid: 1\ntitle: "From sidecar"\nstatus: open\npriority: medium\ntype: feature\n---\n',
+    )
+
+    const out = run(join(import.meta.dir, '..', 'plugin/skills/ticket/bin/tickets'))
+
+    expect(out).toContain('From sidecar')
+  })
+
+  test('sessions lists a session doc that lives in the sidecar', () => {
+    const dir = join(stateDir, 'github.com/o/beh', 'sessions', '0001-demo')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(
+      join(dir, 'session.md'),
+      '---\nid: 1\ntitle: "Sidecar session"\nstatus: active\n---\n\n# demo\n',
+    )
+
+    const out = run(join(import.meta.dir, '..', 'plugin/skills/session-start/bin/sessions'))
+
+    expect(out).toContain('Sidecar session')
+  })
+})
+
+describe('ids never collide with state still in the repo', () => {
+  // The write dir is the sidecar, but a repo mid-migration still holds
+  // 0001-00NN. Allocating from the (empty) sidecar alone restarts at 0001 and
+  // produces two tickets with the same id, shadowing the originals.
+  const seedRepoTickets = () => {
+    const backlog = join(repo, '.TerMinal', 'backlog')
+    mkdirSync(backlog, { recursive: true })
+    for (const id of ['0001', '0002', '0042'])
+      writeFileSync(join(backlog, `${id}-legacy.md`), `---\nid: ${Number(id)}\n---\n`)
+  }
+
+  test('the shell allocator continues past in-repo ids', () => {
+    seedRepoTickets()
+    const out = run(join(import.meta.dir, '..', 'plugin/skills/ticket/bin/next-ticket-id'))
+    expect(Number(out)).toBe(43)
+  })
+
+  test('a fresh repo with no history still starts at 1', () => {
+    const out = run(join(import.meta.dir, '..', 'plugin/skills/ticket/bin/next-ticket-id'))
+    expect(Number(out)).toBe(1)
+  })
+
+  test('the session allocator continues past in-repo session ids', () => {
+    const sessions = join(repo, '.TerMinal', 'sessions')
+    mkdirSync(join(sessions, '0007-old'), { recursive: true })
+    writeFileSync(join(sessions, '0007-old', 'session.md'), '---\nid: 7\n---\n')
+    const out = run(join(import.meta.dir, '..', 'plugin/skills/session-start/bin/next-session-id'))
+    expect(Number(out)).toBe(8)
+  })
+})
+
+describe('listers show state that has not migrated yet', () => {
+  // The listers previously scanned the sidecar and the v1 dir but skipped the
+  // v2 in-repo dir, so a repo mid-migration looked empty — indistinguishable
+  // from having no tickets at all. The earlier lister tests seeded only the
+  // sidecar, which is why they could not see this.
+  test('tickets lists a ticket still committed in the repo', () => {
+    const backlog = join(repo, '.TerMinal', 'backlog')
+    mkdirSync(backlog, { recursive: true })
+    writeFileSync(
+      join(backlog, '0007-not-yet-moved.md'),
+      '---\nid: 7\ntitle: "Not yet moved"\nstatus: open\npriority: medium\ntype: feature\n---\n',
+    )
+
+    const out = run(join(import.meta.dir, '..', 'plugin/skills/ticket/bin/tickets'))
+
+    expect(out).toContain('Not yet moved')
+  })
+
+  test('sessions lists a session doc still committed in the repo', () => {
+    const dir = join(repo, '.TerMinal', 'sessions', '0007-old')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(
+      join(dir, 'session.md'),
+      '---\nid: 7\ntitle: "Older session"\nstatus: active\n---\n',
+    )
+
+    const out = run(join(import.meta.dir, '..', 'plugin/skills/session-start/bin/sessions'))
+
+    expect(out).toContain('Older session')
+  })
+
+  test('both stores are visible at once during migration', () => {
+    const backlog = join(repo, '.TerMinal', 'backlog')
+    mkdirSync(backlog, { recursive: true })
+    writeFileSync(
+      join(backlog, '0007-in-repo.md'),
+      '---\nid: 7\ntitle: "In repo"\nstatus: open\npriority: medium\ntype: feature\n---\n',
+    )
+    const side = join(stateDir, 'github.com/o/beh', 'backlog')
+    mkdirSync(side, { recursive: true })
+    writeFileSync(
+      join(side, '0008-in-sidecar.md'),
+      '---\nid: 8\ntitle: "In sidecar"\nstatus: open\npriority: medium\ntype: feature\n---\n',
+    )
+
+    const out = run(join(import.meta.dir, '..', 'plugin/skills/ticket/bin/tickets'))
+
+    expect(out).toContain('In repo')
+    expect(out).toContain('In sidecar')
+  })
+})

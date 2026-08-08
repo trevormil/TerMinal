@@ -39,6 +39,7 @@ function runCli(args: string[], home: string, repo: string) {
       ...process.env,
       HOME: home,
       TERMINAL_CONFIG_DIR: join(home, '.config', 'TerMinal'),
+      TERMINAL_REPO_STATE_DIR: join(home, '.config', 'TerMinal', 'repos'),
       TERMINAL_REPO: repo,
       TERMINAL_AGENT_ID: 'test-agent',
     },
@@ -62,13 +63,30 @@ function installMcpWrapper(home: string, repo: string) {
 }
 
 // Every plausible repo-local ticket location — none of these may be written to
-// when the repo routes tickets to an Obsidian vault.
+// when the repo routes tickets to an Obsidian vault, and none of them may
+// receive NEW tickets at all now that state lives in the sidecar.
 function repoBacklogFiles(repo: string): string[] {
   const out: string[] = []
   for (const dir of [join(repo, 'backlog'), join(repo, '.TerMinal', 'backlog')]) {
     if (!existsSync(dir)) continue
     for (const f of readdirSync(dir)) out.push(join(dir, f))
   }
+  return out
+}
+
+/** Ticket files in the per-project sidecar under a test's fake HOME. */
+function sidecarBacklogFiles(home: string): string[] {
+  const root = join(home, '.config', 'TerMinal', 'repos')
+  const out: string[] = []
+  const walk = (dir: string) => {
+    if (!existsSync(dir)) return
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const p = join(dir, e.name)
+      if (e.isDirectory()) walk(p)
+      else if (e.name.endsWith('.md')) out.push(p)
+    }
+  }
+  walk(root)
   return out
 }
 
@@ -123,15 +141,35 @@ describe('terminal-cli ticket — obsidian provider routing', () => {
     expect(repoBacklogFiles(repo)).toEqual([join(repo, 'backlog', '0007-decoy.md')])
   })
 
-  test('no ticket provider config falls back to the repo backlog', () => {
+  test('no ticket provider config writes to the sidecar, never the repo', () => {
     const { home, repo } = setup()
 
     const result = runCli(['ticket', 'Local fallback', 'b'], home, repo)
 
     expect(result.status).toBe(0)
     const printed = result.stdout.trim()
-    expect(printed).toBe(join(repo, 'backlog', '0001-local-fallback.md'))
     expect(existsSync(printed)).toBe(true)
+    // The whole point: a repo shared with collaborators receives nothing.
+    expect(repoBacklogFiles(repo)).toEqual([])
+    expect(sidecarBacklogFiles(home)).toEqual([printed])
+    expect(printed).toEndWith(join('backlog', '0001-local-fallback.md'))
+  })
+
+  test('commenting still finds a ticket that predates the sidecar', () => {
+    const { home, repo } = setup()
+    // A repo mid-migration: the ticket is still committed in-repo.
+    mkdirSync(join(repo, '.TerMinal', 'backlog'), { recursive: true })
+    writeFileSync(
+      join(repo, '.TerMinal', 'backlog', '0042-legacy.md'),
+      '---\nid: 42\ntitle: "Legacy"\nstatus: open\n---\n\nbody\n',
+    )
+
+    const r = runCli(['ticket', 'comment', '0042-legacy', 'a note'], home, repo)
+
+    expect(r.status).toBe(0)
+    expect(readFileSync(join(repo, '.TerMinal', 'backlog', '0042-legacy.md'), 'utf8')).toContain(
+      'a note',
+    )
   })
 })
 
@@ -201,7 +239,7 @@ describe('terminal-cli mcp — ticket tools route to the obsidian vault', () => 
     runCli(['ticket', 'Cheap tier', 'body', 'cheap-raw'], home, repo)
     runCli(['ticket', 'Typo tier', 'body', 'cheep-raw'], home, repo)
 
-    const files = repoBacklogFiles(repo).map((f) => readFileSync(f, 'utf8'))
+    const files = sidecarBacklogFiles(home).map((f) => readFileSync(f, 'utf8'))
     expect(files.find((f) => f.includes('Default tier'))).toContain('model_tier: auto')
     expect(files.find((f) => f.includes('Cheap tier'))).toContain('model_tier: cheap-raw')
     // An unroutable tier must not persist — it would bill at the default slot.

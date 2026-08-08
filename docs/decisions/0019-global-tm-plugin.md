@@ -56,19 +56,22 @@ and support for bundled agents, hooks, and arbitrary files referenced via
 
 - One source of truth; updating TerMinal updates every repo's workflow at
   once. No more per-repo skill drift, no shadowing of global skills.
-- **The per-repo `.codex/skills` mirror survives for now**: bootstrap still
-  installs it because existing repos and agent specs address those skills by
-  bare (unprefixed) name, and `~/.codex/skills` already holds different
-  same-named personal skills. The global `tm-*` sync is additive and
-  collision-free; a follow-up can retire the mirror once bare-name callers
-  migrate to `tm-*`.
+- **No repo carries a skill copy for EITHER harness.** An earlier draft of
+  this decision kept the per-repo `.codex/skills` mirror because agent specs
+  address skills by bare name. That was a mistake of scope: the mirror was 52
+  of the ~104 files bootstrap wrote into every repo, and being a hand-synced
+  duplicate of `plugin/skills` it drifted the same way the Claude copies did.
+  Bootstrap now installs neither and migrates both to `.claude/pre-tm-backup/`.
+  Bare names in agent specs are resolved by the harness, not by a directory:
+  Claude sees `/tm:<skill>`, Codex sees `tm-<skill>`, and the template
+  CLAUDE.md documents that mapping once rather than rewriting every mention.
 - Repos bootstrapped before this change keep working (their local copies
   remain, un-namespaced) and are cleaned up the next time `bootstrap.sh`
   runs against them.
 - Skill invocations change name in Claude Code: `/ticket` → `/tm:ticket`,
-  etc. The Codex mirror keeps bare names, so the template CLAUDE.md documents
-  the bare names with a namespacing note rather than rewriting every mention;
-  personal muscle memory will lag for a while.
+  etc., and `tm-ticket` in Codex. The template CLAUDE.md documents the bare
+  names with a namespacing note rather than rewriting every mention; personal
+  muscle memory will lag for a while.
 - **The merge gate now runs in every repo, so its false positives cost more.**
   Matching is textual: the pattern fires wherever the trigger text appears in a
   command, including inside quotes, a heredoc, or a grep — so writing a doc that
@@ -81,7 +84,15 @@ and support for bundled agents, hooks, and arbitrary files referenced via
   (`~/.config/TerMinal/allow-direct-main`, one absolute repo path per line)
   for repos that are legitimately direct-to-main (global §8's carve-out) —
   machine-specific paths never ship inside the public plugin.
-- **TerMinal's own** `.claude/bin` + `.claude/hooks` copies remain for
-  contributors who don't run the app (its settings.json still wires them);
-  the plugin's global hooks double-fire harmlessly on machines with the app.
-  Bootstrapped repos, by contrast, have theirs migrated to the backup.
+- **TerMinal's own `.claude/hooks` copy remains** for contributors who don't
+  run the app (its settings.json wires them); the plugin's global hooks
+  double-fire harmlessly on machines with the app. Bootstrapped repos, by
+  contrast, have theirs migrated to the backup. The copy is pinned
+  byte-identical to `plugin/hooks/` by a test — when it was merely "a copy" it
+  drifted two revisions behind, so the repo that authored the merge gate was
+  running an older gate than every repo it shipped to.
+- **`.claude/bin` is gone from this repo too.** Six helpers were duplicated
+  there; four had already drifted from `plugin/bin`. Nothing invoked them once
+  `.agents/` moved to the plugin paths, so the duplicate is deleted rather than
+  synced. A repo that exempts itself from its own rule is how the rule rots —
+  `src/own-repo-hygiene.test.ts` now enforces it here.

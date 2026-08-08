@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import * as forge from './forge'
 import { configPath } from './config-dir'
 import { projectAreaPathForWrite } from './project-layout'
+import { repoStateEnv } from './repo-state'
 
 // Runs the /digest pipeline for an MR in the repo ROOT (not a worktree): the
 // digest only reads source + writes artifacts under .TerMinal/reviews/, so there
@@ -130,7 +131,10 @@ export async function startDigest(
     const child = spawn(shell, ['-l', '-c', cmd], {
       cwd: repoRoot,
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env },
+      // The digest skill writes its chunks next to the review artifact and
+      // resolves that through $TERMINAL_REVIEWS_DIR. Without these the var is
+      // unset inside codex and the artifact lands back in the repo.
+      env: { ...process.env, ...repoStateEnv(repoRoot) },
     })
     const log: string[] = []
     child.stdout?.on('data', (d) => log.push(d.toString()))

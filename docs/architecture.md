@@ -166,14 +166,23 @@ Both are "just a folder" discovered with Vite `import.meta.glob`:
   and the `PR`/`MR` + `#`/`!` vocabulary from the remote host (or the
   `settings.forge` override). `mrs.ts` delegates here; the renderer is forge-agnostic.
 - `mrs.ts` — merge/pull requests via the forge adapter, enriched with review state.
-- `review.ts` — resolves code-review artifacts from in-repo `.reviews/<pr>/`
-  (project-template) **or** the legacy autopilot-harness `prs/` store; handles
-  the meta.json (commit-ordered) and no-meta (mtime) cases, with staleness.
-- `sessions.ts` — per-repo session docs `<repo>/sessions/NNNN-slug/session.md`.
+- `review.ts` — resolves code-review artifacts from the project sidecar's
+  `reviews/<pr>/` (merging any not yet migrated out of the repo) **or** the
+  legacy autopilot-harness `prs/` store; handles the meta.json (commit-ordered)
+  and no-meta (mtime) cases, with staleness.
+- `sessions.ts` — session docs at `<sidecar>/sessions/NNNN-slug/session.md`,
+  resolved through `project-layout.ts` like every other area.
 - `files.ts` — path-guarded dir/read/write/search (`git grep`), with
   `git check-ignore` marking for the dimmed tree.
 - `scaffold.ts` — new-repo scaffolding from the embedded template (or a
   clone fallback in the packaged app).
+- `repo-state.ts` / `repo-state-migrate.ts` — the per-project **sidecar**:
+  tickets, sessions, reviews, checks and reports resolve to
+  `<config>/repos/<host>/<owner>/<repo>/` instead of the repo, so a shared
+  checkout never receives personal workflow state. Reads merge the sidecar with
+  anything still in-repo; writes go to the sidecar only. The sidecar is a git
+  repo, and the migration moves existing state into it
+  ([ADR-0020](decisions/0020-workflow-state-in-a-per-project-sidecar.md)).
 - `plugin-install.ts` — installs the global **tm plugin** on launch: copies the
   bundled `plugin/` (workflow skills/hooks/bin) to `~/.config/TerMinal/plugin`
   and links `~/.claude/skills/tm`, so every repo gets `/tm:*` skills with no

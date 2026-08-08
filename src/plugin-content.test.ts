@@ -140,19 +140,20 @@ describe('no private machine references', () => {
   }
 })
 
-describe('template codex mirror + agent specs have no double-path bugs', () => {
+describe('template agent specs have no double-path bugs', () => {
   const TEMPLATE = join(import.meta.dir, '..', 'templates', 'project-template')
 
-  for (const dir of ['.codex/skills', '.agents']) {
-    test(dir, () => {
-      const hits: string[] = []
-      for (const file of walkFiles(join(TEMPLATE, dir))) {
-        for (const l of readFileSync(file, 'utf8').split('\n'))
-          if (DOUBLED_PATH.test(l)) hits.push(`${file.slice(TEMPLATE.length + 1)}: ${l.trim()}`)
-      }
-      expect(hits).toEqual([])
-    })
-  }
+  // `.codex/skills` used to be checked here too. The mirror is retired: Codex
+  // now loads the same skills globally from ~/.codex/skills/tm-*, synced from
+  // this plugin, so `plugin/skills` above is the only copy left to guard.
+  test('.agents', () => {
+    const hits: string[] = []
+    for (const file of walkFiles(join(TEMPLATE, '.agents'))) {
+      for (const l of readFileSync(file, 'utf8').split('\n'))
+        if (DOUBLED_PATH.test(l)) hits.push(`${file.slice(TEMPLATE.length + 1)}: ${l.trim()}`)
+    }
+    expect(hits).toEqual([])
+  })
 })
 
 describe('merge gate keeps the FORCE override', () => {
@@ -181,9 +182,57 @@ describe('hooks', () => {
 })
 
 describe('bin', () => {
+  // Scripts here are invoked by name and carry no extension; a `.mjs` file is
+  // a module the scripts import, so it is deliberately not executable.
+  const scripts = () => readdirSync(join(ROOT, 'bin')).filter((f) => !f.includes('.'))
+
   test('every bin script is executable', () => {
-    for (const f of readdirSync(join(ROOT, 'bin'))) {
-      expect(statSync(join(ROOT, 'bin', f)).mode & 0o111).toBeGreaterThan(0)
-    }
+    const notExecutable = scripts().filter(
+      (f) => (statSync(join(ROOT, 'bin', f)).mode & 0o111) === 0,
+    )
+    expect(notExecutable).toEqual([])
+  })
+
+  test('the scan covers the real scripts (a guard matching nothing is not a guard)', () => {
+    expect(scripts()).toContain('tm-state-dir')
+    expect(scripts()).toContain('tm-state-dirs')
+    expect(scripts().length).toBeGreaterThan(8)
+  })
+})
+
+// The plugin is installed at ~/.config/TerMinal/plugin, so a relative link that
+// climbs out of it resolves somewhere in the user's config dir — not, as these
+// were written to when the skills lived at <repo>/.claude/skills/<name>/, the
+// target repo. Six skills pointed at `../../../.agents/...` and
+// `../../../docs/...` and would have sent the model to a path that cannot
+// exist. Files in the TARGET repo must be named as plain repo-relative paths,
+// which the model resolves against its working directory.
+describe('plugin content never links outside the plugin', () => {
+  for (const dir of ['skills', 'bin', 'hooks']) {
+    test(dir, () => {
+      const offenders: string[] = []
+      for (const file of walkFiles(join(ROOT, dir))) {
+        readFileSync(file, 'utf8')
+          .split('\n')
+          .forEach((line, i) => {
+            // A markdown link climbing above the plugin root. Skill dirs are
+            // one level deep, so `../..` already reaches it and anything more
+            // escapes. Shell `$(dirname $0)/../../../bin/...` is a different
+            // shape (not a markdown link) and stays inside by construction.
+            if (/\]\(\.\.\/\.\.\/\.\.\//.test(line))
+              offenders.push(`${file.slice(ROOT.length + 1)}:${i + 1}`)
+          })
+      }
+      expect(offenders).toEqual([])
+    })
+  }
+
+  test('the guard matches the shape it is meant to catch', () => {
+    const bad = '[`.agents/code-review.md`](../../../.agents/code-review.md).'
+    expect(/\]\(\.\.\/\.\.\/\.\.\//.test(bad)).toBe(true)
+    // A link WITHIN the plugin is fine.
+    expect(/\]\(\.\.\/\.\.\/\.\.\//.test('[state](../state.md)')).toBe(false)
+    // The shell idiom that legitimately reaches plugin/bin is untouched.
+    expect(/\]\(\.\.\/\.\.\/\.\.\//.test('"$(dirname "$0")/../../../bin/tm-state-dir"')).toBe(false)
   })
 })

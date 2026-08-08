@@ -239,6 +239,7 @@ import {
 } from './agents'
 import { readSchedules } from './schedules'
 import { installTmPlugin, tmPluginStatus } from './plugin-install'
+import { migrateRepoState, pendingMigration, sidecarGitStatus } from './repo-state-migrate'
 import {
   installRunner,
   installCli,
@@ -1614,7 +1615,7 @@ ipcMain.handle(
     if (!daemon.remote) return runTicketSpawn(daemon.repoRoot(), text, engine, model)
     const t = text.trim()
     if (!t) return { error: 'empty request' }
-    const prompt = `File exactly ONE new backlog ticket for the request below, using this project's ticket conventions: allocate the next id, write .TerMinal/backlog/NNNN-slug.md with valid YAML frontmatter matching the repo's examples (legacy v1 repos may use backlog/), put detail in the body after the closing ---, and commit it. Do NOT implement anything or open a PR — just file the ticket. Request: ${t}`
+    const prompt = `File exactly ONE new backlog ticket for the request below, using this project's ticket conventions: allocate the next id, write $TERMINAL_BACKLOG_DIR/NNNN-slug.md with valid YAML frontmatter matching the repo's examples (legacy v1 repos may use backlog/), put detail in the body after the closing ---, and commit it. Do NOT implement anything or open a PR — just file the ticket. Request: ${t}`
     return remoteRuns.start(daemon.remote, {
       agentId: 'ticket-spawn',
       agentTitle: `File ticket · ${t.slice(0, 48)}`,
@@ -1924,6 +1925,16 @@ ipcMain.handle('update:check', () => runUpdateCheck())
 // Global tm plugin status/sync for the Settings panel. Sync re-copies the
 // bundled plugin and repairs the ~/.claude/skills/tm symlink.
 ipcMain.handle('plugin:status', () => tmPluginStatus())
+
+// Per-project sidecar: where this repo's tickets/reviews/sessions live, how
+// many files are still sitting in the repo, and the one-time move.
+ipcMain.handle('repoState:status', (_e, repoRoot: string) => {
+  const root = repoRoot || cur().cwd
+  return { ...sidecarGitStatus(root), pending: pendingMigration(root) }
+})
+ipcMain.handle('repoState:migrate', (_e, repoRoot: string) =>
+  migrateRepoState(repoRoot || cur().cwd),
+)
 ipcMain.handle('plugin:sync', () => installTmPlugin(tmPluginSrcDir()))
 
 // In-app rebuild. Spawns bin/release fully detached and routes its output to

@@ -16,13 +16,14 @@ don't trust your internal clock, nothing is static) applies.
 > **Skill names:** workflow skills are written bare here (`/ticket`,
 > `/session-start`, …). In **Claude Code** they ship globally via the tm
 > plugin and are invoked namespaced: `/tm:ticket`, `/tm:session-start`, etc.
-> In **Codex** the per-repo `.codex/skills` mirror keeps the bare names.
+> In **Codex** they sync globally as `~/.codex/skills/tm-*` and are invoked
+> `tm-ticket`, `tm-session-start`, etc. No repo carries a copy of either.
 
 The loop:
 
 ```
 /session-start "<goal>"   →  seed live session doc (central state)
-   /ticket                →  file/triage as .TerMinal/backlog/NNNN-slug.md
+   /ticket                →  file/triage into the project sidecar
    feature branch         →  off main (or off prior PR in a stack)
    implement TDD-first    →  failing test → code → green
    /pr-creation           →  push + open PR, link into ticket
@@ -52,10 +53,10 @@ testing ticket for any new behavior without a test.
 
 ## [3] Sessions are central state
 
-Live session doc at `.TerMinal/sessions/NNNN-slug/session.md` — goal,
+Live session doc at `$TERMINAL_SESSIONS_DIR/NNNN-slug/session.md` — goal,
 context, checklist, log, decisions, outcomes, follow-ups. Exactly **one
-active** at a time. Legacy v1 repos may still use `sessions/`. Schema in
-the tm plugin's `skills/session-start/SESSION_EXAMPLE.md` (`~/.config/TerMinal/plugin/`).
+active** at a time. Schema in the tm plugin's
+`skills/session-start/SESSION_EXAMPLE.md` (`~/.config/TerMinal/plugin/`).
 
 `.status.md` (gitignored) is the ephemeral at-a-glance for the developer
 managing agents — regenerate with the tm plugin's `bin/status > .status.md`.
@@ -64,8 +65,7 @@ needs-you events). Feeds the TerMinal sidebar (`/terminal-widget`).
 
 ## [4] Tickets
 
-`.TerMinal/backlog/NNNN-slug.md`, managed by `/ticket` (legacy v1:
-`backlog/NNNN-slug.md`). Allocate ids with
+`$TERMINAL_BACKLOG_DIR/NNNN-slug.md`, managed by `/ticket`. Allocate ids with
 the tm plugin's `skills/ticket/bin/next-ticket-id` (never hand-edit `.next-id`).
 List with the tm plugin's `skills/ticket/bin/tickets [status] [priority] [horizon]`.
 Prose lives **after** the closing `---`, never inside frontmatter.
@@ -156,8 +156,8 @@ human-only.
 ## [6] Code review & checks
 
 The `code-review` agent writes one combined review+tests artifact at
-`.TerMinal/reviews/<pr>/<sha>.md` (+ `findings.json` / `suggestions.json`;
-legacy v1: `.reviews/<pr>/<sha>.md`). Contract:
+`$TERMINAL_REVIEWS_DIR/<pr>/<sha>.md` (+ `findings.json` / `suggestions.json`).
+Contract:
 [`.agents/code-review.md`](./.agents/code-review.md).
 
 - **Merge bar:** `verdict: approve` + `test_status: pass` + zero findings
@@ -171,7 +171,7 @@ legacy v1: `.reviews/<pr>/<sha>.md`). Contract:
 
 **Cadence checks** are the other half: `/check <kind>` runs a repo-level
 inspection (dead-code, dep-drift) on a cadence, writing dated artifacts
-to `.TerMinal/checks/<kind>/<sha>.md` (legacy v1: `.checks/<kind>/<sha>.md`).
+to `$TERMINAL_CHECKS_DIR/<kind>/<sha>.md`.
 Each kind is a contract at
 `.agents/<kind>.md`. Checks are **advisory** — they report; cleanup
 becomes a ticket.

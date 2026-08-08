@@ -59,12 +59,14 @@ export function buildFixtureRepo(repo: string): void {
   const slug = process.env.TERMINAL_UX_REMOTE_SLUG || 'ux-suite/fixture'
   git(repo, 'remote', 'add', 'origin', `https://github.com/${slug}.git`)
 
-  // Bootstrap markers. `bootstrapStatus` (src/main/remote.ts) looks for six:
-  // .agents, backlog, docs, sessions, .claude/skills, .codex/skills. With any
-  // missing, every screen carries a yellow "This repo is partially bootstrapped"
-  // banner — which is honest but wrong for a fixture that is supposed to
+  // Bootstrap markers. `classifyBootstrapStatus` (src/main/bootstrap.ts) looks
+  // for what bootstrap actually leaves behind: .agents and docs. Skills are
+  // global now and workflow state lives in the sidecar, so neither is a marker
+  // — a fully-migrated repo has no in-repo copy of either. With a marker
+  // missing, every screen carries a yellow "This repo is partially
+  // bootstrapped" banner, which is honest but wrong for a fixture meant to
   // represent a fully-provisioned repo, and it dominates the README shots.
-  for (const dir of ['docs', 'sessions', '.claude/skills', '.codex/skills']) {
+  for (const dir of ['docs']) {
     mkdirSync(join(repo, dir), { recursive: true })
     writeFileSync(join(repo, dir, '.gitkeep'), '')
   }

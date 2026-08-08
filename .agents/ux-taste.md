@@ -31,11 +31,11 @@ within a week, at which point it is worse than no check at all.
    1440×900 viewport (fixed so findings are reproducible between runs).
 3. `cheapCall` (`src/main/cheap-llm.ts`) hands the image paths, the design
    language and the rubric to the configured coding CLI.
-4. Findings are written to `.TerMinal/reports/ux-taste/<short_sha>.md`.
+4. Findings are written to `$TERMINAL_REPORTS_DIR/ux-taste/<short_sha>.md`.
 
 ## Output artifact
 
-`.TerMinal/reports/ux-taste/<short_sha>.md`:
+`$TERMINAL_REPORTS_DIR/ux-taste/<short_sha>.md`:
 
 ```yaml
 ---

@@ -17,11 +17,14 @@
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-if [ -d "$ROOT/backlog" ] && [ ! -f "$ROOT/.TerMinal/template.json" ]; then
-  BACKLOG="$ROOT/backlog"
-else
-  BACKLOG="$ROOT/.TerMinal/backlog"
-fi
+# Reconciles tickets WHEREVER they live: the sidecar plus anything a repo has
+# not migrated yet. This edits existing tickets rather than creating them, so
+# unlike a writer it must span every read root — a ticket left behind in the
+# repo still needs closing when its PR merges.
+BACKLOG_DIRS=()
+while IFS= read -r d; do
+  [ -n "$d" ] && BACKLOG_DIRS+=("$d")
+done < <("$(dirname "$0")/tm-state-dirs" backlog 2>/dev/null || true)
 APPLY=0
 MERGED_FROM=""
 
@@ -35,7 +38,7 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-[ -d "$BACKLOG" ] || { echo "merge-sync: no ticket backlog at $BACKLOG" >&2; exit 1; }
+[ ${#BACKLOG_DIRS[@]} -gt 0 ] || { echo "merge-sync: no ticket backlog for this repo" >&2; exit 1; }
 today="$(date +%Y-%m-%d)"
 
 # --- merged URL set --------------------------------------------------------
@@ -140,7 +143,7 @@ rewrite_ticket() {
 closed_count=0; scrub_count=0; drift_count=0; plan_lines=()
 
 shopt -s nullglob 2>/dev/null || true
-for f in $(ls -1 "$BACKLOG"/[0-9]*.md 2>/dev/null | sort); do
+for f in $(ls -1 "${BACKLOG_DIRS[@]/%//[0-9]*.md}" 2>/dev/null | sort); do
   [ -e "$f" ] || continue
   status="$(field "$f" status)"; status="${status:-open}"
   slug="$(basename "$f" .md)"

@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { isSidecarArea, repoStateAreaPath } from './repo-state'
 
 export type ProjectLayoutVersion = 'v1' | 'v2'
 export type ProjectArea = 'backlog' | 'sessions' | 'reviews' | 'checks' | 'reports' | 'agents'
@@ -49,11 +50,20 @@ export function projectAreaPath(repoRoot: string, area: ProjectArea): string {
   return join(repoRoot, projectAreaRel(area, detectProjectLayout(repoRoot)))
 }
 
+/**
+ * Every directory an area's content may live in, highest priority first:
+ * sidecar → v2 → v1. Reads merge all of them so state already committed in a
+ * repo stays visible with no migration step — the same read-merge/write-one
+ * asymmetry ADR-0018 established for the v1→v2 move.
+ */
 export function existingProjectAreaPaths(repoRoot: string, area: ProjectArea): string[] {
   if (!repoRoot) return []
-  return projectAreaCandidates(area)
-    .map((rel) => join(repoRoot, rel))
-    .filter((p) => existsSync(p))
+  const sidecar = repoStateAreaPath(repoRoot, area)
+  const candidates = [
+    ...(sidecar ? [sidecar] : []),
+    ...projectAreaCandidates(area).map((rel) => join(repoRoot, rel)),
+  ]
+  return candidates.filter((p) => existsSync(p))
 }
 
 export function projectAreaPathForRead(repoRoot: string, area: ProjectArea): string {
@@ -61,7 +71,16 @@ export function projectAreaPathForRead(repoRoot: string, area: ProjectArea): str
   return existing[0] || projectAreaPath(repoRoot, area)
 }
 
+/**
+ * Where NEW content goes. Migrated areas always write to the sidecar, even
+ * when an in-repo directory still exists — otherwise a repo that already has
+ * `.TerMinal/backlog` would keep accreting personal state a collaborator sees.
+ */
 export function projectAreaPathForWrite(repoRoot: string, area: ProjectArea): string {
+  if (repoRoot && isSidecarArea(area)) {
+    const sidecar = repoStateAreaPath(repoRoot, area)
+    if (sidecar) return sidecar
+  }
   const existing = existingProjectAreaPaths(repoRoot, area)
   return existing[0] || projectAreaPath(repoRoot, area)
 }

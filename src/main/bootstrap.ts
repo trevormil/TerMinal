@@ -6,13 +6,16 @@ export type BootstrapStatus = {
   message: string
 }
 
+// What bootstrap actually leaves in a repo, and nothing else.
+//
+// Skills are no longer a marker: both harnesses load them globally from the tm
+// plugin, so their presence says nothing about this repo. Neither are backlog
+// and sessions — workflow state lives in the per-project sidecar now, so a
+// CORRECTLY migrated repo has neither directory, and marking them required
+// would report every migrated repo as "partial" forever.
 export const BOOTSTRAP_MARKERS = [
   { label: '.agents', anyOf: ['.agents'] },
-  { label: 'backlog', anyOf: ['.TerMinal/backlog', 'backlog'] },
   { label: 'docs', anyOf: ['docs'] },
-  { label: 'sessions', anyOf: ['.TerMinal/sessions', 'sessions'] },
-  // Claude-side skills are global (tm plugin) — only the Codex mirror is per-repo.
-  { label: '.codex/skills', anyOf: ['.codex/skills'] },
 ] as const
 
 export const BOOTSTRAP_MARKER_LABELS = BOOTSTRAP_MARKERS.map((m) => m.label)

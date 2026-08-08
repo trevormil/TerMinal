@@ -33,7 +33,7 @@ Human-authored docs belong elsewhere (e.g., `docs/runbooks/`, root
 
 **Personal** (`docs/personal/`):
 - `git log <lastScannedSha>..HEAD` (what shipped).
-- Closed tickets since `lastScannedSha` (from `.TerMinal/backlog/`).
+- Closed tickets since `lastScannedSha` (from `$TERMINAL_BACKLOG_DIR/`).
 - ADRs added/changed (from `docs/decisions/`).
 - Cycle-time + factory health rollup (read from TerMinal's stores if available).
 - Open branches + PRs snapshot.
@@ -98,7 +98,7 @@ ticket closed or a new ADR landed — check each category independently.
 
 ## Output artifact
 
-`.TerMinal/reports/auto-docs/<short_sha>.md` — frontmatter + per-category regen summary.
+`$TERMINAL_REPORTS_DIR/auto-docs/<short_sha>.md` — frontmatter + per-category regen summary.
 
 ```yaml
 ---

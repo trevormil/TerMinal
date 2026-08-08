@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# tm-state-dirs <area> — print EVERY directory this repo's state may be read
+# from, highest priority first, one absolute path per line. Only existing
+# directories are printed, so the output may be empty.
+#
+#   backlog | sessions | reviews | checks | reports
+#
+# This is the read half of the rule; `tm-state-dir` is the write half:
+#
+#   READS  merge  sidecar → .TerMinal/<area> → legacy v1   (this script)
+#   WRITES go to  the sidecar, always                      (tm-state-dir)
+#
+# The asymmetry is what makes the migration free. State a repo committed
+# before the move stays visible with no migration step, while nothing new is
+# ever added to a checkout someone else pulls. A lister that asks tm-state-dir
+# instead would silently stop showing every pre-migration ticket.
+#
+#   while IFS= read -r d; do ls "$d"/[0-9]*.md; done < <(tm-state-dirs backlog)
+set -euo pipefail
+
+area="${1:-}"
+case "$area" in
+  backlog | sessions | reviews | checks | reports) ;;
+  *)
+    echo "usage: tm-state-dirs <backlog|sessions|reviews|checks|reports>" >&2
+    exit 2
+    ;;
+esac
+
+here="$(cd "$(dirname "$0")" && pwd)"
+emit() { [ -d "$1" ] && printf '%s\n' "$1" || true; }
+
+# The sidecar — the only write target, so it leads.
+sidecar="$("$here/tm-state-dir" "$area" 2>/dev/null || true)"
+[ -n "$sidecar" ] && emit "$sidecar"
+
+# An Obsidian vault OWNS tickets: its notes are the whole store, and merging a
+# stale in-repo backlog on top would resurrect tickets the vault no longer has.
+if [ "$area" = backlog ] && [ -n "${OBSIDIAN_TICKETS_DIR:-}" ]; then
+  exit 0
+fi
+
+root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+[ -n "$root" ] || exit 0
+
+# Pre-sidecar in-repo locations, v2 before v1. state-path-ok: this script IS
+# the legacy reader — naming the old paths is its entire job.
+emit "$root/.TerMinal/$area"
+case "$area" in
+  reviews) emit "$root/.reviews" ;;
+  checks) emit "$root/.checks" ;;
+  *) emit "$root/$area" ;;
+esac

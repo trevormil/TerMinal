@@ -1,18 +1,20 @@
 ---
 name: code-review
-description: "Compatibility launcher for the code-review agent. Delegates a GitHub/GitLab PR review to Codex: deterministic preflight does recon, then Codex scores six axes into one artifact at .TerMinal/reviews/<pr>/<sha>.md (v2) or .reviews/<pr>/<sha>.md (legacy v1). Use on /code-review or 'review this PR'."
+description: "Compatibility launcher for the code-review agent. Delegates a GitHub/GitLab PR review to Codex: deterministic preflight does recon, then Codex scores six axes into one artifact at $TERMINAL_REVIEWS_DIR/<pr>/<sha>.md in the per-project sidecar. Use on /code-review or 'review this PR'."
 ---
 
 # /code-review — PR review with six-axis scoring + embedded tests
+
+> **Where this lives.** Workflow state is kept in a per-project sidecar outside the repo, so a repo shared with collaborators never receives it. TerMinal exports `$TERMINAL_REVIEWS_DIR` into every session it spawns; in a shell it did not spawn, resolve it with `tm-state-dir reviews`.
 
 This skill is a compatibility command for the `code-review` agent. Workflow
 docs should refer to the agent; this command exists so `/code-review` still
 launches the same reviewer contract.
 
-Produces **one combined artifact** at `.TerMinal/reviews/<pr-number>/<short_sha>.md`
-in v2 repos, or `.reviews/<pr-number>/<short_sha>.md` in legacy v1 repos.
+Produces **one combined artifact** at `$TERMINAL_REVIEWS_DIR/<pr-number>/<short_sha>.md`
+in the per-project sidecar (resolve with `tm-state-dir reviews` when the variable is unset).
 The schema, scoring rubric, severity rules, and verdict logic live in
-[`.agents/code-review.md`](../../../.agents/code-review.md).
+`.agents/code-review.md` in the repo you are working in.
 
 Forge: **GitHub or GitLab**, auto-detected (`${CLAUDE_PLUGIN_ROOT}/bin/forge`). Artifacts
 are **in-repo** — no central dashboard.
@@ -48,19 +50,19 @@ runs the test suite (with result caching), reads prior `findings.json` +
 If the preflight exits with code 2, the packet's `short_circuit` field tells
 you what to do:
 
-- **`already_reviewed`** — `.TerMinal/reviews/<pr>/<sha>.md` already exists for this
-  exact SHA (or `.reviews/<pr>/<sha>.md` in legacy v1). Surface the existing artifact path; we're done.
+- **`already_reviewed`** — `$TERMINAL_REVIEWS_DIR/<pr>/<sha>.md` already exists for this
+  exact SHA. Surface the existing artifact path; we're done.
 - **`diff_hash_match`** — a prior SHA has bit-identical diff (rebase / amend
   / force-push without content change). Copy that artifact forward with a
   new SHA filename and `equivalent_to: <old_sha>` in the frontmatter; we're done.
 - **`tests_red`** — fill the `blocked.md.tmpl` with test totals + tail and
-  write it to `.TerMinal/reviews/<pr>/<sha>.md` (or `.reviews/<pr>/<sha>.md` in legacy v1). No codex invocation; verdict is
+  write it to `$TERMINAL_REVIEWS_DIR/<pr>/<sha>.md`. No codex invocation; verdict is
   deterministically `blocked`. We're done.
 
 Sample (for `tests_red`):
 
 ```bash
-REVIEW_ROOT=$([ -d .reviews ] && [ ! -f .TerMinal/template.json ] && echo .reviews || echo .TerMinal/reviews)
+REVIEW_ROOT=$([ -d .reviews ] && [ ! -f .TerMinal/template.json ] && echo .reviews || echo $TERMINAL_REVIEWS_DIR)
 mkdir -p "$REVIEW_ROOT/$PR"
 
 if [ "$EXIT" -eq 2 ]; then
@@ -113,7 +115,7 @@ useful work. When the completion notification arrives, run stage 3.
 **Stage 3 — finalize (deterministic):**
 
 ```bash
-REVIEW_ROOT=$([ -d .reviews ] && [ ! -f .TerMinal/template.json ] && echo .reviews || echo .TerMinal/reviews)
+REVIEW_ROOT=$([ -d .reviews ] && [ ! -f .TerMinal/template.json ] && echo .reviews || echo $TERMINAL_REVIEWS_DIR)
 
 # Extract the ```findings-new ... ``` block codex emitted in the artifact body
 awk '/```findings-new/{f=1;next} /```/{f=0} f' "$REVIEW_ROOT/$PR/$SHORT.md" > /tmp/findings-new-$$.json
@@ -198,7 +200,7 @@ review first, re-review, and the digest lands when it passes.
 end of the stack — each review still single-PR, each in its own worktree.
 Preflight runs in parallel per PR; codex calls run in parallel; helpers
 run after each codex returns. The diff-hash cache is shared via
-`.TerMinal/reviews/.cache/` (or legacy `.reviews/.cache/`) so re-running stale
+`$TERMINAL_REVIEWS_DIR/.cache/` so re-running stale
 stacks is near-free.
 
 ## Fallback

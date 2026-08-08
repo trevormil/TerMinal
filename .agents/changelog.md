@@ -54,7 +54,7 @@ commits, no MRs to log).
 5. **Open the PR** with `--base main` and title `chore(changelog): N new entries`.
    Body lists the merges included. Branch: `changelog/<short_sha>`.
 6. **Update state** — write the new `lastScannedSha = HEAD` to the state file.
-7. **Emit activity** — `.claude/bin/activity doc "Changelog · +N entries" "@ <short_sha>"`.
+7. **Emit activity** — `$HOME/.config/TerMinal/plugin/bin/activity doc "Changelog · +N entries" "@ <short_sha>"`.
 
 ## Decisions
 
@@ -67,7 +67,7 @@ commits, no MRs to log).
 
 ## Output artifact
 
-`reports/changelog/<short_sha>.md` — frontmatter + body summarizing what the
+`$TERMINAL_REPORTS_DIR/changelog/<short_sha>.md` — frontmatter + body summarizing what the
 run found (entries added, merges skipped, time taken). Newest-first by
 frontmatter `generated`.
 

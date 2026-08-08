@@ -1,7 +1,7 @@
 # testing — test runner detection reference
 
 How the review agent detects and runs this repo's test suite. Results
-are embedded in the unified review artifact at `.reviews/<pr-number>/<sha>.md`
+are embedded in the unified review artifact at `$TERMINAL_REVIEWS_DIR/<pr-number>/<sha>.md`
 (see [`code-review.md`](./code-review.md)). The `/test-suite` skill follows the
 same detection logic but reports to chat without writing an artifact.
 

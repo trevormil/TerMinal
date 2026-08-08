@@ -9,11 +9,10 @@ set -uo pipefail
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$ROOT"
 
+# Every directory the area may be read from — sidecar first, then anything
+# still in the repo — resolved by the shared helper rather than guessed here.
 area_paths() {
-  case "$1" in
-    backlog) printf '%s\n' "$ROOT/.TerMinal/backlog" "$ROOT/backlog" ;;
-    reviews) printf '%s\n' "$ROOT/.TerMinal/reviews" "$ROOT/.reviews" ;;
-  esac
+  "$(dirname "$0")/tm-state-dirs" "$1" 2>/dev/null || true
 }
 
 field() {

@@ -49,7 +49,12 @@ function callTools(home: string, calls: { name: string; arguments: Record<string
   ]
   const result = spawnSync('bun', [SERVER], {
     cwd: process.cwd(),
-    env: { ...process.env, HOME: home, TERMINAL_CONFIG_DIR: join(home, '.config', 'TerMinal') },
+    env: {
+      ...process.env,
+      HOME: home,
+      TERMINAL_CONFIG_DIR: join(home, '.config', 'TerMinal'),
+      TERMINAL_REPO_STATE_DIR: join(home, '.config', 'TerMinal', 'repos'),
+    },
     input: lines.join('\n') + '\n',
     encoding: 'utf8' as const,
   })
@@ -66,6 +71,22 @@ function callTools(home: string, calls: { name: string; arguments: Record<string
 function toolJson(res: RpcResponse): any {
   expect(res.error).toBeUndefined()
   return JSON.parse(res.result!.content![0].text)
+}
+
+/** Ticket files in the per-project sidecar under a test's fake HOME. */
+function sidecarBacklogFiles(home: string): string[] {
+  const root = join(home, '.config', 'TerMinal', 'repos')
+  const out: string[] = []
+  const walk = (dir: string) => {
+    if (!existsSync(dir)) return
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const p = join(dir, e.name)
+      if (e.isDirectory()) walk(p)
+      else if (e.name.endsWith('.md')) out.push(p)
+    }
+  }
+  walk(root)
+  return out
 }
 
 function repoBacklogFiles(repo: string): string[] {
@@ -178,7 +199,7 @@ describe('terminal-mcp-server ticket tools — obsidian provider routing', () =>
     )
   })
 
-  test('no provider config falls back to the repo backlog', () => {
+  test('no provider config writes to the sidecar, never the repo', () => {
     const { home, repo, repoName } = setup()
 
     const [filed, listed] = callTools(home, [
@@ -186,15 +207,18 @@ describe('terminal-mcp-server ticket tools — obsidian provider routing', () =>
       { name: 'list_tickets', arguments: { repo: repoName } },
     ])
     const ticket = toolJson(filed)
-    expect(ticket.path).toBe(join(repo, 'backlog', '0001-local-fallback.md'))
     expect(existsSync(ticket.path)).toBe(true)
+    expect(ticket.path).toEndWith(join('backlog', '0001-local-fallback.md'))
+    // A repo shared with collaborators receives nothing.
+    expect(repoBacklogFiles(repo)).toEqual([])
+    expect(sidecarBacklogFiles(home)).toEqual([ticket.path])
     expect(toolJson(listed).map((t: { slug: string }) => t.slug)).toEqual(['0001-local-fallback'])
   })
 })
 
 describe('terminal-mcp-server ticket tools — model tier write path', () => {
   test('file_ticket writes the tier it was given, and defaults to auto', () => {
-    const { home, repo, repoName } = setup()
+    const { home, repoName } = setup()
     const [tiered, plain] = callTools(home, [
       {
         name: 'file_ticket',
@@ -205,7 +229,7 @@ describe('terminal-mcp-server ticket tools — model tier write path', () => {
     expect(toolJson(tiered).path).toBeTruthy()
     expect(toolJson(plain).path).toBeTruthy()
 
-    const files = repoBacklogFiles(repo).map((f) => readFileSync(f, 'utf8'))
+    const files = sidecarBacklogFiles(home).map((f) => readFileSync(f, 'utf8'))
     const cheap = files.find((f) => f.includes('Cheap work'))!
     const auto = files.find((f) => f.includes('Unspecified'))!
     expect(cheap).toContain('model_tier: cheap-agentic')
@@ -215,7 +239,7 @@ describe('terminal-mcp-server ticket tools — model tier write path', () => {
   })
 
   test('update_ticket sets the tier, and leaves it alone when not mentioned', () => {
-    const { home, repo, repoName } = setup()
+    const { home, repoName } = setup()
     const [filed] = callTools(home, [
       { name: 'file_ticket', arguments: { repo: repoName, title: 'Retier me' } },
     ])
@@ -224,7 +248,7 @@ describe('terminal-mcp-server ticket tools — model tier write path', () => {
     callTools(home, [
       { name: 'update_ticket', arguments: { repo: repoName, slug, modelTier: 'top' } },
     ])
-    const afterSet = repoBacklogFiles(repo)
+    const afterSet = sidecarBacklogFiles(home)
       .map((f) => readFileSync(f, 'utf8'))
       .join('')
     expect(afterSet).toContain('model_tier: top')
@@ -233,7 +257,7 @@ describe('terminal-mcp-server ticket tools — model tier write path', () => {
     callTools(home, [
       { name: 'update_ticket', arguments: { repo: repoName, slug, status: 'in-progress' } },
     ])
-    const afterOther = repoBacklogFiles(repo)
+    const afterOther = sidecarBacklogFiles(home)
       .map((f) => readFileSync(f, 'utf8'))
       .join('')
     expect(afterOther).toContain('model_tier: top')
@@ -243,14 +267,14 @@ describe('terminal-mcp-server ticket tools — model tier write path', () => {
   test('an unroutable tier is rejected rather than written', () => {
     // resolveModel routes an unknown tier through the default (expensive)
     // slot, so a typo must never reach the file claiming to be cheap.
-    const { home, repo, repoName } = setup()
+    const { home, repoName } = setup()
     callTools(home, [
       {
         name: 'file_ticket',
         arguments: { repo: repoName, title: 'Typo tier', modelTier: 'cheep-raw' },
       },
     ])
-    const files = repoBacklogFiles(repo)
+    const files = sidecarBacklogFiles(home)
       .map((f) => readFileSync(f, 'utf8'))
       .join('')
     expect(files).not.toContain('cheep-raw')

@@ -13,6 +13,7 @@ import { spawn as cpSpawn } from 'node:child_process'
 import { execSync } from 'node:child_process'
 import { fileHitl } from './hitl'
 import { linkTicketPr, updateTicket } from './backlog'
+import { repoStateEnv } from './repo-state'
 import { blockEffect } from './effect-guard'
 import { emitActivity } from './events'
 import {
@@ -261,6 +262,9 @@ export function spawnBgTask(input: SpawnBgInput): BgTask | { error: string } {
   const startedAt = Date.now()
   const childEnv = {
     ...process.env,
+    // Resolved from the source repo, not the worktree: both share one origin,
+    // so one backlog — which is the point of keying the sidecar off the remote.
+    ...repoStateEnv(input.repoRoot),
     TERMINAL_REPO: input.repoRoot,
     TERMINAL_AGENT_ID: 'bg-task',
     TERMINAL_RUN_ID: id,

@@ -6,7 +6,7 @@
 // + risk with ZERO LLM tokens. 🟢 chunks get a final green_label here and never
 // reach the model; non-🟢 chunks are left with empty summary/note for the codex
 // digest pass + merge-digest to fill. Works for both the in-repo
-// .TerMinal/reviews/ flow and the harness prs/ flow — the caller supplies paths.
+// sidecar review flow and the harness prs/ flow — the caller supplies paths.
 // See .agents/digest.md.
 
 import { createHash } from 'crypto';

@@ -18,13 +18,15 @@
 //   each finding: { title, file, line, severity, axis, description, fix_prompt? }
 //
 // Writes:
-//   .TerMinal/reviews/<pr-number>/findings.json   (v2)
-//   .TerMinal/reviews/<pr-number>/suggestions.json
+//   <reviews-dir>/<pr-number>/findings.json
+//   <reviews-dir>/<pr-number>/suggestions.json
+// where <reviews-dir> is resolved by ./state-dir.mjs (the sidecar).
 //
 // Prints the merged findings array (JSON) to stdout for the artifact body.
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { createHash } from 'node:crypto'
+import { stateDir } from './state-dir.mjs'
 
 const [pr, headSha, newPath] = process.argv.slice(2)
 if (!pr || !headSha || !newPath) {
@@ -39,8 +41,7 @@ function idFor(f) {
     .slice(0, 10)
 }
 
-const reviewRoot =
-  existsSync('.reviews') && !existsSync('.TerMinal/template.json') ? '.reviews' : '.TerMinal/reviews'
+const reviewRoot = stateDir('reviews')
 const dir = `${reviewRoot}/${pr}`
 mkdirSync(dir, { recursive: true })
 

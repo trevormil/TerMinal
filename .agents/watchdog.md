@@ -24,7 +24,7 @@ record stuck at `status: running` for longer than 2 hours and finalizes it:
 - updates the schedule's `lastStatus`
 - files a global HITL item with a link to the run id, branch, and worktree
 - files a backlog ticket on the affected repo (best-effort — only if the repo
-  has a `backlog/` folder) with `type: bug · priority: high`
+  has a `$TERMINAL_BACKLOG_DIR/` folder, or a legacy `backlog/` folder) with `type: bug · priority: high`
 
 **2. Cadence check** (one-shot mode only). For each enabled `interval`
 schedule whose `lastRun` is more than 2× its cadence ago, file a HITL: the

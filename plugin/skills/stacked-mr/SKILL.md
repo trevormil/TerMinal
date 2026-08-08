@@ -8,7 +8,7 @@ description: "Autonomous AFK mode: build a stack of owner-scoped PRs/MRs, then b
 Builds a stack of PRs/MRs without reviewing each one immediately, then runs a
 batch review pass at the end. The canonical owner, knowledge, artifact, and
 follow-up contract is
-[`docs/workflow/agent-process.md`](../../../docs/workflow/agent-process.md).
+`docs/workflow/agent-process.md` in the repo you are working in.
 
 ## Stack Shape
 

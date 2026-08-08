@@ -28,7 +28,7 @@ the install — don't fail silently or pretend a non-run is clean.
 ## Output location
 
 ```
-.TerMinal/reports/dead-code/<short_sha>.md     # one per run, filename = main HEAD short sha
+$TERMINAL_REPORTS_DIR/dead-code/<short_sha>.md     # one per run, filename = main HEAD short sha
 ```
 
 Newest-first by the frontmatter `generated` timestamp.

@@ -5,11 +5,13 @@ description: "Reconcile tickets/backlog with reality: close tickets whose PRs me
 
 # /merge-sync — Reconcile tickets with merged PRs
 
+> **Where this lives.** Workflow state is kept in a per-project sidecar outside the repo, so a repo shared with collaborators never receives it. TerMinal exports `$TERMINAL_BACKLOG_DIR` into every session it spawns; in a shell it did not spawn, resolve it with `tm-state-dir backlog`.
+
 The merge is human-only (global §8), so after the human merges, ticket state is
 stale: tickets still say `in-progress` and still list the now-merged PR/MR in
 `prs:`. This skill closes the loop. It **never merges** — it only reads PR/MR
 state from the forge and updates the active ticket directory
-(`.TerMinal/backlog/` in v2, `backlog/` in legacy v1).
+(`$TERMINAL_BACKLOG_DIR/` in v2, `backlog/` in legacy v1).
 
 ## Process
 

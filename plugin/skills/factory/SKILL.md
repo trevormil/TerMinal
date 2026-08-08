@@ -10,7 +10,7 @@ build/review bar. It keeps moving while runnable work remains, parks true human
 blockers in HITL, and leaves merging to the human.
 
 The canonical owner, knowledge, delegated-artifact, and follow-up contract is
-[`docs/workflow/agent-process.md`](../../../docs/workflow/agent-process.md).
+`docs/workflow/agent-process.md` in the repo you are working in.
 Factory treats classic agents, repo/global scripts, and persistent agents as
 one assignable inventory. Ticket ownership is always the
 `agent_id` + `agent_scope` + `agent_kind` tuple; model policy, quality gates,

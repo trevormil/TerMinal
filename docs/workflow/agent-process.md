@@ -16,7 +16,7 @@ Ticket intake
   |
   v
 Agent selection
-  - list_agents / .claude/bin/list-agents
+  - list_agents / $HOME/.config/TerMinal/plugin/bin/list-agents
   - split multi-agent work into linked tickets
   |
   v
@@ -70,7 +70,7 @@ list_agents({repo})
 Fallback:
 
 ```bash
-.claude/bin/list-agents
+$HOME/.config/TerMinal/plugin/bin/list-agents
 ```
 
 The result is a compact list of assignable agents:
@@ -177,11 +177,50 @@ request_agent_artifact({
 Fallback:
 
 ```bash
-.claude/bin/request-agent-artifact --agent security-sweep --title "Auth risk check" -- "Review ticket #123 for auth risks and cite paths."
+$HOME/.config/TerMinal/plugin/bin/request-agent-artifact --agent security-sweep --title "Auth risk check" -- "Review ticket #123 for auth risks and cite paths."
 ```
 
 The delegate writes `.TerMinal/agent-requests/<run>/report.md`. The caller keeps
 the path and a short summary, not the full transcript.
+
+## Staged Implementation Plans
+
+For complex full-stack, cross-service, migration, or high-risk tickets, write a
+small staged plan before editing. Put it in the ticket body or live session doc;
+do not introduce a separate DAG runner for normal work.
+
+Each stage should include:
+
+- **Name** — the work slice, such as migration, API, frontend, tests, config, or
+  permissions.
+- **Depends on** — prior stages or `none`.
+- **Verify** — the deterministic check, test, smoke command, or review artifact
+  that proves the stage is ready.
+- **Human gate** — only when a human decision or approval is truly required,
+  such as a destructive migration or ambiguous product choice.
+
+Example:
+
+```markdown
+## Implementation Plan
+
+1. Migration
+   - Depends on: none
+   - Verify: migration/schema test
+   - Human gate: yes, if destructive
+
+2. API
+   - Depends on: Migration
+   - Verify: route/service tests
+
+3. Frontend
+   - Depends on: API contract
+   - Verify: component or integration test
+
+4. Config / permissions
+   - Depends on: API
+   - Verify: permission and feature-flag test
+```
 
 ## Quality Phase
 
@@ -225,40 +264,6 @@ The assigned agent:
 4. Implements the smallest scoped change.
 5. Runs the relevant local checks.
 6. Reviews the diff for unrelated changes or leaked files.
-7. Records anything a later run would need on the ticket's log.
-
-## Ticket Log
-
-Every ticket carries a `## Log` — a timestamped record of what runs on it have
-learned. It is not a comment thread for people; it is how context survives a
-run ending. See [ADR-0012](../decisions/0012-ticket-log-in-markdown.md).
-
-An agent's implementation prompt replays prior entries, so **read the log before
-starting** — it is where the last run's dead ends are recorded.
-
-Write to it with the `comment_ticket` MCP tool, or from a script body:
-
-```bash
-terminal-cli ticket comment <slug> "<body>"
-```
-
-Entries are stamped with the running agent and its engine/model automatically.
-
-What belongs in the log:
-
-- findings a later run would otherwise rediscover ("redis isn't available in CI")
-- dead ends and why they failed
-- decisions that narrow scope, and what was deferred
-- anything the PR description won't carry because it isn't about the diff
-
-What does **not**:
-
-- the ticket's own description or acceptance criteria — those are the prose body
-  and `acceptance:` frontmatter, and edits belong there
-- status changes, which the frontmatter already records
-
-**Lanes never write to the log.** Lanes share one ticket, so concurrent writes
-would race; only a solo run leaves an entry, and the judge step links the winner.
 
 ## Follow-Up Phase
 

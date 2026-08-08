@@ -58,11 +58,10 @@ fi
 #    "don't add tests to a broken suite" is the reason this gate exists. A red
 #    suite is the health agent's problem, not ours — record status and stop.
 # ---------------------------------------------------------------------------
-if [ -d "$TERMINAL_REPO/reports" ] && [ ! -f "$TERMINAL_REPO/.TerMinal/template.json" ]; then
-  reports_dir="$TERMINAL_REPO/reports"
-else
-  reports_dir="$TERMINAL_REPO/.TerMinal/reports"
-fi
+# Always the sidecar. A branch that preferred an in-repo reports/ when one
+# existed put every artifact back in the checkout on exactly the repos that
+# predate the sidecar — which is all of them.
+reports_dir="${TERMINAL_REPORTS_DIR:-$("$HOME/.config/TerMinal/plugin/bin/tm-state-dir" reports)}"
 mkdir -p "$reports_dir/coverage"
 report="$reports_dir/coverage/${short}.md"
 

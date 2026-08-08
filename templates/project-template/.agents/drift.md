@@ -66,14 +66,14 @@ PR vs ticket:
    `chore(docs): fix N drift items`.
 6. **For non-trivial findings**: file a ticket via the ticket skill with
    the audit-report path attached.
-7. **Write artifact** to `.TerMinal/reports/drift/<short_sha>.md` (always — even if no
+7. **Write artifact** to `$TERMINAL_REPORTS_DIR/drift/<short_sha>.md` (always — even if no
    findings, the artifact records the run).
 8. **Update state** — `lastScannedSha = HEAD`, `lastFindings = N`.
 9. **Activity** — `$HOME/.config/TerMinal/plugin/bin/activity check "Drift · <N> findings" "@ <short_sha>"`.
 
 ## Output artifact
 
-`.TerMinal/reports/drift/<short_sha>.md`:
+`$TERMINAL_REPORTS_DIR/drift/<short_sha>.md`:
 
 ```yaml
 ---
@@ -89,7 +89,7 @@ findings:
   claude-md-drift: 1
   module-undocumented: 3
 trivial_fix_pr: https://github.com/owner/repo/pull/N
-tickets_filed: [.TerMinal/backlog/0124-drift-claude-md.md]
+tickets_filed: [$TERMINAL_BACKLOG_DIR/0124-drift-claude-md.md]
 status: ok
 ---
 

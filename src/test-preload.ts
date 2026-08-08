@@ -22,10 +22,13 @@ if (!process.env.TERMINAL_CONFIG_DIR) {
 // missing from its source, so one test calling installTmPlugin without an
 // explicit codexSkillsDir wiped 34 real skills out of the developer's
 // ~/.codex/skills. Same rule as above: you may override, you may not forget.
+// Repo workflow state (tickets/reviews/sessions) now resolves to a per-project
+// sidecar dir. Same rule: a test must not be able to reach the real one.
 for (const key of [
   'TERMINAL_CLAUDE_SKILLS_DIR',
   'TERMINAL_CODEX_SKILLS_DIR',
   'TERMINAL_CLAUDE_PLUGINS_DIR',
+  'TERMINAL_REPO_STATE_DIR',
 ]) {
   if (!process.env[key]) process.env[key] = mkdtempSync(join(tmpdir(), 'terminal-test-skills-'))
 }

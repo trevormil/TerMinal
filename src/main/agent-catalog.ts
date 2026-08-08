@@ -140,7 +140,7 @@ export const DEFAULT_AGENTS: Agent[] = [
       allowOverride: true,
     },
     outputContract:
-      'One combined review artifact plus findings/suggestions state in .TerMinal/reviews/<pr>/<sha> or legacy .reviews/<pr>.',
+      'One combined review artifact plus findings/suggestions state in $TERMINAL_REVIEWS_DIR/<pr>/<sha>.',
     quality: {
       acceptanceCriteria: [
         'Resolve exactly one PR/MR and review the current head commit.',
@@ -154,7 +154,9 @@ export const DEFAULT_AGENTS: Agent[] = [
         {
           id: 'review-artifact-written',
           title: 'Review artifact is written',
-          command: 'test -d .TerMinal/reviews -o -d .reviews',
+          // Quoted with a fallback: this runs in a shell, and an unset var
+          // would make `test -d` malformed rather than simply false.
+          command: 'test -d "${TERMINAL_REVIEWS_DIR:-/nonexistent}" -o -d .reviews',
           cwd: 'worktree',
           required: true,
         },
@@ -170,7 +172,7 @@ export const DEFAULT_AGENTS: Agent[] = [
       },
     },
     prompt:
-      'Act as the code-review agent for this repository. Review exactly one PR/MR at its current head commit. Follow the in-repo review contract at .agents/code-review.md when present; otherwise use this fallback contract: run the detected test suite first as a hard gate, inspect the PR/MR diff against its target branch, score correctness/security/architecture/conformance/quality/dependencies, write a durable review artifact under .TerMinal/reviews/<number>/<short-sha>.md (legacy v1 repos may use .reviews/<number>/<short-sha>.md), and update findings.json plus suggestions.json when the project has those helpers. Do not implement fixes during review. If you find out-of-scope work, file owner-scoped follow-up tickets using list_agents before assigning. End with verdict, artifact path, test status, and key findings.',
+      'Act as the code-review agent for this repository. Review exactly one PR/MR at its current head commit. Follow the in-repo review contract at .agents/code-review.md when present; otherwise use this fallback contract: run the detected test suite first as a hard gate, inspect the PR/MR diff against its target branch, score correctness/security/architecture/conformance/quality/dependencies, write a durable review artifact under $TERMINAL_REVIEWS_DIR/<number>/<short-sha>.md (resolve it with `tm-state-dir reviews` if that variable is unset; never write it inside the repo), and update findings.json plus suggestions.json when the project has those helpers. Do not implement fixes during review. If you find out-of-scope work, file owner-scoped follow-up tickets using list_agents before assigning. End with verdict, artifact path, test status, and key findings.',
   },
   {
     id: 'security-sweep',
@@ -268,7 +270,7 @@ export const DEFAULT_AGENTS: Agent[] = [
     icon: 'Target',
     opensPr: false,
     prompt:
-      "Act as a strategy-review agent for this repository. Step back from execution and assess direction: read the README, architecture.md, ADRs, recent commits, and the open backlog. Identify drift between stated goals and actual work, abandoned-but-not-formally-deprioritized lines, and missing strategic bets the codebase implies but doesn't pursue. File backlog tickets (type: docs for ADR candidates, type: feature for missing strategic moves) — never edit code. Write the substantive strategic read (alignment vs. drift assessment + top 3 strategic moves) to .TerMinal/reports/YYYY-MM-DD-strategy-read.md (create .TerMinal/reports/ if missing; legacy v1 repos may use reports/). End with the report path and the ticket ids filed.",
+      "Act as a strategy-review agent for this repository. Step back from execution and assess direction: read the README, architecture.md, ADRs, recent commits, and the open backlog. Identify drift between stated goals and actual work, abandoned-but-not-formally-deprioritized lines, and missing strategic bets the codebase implies but doesn't pursue. File backlog tickets (type: docs for ADR candidates, type: feature for missing strategic moves) — never edit code. Write the substantive strategic read (alignment vs. drift assessment + top 3 strategic moves) to $TERMINAL_REPORTS_DIR/YYYY-MM-DD-strategy-read.md (create $TERMINAL_REPORTS_DIR/ if missing; legacy v1 repos may use reports/). End with the report path and the ticket ids filed.",
   },
   {
     id: 'cert-check',
@@ -278,7 +280,7 @@ export const DEFAULT_AGENTS: Agent[] = [
     icon: 'Lock',
     opensPr: false,
     prompt:
-      "Act as a TLS-hygiene agent for this repository. Find every production hostname this repo serves (from deployment manifests, docker-compose, k8s yaml, .env.example, docs). For each hostname, probe its TLS certificate (openssl s_client or equivalent) and check: days-until-expiry, certificate chain validity, hostname match, and minimum TLS version. File a backlog ticket (type: security or dx) for any cert expiring within 30 days, mismatched cert, or weak TLS config. Don't edit code. Write the full hostname / expiry / chain / TLS-version table to .TerMinal/reports/YYYY-MM-DD-cert-check.md (create .TerMinal/reports/ if missing; legacy v1 repos may use reports/) — durable snapshot of cert hygiene, not just the flagged issues. End with the report path and the ticket ids filed.",
+      "Act as a TLS-hygiene agent for this repository. Find every production hostname this repo serves (from deployment manifests, docker-compose, k8s yaml, .env.example, docs). For each hostname, probe its TLS certificate (openssl s_client or equivalent) and check: days-until-expiry, certificate chain validity, hostname match, and minimum TLS version. File a backlog ticket (type: security or dx) for any cert expiring within 30 days, mismatched cert, or weak TLS config. Don't edit code. Write the full hostname / expiry / chain / TLS-version table to $TERMINAL_REPORTS_DIR/YYYY-MM-DD-cert-check.md (create $TERMINAL_REPORTS_DIR/ if missing; legacy v1 repos may use reports/) — durable snapshot of cert hygiene, not just the flagged issues. End with the report path and the ticket ids filed.",
   },
   {
     id: 'translations-check',
@@ -314,7 +316,7 @@ export const DEFAULT_AGENTS: Agent[] = [
     icon: 'MessageCircleQuestion',
     opensPr: false,
     prompt:
-      "Act as a devil's-advocate agent for this repository. Pick the most consequential recent decision — last accepted ADR, last significant architecture commit, last major feature direction — and build the strongest counter-argument. Steelman the opposite choice: what would have made it correct, what costs the chosen path now carries, what's the smallest reversal that would unwind it. Always write the full counter-argument to .TerMinal/reports/devils-advocate/YYYY-MM-DD-<slug>.md (create .TerMinal/reports/devils-advocate/ if missing; legacy v1 repos may use reports/devils-advocate/) so the steelman is durable, not chat-only. Only if the counter holds enough water that reconsideration would be cheaper than the eventual reversal, additionally file a backlog ticket (type: docs, source: devils-advocate) proposing an ADR-revisit and linking the report. Don't edit code. End with the report path and the ticket id (if filed).",
+      "Act as a devil's-advocate agent for this repository. Pick the most consequential recent decision — last accepted ADR, last significant architecture commit, last major feature direction — and build the strongest counter-argument. Steelman the opposite choice: what would have made it correct, what costs the chosen path now carries, what's the smallest reversal that would unwind it. Always write the full counter-argument to $TERMINAL_REPORTS_DIR/devils-advocate/YYYY-MM-DD-<slug>.md (create $TERMINAL_REPORTS_DIR/devils-advocate/ if missing; legacy v1 repos may use reports/devils-advocate/) so the steelman is durable, not chat-only. Only if the counter holds enough water that reconsideration would be cheaper than the eventual reversal, additionally file a backlog ticket (type: docs, source: devils-advocate) proposing an ADR-revisit and linking the report. Don't edit code. End with the report path and the ticket id (if filed).",
   },
   {
     id: 'bloat-check',
@@ -324,7 +326,7 @@ export const DEFAULT_AGENTS: Agent[] = [
     icon: 'Recycle',
     opensPr: false,
     prompt:
-      "Act as a bloat-check agent for this repository. Audit the backlog and artifact surfaces — open tickets, .TerMinal/reviews/ suggestions, .TerMinal/checks/ reports, .TerMinal/sessions/ closed docs, plus legacy v1 .reviews/.checks/sessions if present — for low-value or stale items: tickets nobody will ever do, suggestions copy-pasted into ticket form, reports older than the work they discuss, abandoned session docs. Close (with a one-line closing note) or icebox the cruft. Don't delete prose lightly; preserve genuinely useful learnings. End with a list of every item closed/iceboxed and the rationale.",
+      "Act as a bloat-check agent for this repository. Audit the backlog and artifact surfaces — open tickets, $TERMINAL_REVIEWS_DIR/ suggestions, $TERMINAL_CHECKS_DIR/ reports, $TERMINAL_SESSIONS_DIR/ closed docs, plus legacy v1 .reviews/.checks/sessions if present — for low-value or stale items: tickets nobody will ever do, suggestions copy-pasted into ticket form, reports older than the work they discuss, abandoned session docs. Close (with a one-line closing note) or icebox the cruft. Don't delete prose lightly; preserve genuinely useful learnings. End with a list of every item closed/iceboxed and the rationale.",
   },
   {
     id: 'knowledge-base',
@@ -352,7 +354,7 @@ export const DEFAULT_AGENTS: Agent[] = [
     icon: 'Newspaper',
     opensPr: false,
     prompt:
-      "Act as a daily-summary agent for this repository. Produce a concise digest of TODAY's activity: merged commits + closed PRs, opened tickets, closed tickets, code-review verdicts, check artifacts, agent runs. Pull from git log, gh/glab, .TerMinal/backlog/, .TerMinal/reviews/, .TerMinal/checks/, plus legacy v1 paths if present. Write it to .TerMinal/reports/YYYY-MM-DD-daily-summary.md (create .TerMinal/reports/ if missing; legacy v1 repos may use reports/). Keep it scannable — one section per category, short bullets, links to underlying artifacts. Don't edit code. Don't open a PR (the report is committed directly to main? — actually no, follow the project's branching rule; if main is protected, drop the file uncommitted and report the path). End with the path to the digest.",
+      "Act as a daily-summary agent for this repository. Produce a concise digest of TODAY's activity: merged commits + closed PRs, opened tickets, closed tickets, code-review verdicts, check artifacts, agent runs. Pull from git log, gh/glab, $TERMINAL_BACKLOG_DIR/, $TERMINAL_REVIEWS_DIR/, $TERMINAL_CHECKS_DIR/, plus legacy v1 paths if present. Write it to $TERMINAL_REPORTS_DIR/YYYY-MM-DD-daily-summary.md (create $TERMINAL_REPORTS_DIR/ if missing; legacy v1 repos may use reports/). Keep it scannable — one section per category, short bullets, links to underlying artifacts. Don't edit code. Don't open a PR (the report is committed directly to main? — actually no, follow the project's branching rule; if main is protected, drop the file uncommitted and report the path). End with the path to the digest.",
   },
   // ── FORCE agents ─────────────────────────────────────────────────────────
   // These bypass the main-branch gate via TERMINAL_FORCE_MAIN=1. Reserved

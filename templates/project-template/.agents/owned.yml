@@ -33,27 +33,27 @@ agents:
 
   drift-auditor:
     paths:
-      - .TerMinal/reports/drift/**/*.md
+      - $TERMINAL_REPORTS_DIR/drift/**/*.md
     spec: .agents/drift.md
 
   coverage:
     paths:
-      - .TerMinal/reports/coverage/**/*.md
+      - $TERMINAL_REPORTS_DIR/coverage/**/*.md
       - .agents/coverage/baseline.json
     spec: .agents/coverage.md
 
   deps-quality:
     paths:
-      - .TerMinal/reports/deps-quality/**/*.md
+      - $TERMINAL_REPORTS_DIR/deps-quality/**/*.md
     spec: .agents/deps-quality.md
 
   perf:
     paths:
-      - .TerMinal/reports/perf/**/*.md
+      - $TERMINAL_REPORTS_DIR/perf/**/*.md
       - .agents/perf/baseline.json
     spec: .agents/perf.md
 
   health:
     paths:
-      - .TerMinal/reports/health/**/*.md
+      - $TERMINAL_REPORTS_DIR/health/**/*.md
     spec: .agents/health.md

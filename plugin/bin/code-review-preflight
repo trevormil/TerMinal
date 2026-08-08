@@ -30,6 +30,7 @@ import { execFileSync, execSync } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync, readdirSync } from 'node:fs'
 import { join, dirname, basename } from 'node:path'
 import { createHash } from 'node:crypto'
+import { stateDir } from './state-dir.mjs'
 
 const args = process.argv.slice(2)
 const PR_URL = args[0]
@@ -96,8 +97,7 @@ const fileList = files
   .map((f) => f.path || f.new_path || f.filename || '')
   .filter(Boolean)
 
-const reviewRoot =
-  existsSync('.reviews') && !existsSync('.TerMinal/template.json') ? '.reviews' : '.TerMinal/reviews'
+const reviewRoot = stateDir('reviews')
 
 // ---------------------------------------------------------------------------
 // diff hash — short-circuit cached reviews on rebase/amend

@@ -1,4 +1,4 @@
-Review PR {{PR_URL}} at head commit {{HEAD_SHA}}. Output the review artifact at .TerMinal/reviews/{{PR_NUMBER}}/{{SHORT_SHA}}.md, unless this is a legacy v1 repo that already has .reviews/ and no .TerMinal/template.json marker; in that case use .reviews/{{PR_NUMBER}}/{{SHORT_SHA}}.md.
+Review PR {{PR_URL}} at head commit {{HEAD_SHA}}. Output the review artifact at $TERMINAL_REVIEWS_DIR/{{PR_NUMBER}}/{{SHORT_SHA}}.md. If that variable is unset, resolve the directory with `tm-state-dir reviews`. Never write the artifact inside the repo — it is personal workflow state, and a collaborator pulling the branch has no use for it.
 
 A deterministic preflight has already done the recon. Read the packet at {{PACKET_PATH}} for: PR metadata, file list, language histogram, surface flags (auth/migrations/routes/deps/etc.), test results (already executed + cached), prior findings + suggestions count, diff_hash, review_kind_hint.
 

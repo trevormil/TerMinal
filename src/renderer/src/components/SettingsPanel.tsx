@@ -66,6 +66,7 @@ import type {
   AlertChannelId,
   UpdateCheckResult,
   TmPluginStatus,
+  RepoStateStatus,
   BridgePairing,
   BridgePushStatus,
   BridgeStatus,
@@ -1062,6 +1063,78 @@ function RebuildPanel() {
 // The global tm plugin (skills/hooks for every repo) is installed by the app at
 // ~/.config/TerMinal/plugin and linked as ~/.claude/skills/tm. Startup keeps it
 // current; Sync repairs the copy + symlink on demand.
+// Per-project sidecar: workflow state (tickets, reviews, sessions) lives
+// outside the repo so a shared checkout never receives it. Surfaces where that
+// is for the active repo and offers the one-time move for repos that still
+// carry theirs in-tree.
+function RepoStatePanel() {
+  const [status, setStatus] = useState<RepoStateStatus | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [note, setNote] = useState<string | null>(null)
+
+  const refresh = async () => setStatus(await window.gt.repoState.status())
+  useEffect(() => {
+    void refresh()
+  }, [])
+
+  const migrate = async () => {
+    setNote(null)
+    setBusy(true)
+    try {
+      const r = await window.gt.repoState.migrate()
+      if (r.error) setNote(r.error)
+      else if (r.moved === 0) setNote('Nothing to move — this repo is already clean.')
+      else
+        setNote(
+          `Moved ${r.moved} file(s) into the sidecar.` +
+            (r.skipped.length
+              ? ` ${r.skipped.length} left in the repo (already present in the sidecar) — reconcile by hand.`
+              : ' Commit the deletions in the repo to finish.'),
+        )
+      await refresh()
+    } catch (e) {
+      setNote(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="mt-2 rounded-lg border border-[var(--gt-border)] bg-black/20 p-3">
+      <div className="flex items-center gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="text-[11.5px] text-zinc-300">Project state (sidecar)</div>
+          <div className="truncate font-mono text-[10.5px] text-zinc-500">
+            {status?.path || 'no repo selected'}
+          </div>
+          <div className={`text-[10.5px] ${status?.pending ? 'text-amber-400' : 'text-zinc-500'}`}>
+            {!status
+              ? 'Checking…'
+              : status.pending
+                ? `${status.pending} file(s) still in the repo — move them out so collaborators don't get them`
+                : status.isRepo
+                  ? `versioned · ${status.commits} commit${status.commits === 1 ? '' : 's'}`
+                  : 'nothing in the repo to move'}
+          </div>
+        </div>
+        <button
+          onClick={migrate}
+          disabled={busy || !status?.pending}
+          className="flex items-center gap-1.5 rounded-lg border border-[var(--gt-border)] bg-black/20 px-2.5 py-1.5 text-[11px] text-zinc-200 hover:border-[var(--gt-accent)]/40 disabled:opacity-50"
+        >
+          {busy ? (
+            <Loader2 size={12} className="animate-spin" />
+          ) : (
+            <RotateCcw size={12} strokeWidth={2} />
+          )}
+          Move out of repo
+        </button>
+      </div>
+      {note && <div className="mt-1.5 text-[10.5px] text-zinc-400">{note}</div>}
+    </div>
+  )
+}
+
 function TmPluginPanel() {
   const [status, setStatus] = useState<TmPluginStatus | null>(null)
   const [syncing, setSyncing] = useState(false)
@@ -4097,6 +4170,7 @@ export function SettingsPanel({
                 >
                   <UpdatesPanel />
                   <TmPluginPanel />
+                  <RepoStatePanel />
                 </Section>
 
                 {/* In-app rebuild — eats own dog food. Spawns bin/release fully

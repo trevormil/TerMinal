@@ -48,13 +48,13 @@ If `HEAD == lastScannedSha` AND no new CI runs since `lastRunAt` → exit 0.
    - Each flake → file a ticket with the failing seed + retry log.
 6. **If any net-new tests written**: branch `coverage/<short_sha>`, commit,
    push, open PR `test: backfill <N> tests in <area>`.
-7. **Write artifact** to `reports/coverage/<short_sha>.md`.
+7. **Write artifact** to `$TERMINAL_REPORTS_DIR/coverage/<short_sha>.md`.
 8. **Update state** — `lastScannedSha`, `lastCoveragePct`, `flakeCount`.
-9. **Activity** — `.claude/bin/activity check "Coverage · <pct>% (Δ <delta>) · <N> flakes" "@ <short_sha>"`.
+9. **Activity** — `$HOME/.config/TerMinal/plugin/bin/activity check "Coverage · <pct>% (Δ <delta>) · <N> flakes" "@ <short_sha>"`.
 
 ## Output artifact
 
-`reports/coverage/<short_sha>.md`:
+`$TERMINAL_REPORTS_DIR/coverage/<short_sha>.md`:
 
 ```yaml
 ---
@@ -67,7 +67,7 @@ delta_pct: +1.2
 files_below_threshold: 5
 new_tests_pr: https://github.com/owner/repo/pull/N
 flakes_detected: 2
-tickets_filed: [backlog/0125-flake-mr-checker.md]
+tickets_filed: [$TERMINAL_BACKLOG_DIR/0125-flake-mr-checker.md]
 status: ok
 ---
 ```

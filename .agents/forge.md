@@ -10,10 +10,10 @@ already blocks both `gh pr merge` and `glab mr merge`.
 Run the detector — it prints `github` or `gitlab`:
 
 ```bash
-forge="$("$(git rev-parse --show-toplevel)/.claude/bin/forge")"
+forge="$("$HOME/.config/TerMinal/plugin/bin/forge")"
 ```
 
-Resolution order (`.claude/bin/forge`):
+Resolution order (`$HOME/.config/TerMinal/plugin/bin/forge`):
 1. **Explicit override** — `.claude/forge` file containing `github` or `gitlab`
    (the reliable choice, and required for self-hosted GitLab whose host doesn't
    contain "gitlab", e.g. `git.example.com`).
@@ -70,7 +70,7 @@ esac
 ```
 
 **Eligible (always tag):** changelog, auto-docs, drift-auditor trivial-fix PRs,
-report-only changes under `reports/`, ticket updates under `backlog/`.
+report-only changes under `$TERMINAL_REPORTS_DIR/`, ticket updates under `$TERMINAL_BACKLOG_DIR/`.
 
 **Not eligible (never tag):** coverage (adds test files), deps-quality (touches
 lockfile + can affect runtime), perf (touches code), any PR with edits under
