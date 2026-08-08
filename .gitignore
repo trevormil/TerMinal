@@ -26,3 +26,8 @@ dist
 # Playwright (tier 1 UX suite) run output — traces, screenshots, the canary stamp.
 /test-results/
 /playwright-report/
+
+# Where the legacy sweep banks retired per-repo seeds (ADR-0023). Local-only —
+# and it must not show as untracked, or bin/release treats the checkout as
+# dirty and refuses to fast-forward to origin/main.
+.claude/pre-tm-backup/
