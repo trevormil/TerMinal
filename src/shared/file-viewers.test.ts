@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   base64ToBytes,
   dataUrl,
+  defaultsToSource,
   delimiterFor,
   hasSourceToggle,
   hexDump,
@@ -142,5 +143,19 @@ describe('humanSize', () => {
     expect(humanSize(512)).toBe('512 B')
     expect(humanSize(2048)).toBe('2.0 KB')
     expect(humanSize(5 * 1024 * 1024)).toBe('5.0 MB')
+  })
+})
+
+describe('defaultsToSource', () => {
+  test('text-backed viewers open in the editor, binary ones render', () => {
+    // Clicking a file always lands in the EDITOR when the content is text —
+    // markdown must not open as a preview. Rendered stays one toggle away.
+    expect(defaultsToSource('markdown')).toBe(true)
+    expect(defaultsToSource('csv')).toBe(true)
+    expect(defaultsToSource('svg')).toBe(true)
+    // No text behind these — the viewer is the only sane default.
+    expect(defaultsToSource('image')).toBe(false)
+    expect(defaultsToSource('pdf')).toBe(false)
+    expect(defaultsToSource('binary')).toBe(false)
   })
 })

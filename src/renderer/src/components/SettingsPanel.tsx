@@ -2680,7 +2680,7 @@ export function SettingsPanel({
         </div>
 
         <div className="flex min-h-0 flex-1">
-          <aside className="hidden w-52 shrink-0 border-r border-[var(--gt-border)] bg-[var(--gt-panel)]/35 p-3 md:block">
+          <aside className="hidden min-h-0 w-52 shrink-0 overflow-y-auto border-r border-[var(--gt-border)] bg-[var(--gt-panel)]/35 p-3 md:block">
             <div className="mb-2 px-2 text-[9.5px] font-bold uppercase tracking-[0.16em] text-zinc-600">
               Categories
             </div>
