@@ -3,11 +3,14 @@
 #
 #   ./bootstrap.sh /path/to/target-repo
 #
-# Copies the workflow machinery (.claude/.codex skills, .claude hooks/settings, .agents
-# contracts, CI, docs skeleton, and TerMinal project state scaffolds into
-# the target. Workflow files are overwritten (they ARE the workflow); your data
-# and existing docs are never clobbered. Anything that would clobber an existing
-# file is written alongside as `<name>.workflow` for you to merge by hand.
+# Seeds repo data + the Codex mirror (.codex skills/hooks, .agents contracts,
+# CI, docs skeleton, and TerMinal project state scaffolds) into the target.
+# Claude Code skills/hooks/bin are NOT copied — they ship globally via the tm
+# plugin (installed by the TerMinal app at ~/.config/TerMinal/plugin, linked as
+# ~/.claude/skills/tm); this script also removes machinery that OLDER bootstraps
+# copied into the repo. Workflow files are overwritten (they ARE the workflow);
+# your data and existing docs are never clobbered. Anything that would clobber
+# an existing file is written alongside as `<name>.workflow` to merge by hand.
 #
 # For a brand-new repo, prefer `gh repo create --template <this-template>`
 # instead — this script is for retrofitting a repo that already exists.
@@ -36,24 +39,93 @@ fi
 say "project-template layout: $LAYOUT"
 
 # --- workflow machinery (overwrite — this is the workflow) -------------------
-echo "[workflow] .claude/ + .codex/ + .agents/ + CI"
+# Claude-side machinery is global (tm plugin); only the Codex mirror + agent
+# contracts + CI are still per-repo.
+echo "[workflow] .codex/ + .agents/ + CI"
 mkdir -p "$DST/.claude" "$DST/.codex" "$DST/.agents" "$DST/.github/workflows"
-cp -R "$SRC/.claude/skills" "$DST/.claude/"
 cp -R "$SRC/.codex/skills" "$DST/.codex/"
-cp -R "$SRC/.claude/hooks"  "$DST/.claude/"
 cp -R "$SRC/.codex/hooks"   "$DST/.codex/"
 cp "$SRC/.codex/hooks.json" "$DST/.codex/hooks.workflow.json"
-cp -R "$SRC/.claude/bin"    "$DST/.claude/"
 cp "$SRC"/.agents/*.md "$DST/.agents/"
 cp "$SRC/.github/workflows/ci.yml" "$DST/.github/workflows/ci.yml"
-chmod +x "$DST/.claude/skills/ticket/bin/"* \
-         "$DST/.claude/skills/session-start/bin/"* \
-         "$DST/.codex/skills/ticket/bin/"* \
+chmod +x "$DST/.codex/skills/ticket/bin/"* \
          "$DST/.codex/skills/session-start/bin/"* \
-         "$DST/.claude/bin/"* \
-         "$DST/.claude/hooks/"*.sh \
          "$DST/.codex/hooks/"*.sh 2>/dev/null || true
-say ".claude/skills, .codex/skills, .claude/hooks, .codex/hooks, .codex/hooks.workflow.json, .claude/bin, .agents, .github/workflows/ci.yml installed"
+say ".codex/skills, .codex/hooks, .codex/hooks.workflow.json, .agents, .github/workflows/ci.yml installed"
+
+# --- migrate: remove Claude machinery older bootstraps copied in -------------
+# Name-scoped, and MOVED to a backup rather than deleted — a repo-authored
+# skill that happens to share a name (e.g. its own `document`) is recoverable.
+# `notify` is intentionally NOT in the list: it is personal machinery excluded
+# from the plugin, so an existing per-repo copy keeps working.
+echo "[migrate] per-repo Claude machinery → tm plugin"
+migrated=0
+BACKUP="$DST/.claude/pre-tm-backup"
+migrate() { # <path relative to .claude/>
+  local src="$DST/.claude/$1"
+  [ -e "$src" ] || return 0
+  mkdir -p "$BACKUP/$(dirname "$1")"
+  rm -rf "${BACKUP:?}/$1"
+  mv "$src" "$BACKUP/$1"
+  migrated=1
+}
+for s in check code-review digest document document-audit emergency-fix \
+         enqueue-request factory knowledge knowledge-rag listener-inbox \
+         loop-driver loop-evaluator loop-implementer loop-planner merge-sync \
+         migrate-agents new-agent new-inbox-source new-knowledge \
+         new-persistent-agent new-schedule new-snippet pr-creation \
+         remote-terminal revert-main security-scan session-end session-start \
+         stacked-mr terminal-widget test-suite ticket unblock-ci vibe; do
+  migrate "skills/$s"
+done
+for b in activity chunk-diff code-review-preflight compute-verdict \
+         findings-merge forge hitl list-agents merge-digest merge-sync \
+         request-agent-artifact status; do
+  migrate "bin/$b"
+done
+for h in block-main-merge.sh remote-check.sh stop-notify.sh; do
+  migrate "hooks/$h"
+done
+rmdir "$DST/.claude/skills" "$DST/.claude/bin" "$DST/.claude/hooks" 2>/dev/null || true
+# Drop settings.json hook entries that point at the removed scripts. If this
+# can't run (no python3 / unparseable settings.json), warn — otherwise every
+# tool call in the repo exits 127 on the missing hook until fixed by hand.
+if [ -f "$DST/.claude/settings.json" ]; then
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$DST/.claude/settings.json" <<'PY' || say "WARNING: could not rewrite .claude/settings.json — remove hook entries pointing at .claude/hooks/*.sh by hand"
+import json, sys
+p = sys.argv[1]
+d = json.load(open(p))
+gone = ('.claude/hooks/block-main-merge.sh', '.claude/hooks/remote-check.sh',
+        '.claude/hooks/stop-notify.sh')
+hooks = d.get('hooks')
+changed = False
+if isinstance(hooks, dict):
+    for ev in list(hooks):
+        matchers = hooks[ev]
+        if not isinstance(matchers, list):
+            continue
+        for m in matchers:
+            kept = [h for h in m.get('hooks', [])
+                    if not any(g in str(h.get('command', '')) for g in gone)]
+            if len(kept) != len(m.get('hooks', [])):
+                m['hooks'] = kept
+                changed = True
+        hooks[ev] = [m for m in matchers if m.get('hooks')]
+        if not hooks[ev]:
+            del hooks[ev]
+            changed = True
+    if not hooks:
+        d.pop('hooks', None)
+if changed:
+    open(p, 'w').write(json.dumps(d, indent=2) + '\n')
+PY
+  else
+    say "WARNING: python3 not found — remove settings.json hook entries pointing at .claude/hooks/*.sh by hand"
+  fi
+fi
+[ "$migrated" = 1 ] && say "moved old per-repo Claude skills/bin/hooks to .claude/pre-tm-backup/ (now served by the tm plugin; delete the backup once confirmed)" \
+                   || say "no legacy Claude machinery found"
 
 # forge selector — don't clobber an existing choice
 [ -f "$DST/.claude/forge" ] || cp "$SRC/.claude/forge" "$DST/.claude/forge"
@@ -68,10 +140,15 @@ mkdir -p "$DST/.github" "$DST/.gitlab/merge_request_templates"
   cp "$SRC/.gitlab/merge_request_templates/Default.md" "$DST/.gitlab/merge_request_templates/Default.md"
 say ".editorconfig + PR/MR templates seeded (existing left untouched)"
 
-# settings.json — don't clobber an existing one
+# settings.json — don't clobber an existing one (and don't churn a
+# .workflow copy when the existing file already matches the template)
 if [ -f "$DST/.claude/settings.json" ]; then
-  cp "$SRC/.claude/settings.json" "$DST/.claude/settings.workflow.json"
-  say "settings.json EXISTS → wrote settings.workflow.json (merge the deny list + block-main-merge hook by hand)"
+  if cmp -s "$SRC/.claude/settings.json" "$DST/.claude/settings.json"; then
+    say "settings.json already matches the template"
+  else
+    cp "$SRC/.claude/settings.json" "$DST/.claude/settings.workflow.json"
+    say "settings.json EXISTS → wrote settings.workflow.json (merge the deny list by hand)"
+  fi
 else
   cp "$SRC/.claude/settings.json" "$DST/.claude/settings.json"
   say "settings.json installed"
@@ -132,9 +209,9 @@ fi
 echo "[gitignore] appending workflow entries if missing"
 touch "$DST/.gitignore"
 if [ "$LAYOUT" = "v1" ]; then
-  lock_lines=("backlog/.next-id.lock" "sessions/.next-id.lock" ".status.md")
+  lock_lines=("backlog/.next-id.lock" "sessions/.next-id.lock" ".status.md" ".claude/pre-tm-backup/")
 else
-  lock_lines=(".TerMinal/backlog/.next-id.lock" ".TerMinal/sessions/.next-id.lock" ".status.md")
+  lock_lines=(".TerMinal/backlog/.next-id.lock" ".TerMinal/sessions/.next-id.lock" ".status.md" ".claude/pre-tm-backup/")
 fi
 for line in "${lock_lines[@]}"; do
   grep -qxF "$line" "$DST/.gitignore" || printf '%s\n' "$line" >> "$DST/.gitignore"
@@ -149,5 +226,5 @@ Done. Next steps in $DST:
   3. If you had a Claude settings.json, merge settings.workflow.json into it.
   4. Merge .codex/hooks.workflow.json into your active Codex hooks config if you want repo-local Codex completion Inbox items.
   5. Commit the scaffold on a feature branch (never main — global §8).
-  6. Start working: /session-start "<goal>"  →  /ticket  →  /pr-creation  →  code-review agent
+  6. Start working: /tm:session-start "<goal>"  →  /tm:ticket  →  /tm:pr-creation  →  code-review agent
 EOF

@@ -20,9 +20,9 @@ only ever sees the chunks a parser couldn't resolve, and emits a length-capped
 JSON patch — never prose, never a re-narration of the diff.
 
 ```
-.claude/bin/chunk-diff   (deterministic, 0 tokens)  → <short>.chunks.json  (skeleton: every chunk classified; 🟢 fully labeled)
+$HOME/.config/TerMinal/plugin/bin/chunk-diff   (deterministic, 0 tokens)  → <short>.chunks.json  (skeleton: every chunk classified; 🟢 fully labeled)
 codex digest pass        (bounded tokens)            → <short>.digest-patch.json (deltas for non-🟢 chunks + MR-level fields only)
-.claude/bin/merge-digest (deterministic, 0 tokens)  → <short>.chunks.json  (final: skeleton + patch merged)
+$HOME/.config/TerMinal/plugin/bin/merge-digest (deterministic, 0 tokens)  → <short>.chunks.json  (final: skeleton + patch merged)
 ```
 
 Hard rules:

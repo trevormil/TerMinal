@@ -203,8 +203,9 @@ export function RepoOrientation({ ctx, onClose }: { ctx: TabContext; onClose: ()
                   {bootstrap === 'confirm' ? (
                     <>
                       <span className="text-[11px] text-amber-300">
-                        Runs project-template/bootstrap.sh — existing files kept, conflicts saved as
-                        *.workflow sidecars.
+                        Runs project-template/bootstrap.sh — your data is kept, conflicts are saved
+                        as *.workflow sidecars, and legacy per-repo Claude skills move to
+                        .claude/pre-tm-backup/ (they now ship globally via the tm plugin).
                       </span>
                       <button
                         onClick={runBootstrap}

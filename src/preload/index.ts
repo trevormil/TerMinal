@@ -478,6 +478,10 @@ const gt = {
     tail: () => ipcRenderer.invoke('release:tail'),
     status: () => ipcRenderer.invoke('release:status'),
   },
+  plugin: {
+    status: () => ipcRenderer.invoke('plugin:status'),
+    sync: () => ipcRenderer.invoke('plugin:sync'),
+  },
   update: {
     check: () => ipcRenderer.invoke('update:check'),
     onStatus: (cb: (r: unknown) => void) => {

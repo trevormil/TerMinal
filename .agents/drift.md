@@ -64,7 +64,7 @@ PR vs ticket:
    substitution): apply the fix in the worktree.
 5. **If any trivial fixes**: branch `drift/<short_sha>`, commit, push, open PR
    `chore(docs): fix N drift items`.
-6. **For non-trivial findings**: file a ticket via `.claude/skills/ticket` with
+6. **For non-trivial findings**: file a ticket via the /tm:ticket skill with
    the audit-report path attached.
 7. **Write artifact** to `reports/drift/<short_sha>.md` (always — even if no
    findings, the artifact records the run).

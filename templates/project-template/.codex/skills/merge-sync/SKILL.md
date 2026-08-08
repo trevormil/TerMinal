@@ -21,12 +21,12 @@ free**, so a script does them in one forge call instead of N tickets × N `gh`
 round-trips:
 
 ```bash
-.claude/bin/merge-sync            # dry-run: print the reconcile plan (read-only)
-.claude/bin/merge-sync --apply    # execute the closes + scrubs
+$HOME/.config/TerMinal/plugin/bin/merge-sync            # dry-run: print the reconcile plan (read-only)
+$HOME/.config/TerMinal/plugin/bin/merge-sync --apply    # execute the closes + scrubs
 ```
 
 It runs one `gh pr list --state merged` (or `glab mr list`, resolved via
-`.claude/bin/forge`), matches against every ticket's `prs:`, and: closes a ticket
+`$HOME/.config/TerMinal/plugin/bin/forge`), matches against every ticket's `prs:`, and: closes a ticket
 only when its linked PR is *actually* merged (sets `status: closed` + `updated:`
 today), scrubs merged URLs (handles all `prs:` formats), and scrubs
 `closed`-but-still-linked drift. A single PR closing multiple tickets is handled
@@ -56,7 +56,7 @@ the same sweep `/session-end` runs):
 
 List what changed: which tickets were closed, which PR URLs were scrubbed, any
 status drift fixed, and any ticket left open because not all its PRs merged. Refresh the live snapshot
-(`.claude/bin/status > .status.md`) to reflect the closed tickets. Don't
+(`$HOME/.config/TerMinal/plugin/bin/status > .status.md`) to reflect the closed tickets. Don't
 auto-`/document` or file new tickets — this is pure reconciliation.
 
 ## When to run
@@ -80,5 +80,5 @@ auto-`/document` or file new tickets — this is pure reconciliation.
 For each ticket closed during reconciliation, emit a feed event:
 
 ```bash
-.claude/bin/activity ticket-closed "Ticket closed · #<id>" "PR !<iid> merged" --ticket <id> --pr <iid>
+$HOME/.config/TerMinal/plugin/bin/activity ticket-closed "Ticket closed · #<id>" "PR !<iid> merged" --ticket <id> --pr <iid>
 ```

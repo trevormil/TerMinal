@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import * as forge from './forge'
+import { configPath } from './config-dir'
 import { projectAreaPathForWrite } from './project-layout'
 
 // Runs the /digest pipeline for an MR in the repo ROOT (not a worktree): the
@@ -45,13 +46,19 @@ export async function startDigest(
   const k = key(repoRoot, iid)
   if (runs.get(k)?.status === 'running') return { ok: true }
 
-  const chunkBin = join(repoRoot, '.claude/bin/chunk-diff')
-  const mergeBin = join(repoRoot, '.claude/bin/merge-digest')
-  const promptTmpl = join(repoRoot, '.claude/skills/digest/prompt.md')
+  // Machinery lives in the globally-installed tm plugin; a repo-local copy
+  // (pre-plugin bootstraps) still wins so old repos keep their pinned version.
+  const pick = (repoRel: string, pluginRel: string): string => {
+    const local = join(repoRoot, repoRel)
+    return existsSync(local) ? local : configPath('plugin', pluginRel)
+  }
+  const chunkBin = pick('.claude/bin/chunk-diff', 'bin/chunk-diff')
+  const mergeBin = pick('.claude/bin/merge-digest', 'bin/merge-digest')
+  const promptTmpl = pick('.claude/skills/digest/prompt.md', 'skills/digest/prompt.md')
   if (!existsSync(chunkBin) || !existsSync(promptTmpl)) {
     return {
       ok: false,
-      error: 'repo is not scaffolded with the /digest skill (.claude/bin + skill)',
+      error: 'digest machinery not found (tm plugin not installed and repo has no local copy)',
     }
   }
 

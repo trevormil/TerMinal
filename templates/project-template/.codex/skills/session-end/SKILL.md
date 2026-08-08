@@ -35,7 +35,7 @@ the steps until the repo and docs are genuinely clean.
 
 ```bash
 ROOT="$(git rev-parse --show-toplevel)"
-"$ROOT/.claude/skills/session-start/bin/sessions" active
+"$HOME/.config/TerMinal/plugin/skills/session-start/bin/sessions" active
 ```
 
 Open its `sessions/<id>-<slug>/session.md`. If none is active, ask the user
@@ -135,7 +135,7 @@ in flight. Note any status changes in the session doc's Outcomes / Follow-ups.
 
 For every follow-up, discovered bug, deferred item, or refactor: file a
 `/ticket` (present them **one at a time** and confirm — don't batch-dump).
-Before filing, run `.claude/bin/list-agents` or MCP `list_agents({repo})` and
+Before filing, run `$HOME/.config/TerMinal/plugin/bin/list-agents` or MCP `list_agents({repo})` and
 assign exactly one owner (`agent_id`, `agent_scope`, `agent_kind`). If a
 follow-up needs multiple agents/phases, split it into linked tickets with
 `depends_on`. Record the resulting ids under the session doc's **Follow-ups**.
@@ -159,7 +159,7 @@ paths) and what still needs documenting (as a follow-up).
 Set `status: closed`, `ended:` now. Confirm every anchored body section
 (`[1]`–`[8]`) is filled (no stub headings left) and any new subsections you
 added carry `[N.M]` anchors. Refresh the live snapshot
-(`.claude/bin/status > .status.md`) so it shows no active session. Commit the
+(`$HOME/.config/TerMinal/plugin/bin/status > .status.md`) so it shows no active session. Commit the
 session doc + any doc/cleanup changes on a feature branch (never main).
 
 ### 11. Summarize
@@ -185,5 +185,5 @@ documented (paths), and the top follow-ups for next session.
 After closing the session doc, emit a feed event:
 
 ```bash
-.claude/bin/activity session-end "Session closed · <slug>" "<one-line summary>"
+$HOME/.config/TerMinal/plugin/bin/activity session-end "Session closed · <slug>" "<one-line summary>"
 ```

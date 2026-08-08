@@ -38,6 +38,8 @@ const cliSrcPath = () =>
   app.isPackaged
     ? join(process.resourcesPath, 'terminal-cli')
     : join(moduleDir, '../../bin/terminal-cli')
+const tmPluginSrcDir = () =>
+  app.isPackaged ? join(process.resourcesPath, 'plugin') : join(moduleDir, '../../plugin')
 
 function sourceCheckoutRoot(marker: string): string {
   const candidates = [
@@ -236,6 +238,7 @@ import {
   killAllAgentRuns,
 } from './agents'
 import { readSchedules } from './schedules'
+import { installTmPlugin, tmPluginStatus } from './plugin-install'
 import {
   installRunner,
   installCli,
@@ -466,6 +469,10 @@ function installBinariesAndReconcile() {
     ? join(process.resourcesPath, 'terminal-mcp-server')
     : join(moduleDir, '../../bin/terminal-mcp-server')
   installMcpServer(mcpSrc)
+  // Global tm plugin: skills/hooks land once at ~/.config/TerMinal/plugin and
+  // load in every repo via the ~/.claude/skills/tm symlink (no per-repo copies).
+  const tmInstall = installTmPlugin(tmPluginSrcDir())
+  if (!tmInstall.ok) console.error('[tm-plugin] launch install failed:', tmInstall.error)
   // The Monitoring daemon: refresh the runner + load its single launchd job so
   // checks run on their own process even when the app is closed.
   const monitorSrc = app.isPackaged
@@ -1825,9 +1832,9 @@ ipcMain.handle('mcp:install', () => {
 })
 
 // Workspace bootstrap helpers.
-// "Bootstrapped" === the project-template machinery is present in the repo
-// (we check .agents/ as a low-effort proxy — the other dirs come together
-// with it). Used by the in-session banner.
+// "Bootstrapped" === the project-template repo data + Codex mirror are present
+// (BOOTSTRAP_MARKERS in bootstrap.ts; Claude skills come from the global tm
+// plugin, not the repo). Used by the in-session banner.
 // First-user-prompt for an arbitrary session id (not just the active one).
 // Used by the auto-naming flow in App.tsx — labels brand-new sessions with a
 // truncated version of what the user actually asked Claude to do, instead of
@@ -1850,9 +1857,10 @@ ipcMain.handle('workspace:is-bootstrapped', (_e, repoRoot: string) => {
   if (!repoRoot) return { bootstrapped: true, state: 'full', missing: [], message: '' }
   return classifyBootstrapStatus(repoRoot, (rel) => existsSync(join(repoRoot, rel)))
 })
-// Run project-template/bootstrap.sh against a repo. The script is idempotent
-// and skips clobbering existing files (it writes `<name>.workflow` sidecars
-// for conflicts). Streams nothing — we just wait and return ok/error.
+// Run project-template/bootstrap.sh against a repo. The script is idempotent:
+// keeps repo data, writes `<name>.workflow` sidecars on conflict, and moves
+// legacy per-repo Claude machinery to .claude/pre-tm-backup/ (the tm plugin
+// serves it now). Streams nothing — we just wait and return ok/error.
 ipcMain.handle('workspace:bootstrap', async (_e, repoRoot: string) => {
   const remote = curRemote()
   if (remote) {
@@ -1912,6 +1920,11 @@ function runUpdateCheck() {
   })
 }
 ipcMain.handle('update:check', () => runUpdateCheck())
+
+// Global tm plugin status/sync for the Settings panel. Sync re-copies the
+// bundled plugin and repairs the ~/.claude/skills/tm symlink.
+ipcMain.handle('plugin:status', () => tmPluginStatus())
+ipcMain.handle('plugin:sync', () => installTmPlugin(tmPluginSrcDir()))
 
 // In-app rebuild. Spawns bin/release fully detached and routes its output to
 // a log file the renderer can tail. The release script kills the running

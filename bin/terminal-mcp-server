@@ -2570,7 +2570,7 @@ process.stdin.on('data', (chunk) => {
 process.stdin.on('end', () => {
   if (!pendingEffects.size) process.exit(0)
   const bail = setTimeout(() => process.exit(0), 10_000)
-  Promise.allSettled([...pendingEffects]).then(() => {
+  void Promise.allSettled([...pendingEffects]).then(() => {
     clearTimeout(bail)
     process.exit(0)
   })

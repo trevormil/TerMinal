@@ -32,6 +32,10 @@ extraResources:
   # without cloning (resolution: src/main/template.ts candidates).
   - from: templates/project-template
     to: templates/project-template
+  # The global tm plugin — installed to ~/.config/TerMinal/plugin on launch and
+  # linked as ~/.claude/skills/tm (plugin-install.ts).
+  - from: plugin
+    to: plugin
 # node-pty and better-sqlite3 ship native .node binaries that can't live inside
 # the asar archive — unpack them so they load at runtime.
 asarUnpack:

@@ -1188,7 +1188,7 @@ CONVENTIONS TO READ BEFORE WRITING THE SCRIPT:
   2. .agents/scripts.md — the design + helper reference.
   3. .agents/forge.md — auto-mergeable label + forge command mapping.
   4. Existing example: .agents/health.sh — the cheap-precheck-then-LLM pattern.
-  5. backlog/EXAMPLE.md or .claude/skills/ticket/EXAMPLE.md — ticket schema (incl. depends_on).
+  5. backlog/EXAMPLE.md or ~/.config/TerMinal/plugin/skills/ticket/EXAMPLE.md — ticket schema (incl. depends_on).
   6. Existing scripts in the target dir — don't duplicate ids; pick a distinct kebab-case id.
 
 User's description:
@@ -1530,7 +1530,7 @@ export function runTicketSpawn(
       ? `File exactly ONE new GitHub Issue for the request below using the gh CLI in this repository. Set useful labels for type/priority/status when labels exist or can be safely created. Do NOT implement anything or open a PR.\n\nRequest: ${t}`
       : provider.kind === 'linear'
         ? `File exactly ONE new Linear issue for the request below using the configured Linear MCP/CLI. Use the repo/provider conventions for team, status, and priority. Do NOT implement anything or open a PR.\n\nRequest: ${t}`
-        : `File exactly ONE new backlog ticket for the request below, using this project's ticket conventions: allocate the next id (use .claude/skills/ticket/bin/next-ticket-id if present, else the next NNNN above the highest active backlog ticket), write .TerMinal/backlog/NNNN-slug.md with valid YAML frontmatter (id, title, status: open, priority, type, horizon: now) matching the ticket example (legacy v1 repos may use backlog/), put any detail in the body after the closing ---, and commit it. Do NOT implement anything or open a PR — just file the ticket. Request: ${t}`
+        : `File exactly ONE new backlog ticket for the request below, using this project's ticket conventions: allocate the next id (use ~/.config/TerMinal/plugin/skills/ticket/bin/next-ticket-id if present, else the next NNNN above the highest active backlog ticket), write .TerMinal/backlog/NNNN-slug.md with valid YAML frontmatter (id, title, status: open, priority, type, horizon: now) matching the ticket example (legacy v1 repos may use backlog/), put any detail in the body after the closing ---, and commit it. Do NOT implement anything or open a PR — just file the ticket. Request: ${t}`
   return runSpec(repoRoot, {
     id: 'ticket-spawn',
     title: `File ticket · ${t.slice(0, 48)}`,
@@ -1546,7 +1546,7 @@ export function runTicketSpawn(
  *  merge-ready PRs (stacked-mr passes, gated by review), never merging to main. */
 export function runFactorySpawn(repoRoot: string, engine: Engine): AgentRun | { error: string } {
   if (!repoRoot) return { error: 'not a git repo' }
-  const prompt = `Run the /factory orchestrator for THIS repository, following the project's /factory skill exactly. This is a no-handoff loop: continuously turn the backlog into REVIEWED, merge-ready PRs by reconciling with /merge-sync, running /stacked-mr passes (build a stack TDD-first → batch-review to the bar → handle verdicts), compacting/migrating context at phase boundaries, then continuing with any runnable independent lane. NEVER stop with "tell me when you're ready" language. Stop only if the user explicitly stops you, the goal is actually complete, or every remaining lane is blocked on human-only action. NEVER merge to main/master — the human merges. Park any TRUE human-need (decision, approval, creds, hard blocker) to the global HITL inbox with .claude/bin/hitl, then continue other work. Emit an activity event at each checkpoint. Do not invent scope. End only when the factory loop has no runnable work left.`
+  const prompt = `Run the /factory orchestrator for THIS repository, following the project's /factory skill exactly. This is a no-handoff loop: continuously turn the backlog into REVIEWED, merge-ready PRs by reconciling with /merge-sync, running /stacked-mr passes (build a stack TDD-first → batch-review to the bar → handle verdicts), compacting/migrating context at phase boundaries, then continuing with any runnable independent lane. NEVER stop with "tell me when you're ready" language. Stop only if the user explicitly stops you, the goal is actually complete, or every remaining lane is blocked on human-only action. NEVER merge to main/master — the human merges. Park any TRUE human-need (decision, approval, creds, hard blocker) to the global HITL inbox with ~/.config/TerMinal/plugin/bin/hitl, then continue other work. Emit an activity event at each checkpoint. Do not invent scope. End only when the factory loop has no runnable work left.`
   return runSpec(repoRoot, {
     id: 'factory',
     title: 'Factory',

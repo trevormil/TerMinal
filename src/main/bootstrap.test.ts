@@ -21,7 +21,7 @@ describe('classifyBootstrapStatus', () => {
     const status = classifyBootstrapStatus('/repo', (rel) => present.has(rel))
     expect(status.state).toBe('partial')
     expect(status.bootstrapped).toBe(false)
-    expect(status.missing).toEqual(['docs', 'sessions', '.claude/skills', '.codex/skills'])
+    expect(status.missing).toEqual(['docs', 'sessions', '.codex/skills'])
     expect(status.message).toContain('partially bootstrapped')
   })
 
@@ -31,7 +31,6 @@ describe('classifyBootstrapStatus', () => {
       '.TerMinal/backlog',
       'docs',
       '.TerMinal/sessions',
-      '.claude/skills',
       '.codex/skills',
     ])
     const status = classifyBootstrapStatus('/repo', (rel) => present.has(rel))

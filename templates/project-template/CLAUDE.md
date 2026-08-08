@@ -11,7 +11,14 @@
 ## [1] Operating principles
 
 Global §11 (production-grade always, code is cheap / maintenance is not,
-don't trust your internal clock, nothing is static) applies. The loop:
+don't trust your internal clock, nothing is static) applies.
+
+> **Skill names:** workflow skills are written bare here (`/ticket`,
+> `/session-start`, …). In **Claude Code** they ship globally via the tm
+> plugin and are invoked namespaced: `/tm:ticket`, `/tm:session-start`, etc.
+> In **Codex** the per-repo `.codex/skills` mirror keeps the bare names.
+
+The loop:
 
 ```
 /session-start "<goal>"   →  seed live session doc (central state)
@@ -25,7 +32,8 @@ don't trust your internal clock, nothing is static) applies. The loop:
 ```
 
 Supporting: `/test-suite`, `/security-scan`, `/check`, `/merge-sync`,
-`/document` + `/document-audit`, `/notify`, `/stacked-mr`, `/factory`.
+`/document` + `/document-audit`, `/stacked-mr`, `/factory` (+ `/notify` —
+Codex mirror / personal setup only).
 
 ## [2] TDD gate (non-negotiable)
 
@@ -47,10 +55,10 @@ testing ticket for any new behavior without a test.
 Live session doc at `.TerMinal/sessions/NNNN-slug/session.md` — goal,
 context, checklist, log, decisions, outcomes, follow-ups. Exactly **one
 active** at a time. Legacy v1 repos may still use `sessions/`. Schema in
-[`.claude/skills/session-start/SESSION_EXAMPLE.md`](./.claude/skills/session-start/SESSION_EXAMPLE.md).
+the tm plugin's `skills/session-start/SESSION_EXAMPLE.md` (`~/.config/TerMinal/plugin/`).
 
 `.status.md` (gitignored) is the ephemeral at-a-glance for the developer
-managing agents — regenerate with `.claude/bin/status > .status.md`.
+managing agents — regenerate with the tm plugin's `bin/status > .status.md`.
 Agents refresh it at checkpoints (session start/end, PR open/merge,
 needs-you events). Feeds the TerMinal sidebar (`/terminal-widget`).
 
@@ -58,8 +66,8 @@ needs-you events). Feeds the TerMinal sidebar (`/terminal-widget`).
 
 `.TerMinal/backlog/NNNN-slug.md`, managed by `/ticket` (legacy v1:
 `backlog/NNNN-slug.md`). Allocate ids with
-`.claude/skills/ticket/bin/next-ticket-id` (never hand-edit `.next-id`).
-List with `.claude/skills/ticket/bin/tickets [status] [priority] [horizon]`.
+the tm plugin's `skills/ticket/bin/next-ticket-id` (never hand-edit `.next-id`).
+List with the tm plugin's `skills/ticket/bin/tickets [status] [priority] [horizon]`.
 Prose lives **after** the closing `---`, never inside frontmatter.
 
 Every ticket is assigned to exactly one agent via frontmatter:
@@ -104,7 +112,7 @@ Two inboxes; full contracts in
 [`docs/workflow/inbox.md`](./docs/workflow/inbox.md).
 
 - **HITL inbox** (one GLOBAL, not per-repo) — file with
-  `.claude/bin/hitl "<title>" "<action needed>" "<detail>"` (helper only).
+  `$HOME/.config/TerMinal/plugin/bin/hitl "<title>" "<action needed>" "<detail>"` (helper only).
   Append-only: agents file + query; **humans resolve** (never self-resolve).
   When a blocker clears, move the related `stuck` ticket back to `open`/
   `in-progress`. Reserve for **true human-needs** (spec forks, approvals,
@@ -127,14 +135,14 @@ GitHub-backed, Graphite is unavailable, or the work is a single independent PR/M
 Graphite merge queue or stack merge must not bypass the human-only final merge
 gate.
 
-**Per-repo forge.** `.claude/bin/forge` prints `github` or `gitlab` (reads
+**Per-repo forge.** `$HOME/.config/TerMinal/plugin/bin/forge` prints `github` or `gitlab` (reads
 `.claude/forge` override, else detects from origin). Use the matching
 CLI + terminology — `gh`/"PR" or `glab`/"MR". Mapping:
 [`.agents/forge.md`](./.agents/forge.md). Self-hosted GitLab requires the
 `.claude/forge` override.
 
 Always work on a feature branch; **never commit/push to `main`** (global
-§8, enforced by `.claude/hooks/block-main-merge.sh`). Final merge is
+§8, enforced by the tm plugin's `block-main-merge.sh` hook). Final merge is
 human-only.
 
 - **Commits:** Conventional Commits (`feat:`/`fix:`/…), one logical
@@ -238,7 +246,7 @@ migrations, record the repo-specific checks here. Examples:
 ## [13] Activity feed
 
 Every skill emits a feed event at each workflow milestone (so runs show live
-in TerMinal): `.claude/bin/activity <kind> "<title>" ["<detail>"]`. Exit-0
+in TerMinal): `$HOME/.config/TerMinal/plugin/bin/activity <kind> "<title>" ["<detail>"]`. Exit-0
 safe; derives repo context from git. `kind` ∈ `ticket-filed` · `pr-verdict` ·
 `session-start` · `session-end` · `agent-run` · `info` · `error`.
 
@@ -257,10 +265,10 @@ Two modes with **different contracts**; the skill is never confusing them.
 
 Vibe to discover, switch to quality to ship. The guardrails are non-negotiable:
 isolated worktree/`vibe/*` branch (never the primary checkout, never `main` —
-`.claude/hooks/block-main-merge.sh` enforces the last part), no production side
+the tm plugin's `block-main-merge.sh` hook enforces the last part), no production side
 effects, disposable by contract, and a clean exit that rebuilds through the
 gates (`/ticket` → TDD → review) rather than promoting the vibe branch. Full
-contract + techniques: [`.claude/skills/vibe/SKILL.md`](./.claude/skills/vibe/SKILL.md).
+contract + techniques: the `/tm:vibe` skill.
 
 ## [15] Model routing — outsource the cheap tier
 

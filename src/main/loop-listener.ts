@@ -1,5 +1,5 @@
 // Paired-loop listener — the always-on, code-driven channel between the two live
-// sessions of a live-paired loop (see .claude/skills/loop-driver). It lives in
+// sessions of a live-paired loop (see plugin/skills/loop-driver). It lives in
 // the persistent Electron main process, so unlike the CLI's notify bridge it
 // never needs re-arming: the moment one role emits a handoff, the other role's
 // session receives it — no LLM "keep listening" discretion involved.

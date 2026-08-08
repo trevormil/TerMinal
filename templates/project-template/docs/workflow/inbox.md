@@ -15,7 +15,7 @@ mechanics live below and load only when an agent actually needs them.
 **One GLOBAL inbox**, not per-repo. Any skill/agent in any repo:
 
 ```bash
-.claude/bin/hitl "<title>" "<action needed>" "<optional detail>"
+$HOME/.config/TerMinal/plugin/bin/hitl "<title>" "<action needed>" "<optional detail>"
 ```
 
 Use the helper only; do not write `~/.config/TerMinal/hitl.json` directly.

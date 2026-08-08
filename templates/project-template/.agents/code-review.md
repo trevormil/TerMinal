@@ -22,12 +22,12 @@ task needs:
 |---|---|
 | **Scoring axes** | "Score the six axes" + the relevant axis subsection |
 | **Writing the artifact** | "Output location" + "Artifact frontmatter (required)" + "Artifact body" |
-| **Computing findings** | "Per-finding state" — but the harness helper `.claude/bin/findings-merge` handles state mgmt; you just emit fresh findings in a fenced ```findings-new ... ``` block at the end of the artifact body |
-| **Deciding verdict** | DO NOT — the helper `.claude/bin/compute-verdict` derives it deterministically from scorecard + findings + test_status. Your job is the scoring + findings; verdict is rule-driven |
+| **Computing findings** | "Per-finding state" — but the harness helper `$HOME/.config/TerMinal/plugin/bin/findings-merge` handles state mgmt; you just emit fresh findings in a fenced ```findings-new ... ``` block at the end of the artifact body |
+| **Deciding verdict** | DO NOT — the helper `$HOME/.config/TerMinal/plugin/bin/compute-verdict` derives it deterministically from scorecard + findings + test_status. Your job is the scoring + findings; verdict is rule-driven |
 | **Stacked-MR batch** | "Batch stacked-MR review" |
 | **Severity rules** | "Severity-based body rules" |
 
-The preflight script `.claude/bin/code-review-preflight` has already done all
+The preflight script `$HOME/.config/TerMinal/plugin/bin/code-review-preflight` has already done all
 the recon (PR metadata, file list, language histogram, surface flags, prior
 findings count, diff, test results). Read the packet path passed by the skill;
 don't redo this work.
@@ -174,7 +174,7 @@ merger decide — a new or changed screen, a layout/state prose can't convey, a
 visual regression, or a before/after worth seeing. For non-visual changes, omit
 this file entirely (no empty manifest).
 
-When warranted: drive the running UI (`.claude/skills/design-review` or the
+When warranted: drive the running UI (the design-review skill or the
 browse tooling), save frames under `.TerMinal/reviews/<pr-number>/screenshots/`,
 and write `.TerMinal/reviews/<pr-number>/screenshots.json`:
 
@@ -327,7 +327,7 @@ is `null` and excluded from the min.
 
 **Run the deterministic floor first.** On the green-tests path, run `/security-scan`
 in diff mode (dependency CVE audit; optional gitleaks secret scan + semgrep SAST —
-see `.claude/skills/security-scan`). Take the **lower** of its recommended Security
+see the security-scan skill). Take the **lower** of its recommended Security
 score and your manual read below; any leaked secret is an automatic critical →
 `blocked`. Then apply the checklist:
 
@@ -420,9 +420,9 @@ to this repo's `/ticket` system:
 
 ```bash
 ROOT="$(git rev-parse --show-toplevel)"
-"$ROOT/.claude/skills/ticket/bin/tickets" open      # check for duplicates first
-id=$("$ROOT/.claude/skills/ticket/bin/next-ticket-id")
-# write .TerMinal/backlog/<id>-<slug>.md per .claude/skills/ticket/EXAMPLE.md
+"$HOME/.config/TerMinal/plugin/skills/ticket/bin/tickets" open      # check for duplicates first
+id=$("$HOME/.config/TerMinal/plugin/skills/ticket/bin/next-ticket-id")
+# write .TerMinal/backlog/<id>-<slug>.md per the tm plugin's skills/ticket/EXAMPLE.md
 # (legacy v1 repos may use backlog/<id>-<slug>.md):
 #   status: open, source: code-review, an appropriate type + priority,
 #   and at least one concrete, testable acceptance criterion.

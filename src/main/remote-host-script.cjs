@@ -1030,7 +1030,6 @@ function bootstrapStatus() {
     { label: 'backlog', anyOf: ['.TerMinal/backlog', 'backlog'] },
     { label: 'docs', anyOf: ['docs'] },
     { label: 'sessions', anyOf: ['.TerMinal/sessions', 'sessions'] },
-    { label: '.claude/skills', anyOf: ['.claude/skills'] },
     { label: '.codex/skills', anyOf: ['.codex/skills'] },
   ]
   const missing = []

@@ -153,7 +153,7 @@ merger decide — a new or changed screen, a layout/state prose can't convey, a
 visual regression, or a before/after worth seeing. For non-visual changes, omit
 this file entirely (no empty manifest).
 
-When warranted: drive the running UI (`.claude/skills/design-review` or the
+When warranted: drive the running UI (the design-review skill or the
 browse tooling), save frames under `.reviews/<pr-number>/screenshots/`, and write
 `.reviews/<pr-number>/screenshots.json`:
 
@@ -306,7 +306,7 @@ is `null` and excluded from the min.
 
 **Run the deterministic floor first.** On the green-tests path, run `/security-scan`
 in diff mode (dependency CVE audit; optional gitleaks secret scan + semgrep SAST —
-see `.claude/skills/security-scan`). Take the **lower** of its recommended Security
+see the /tm:security-scan skill). Take the **lower** of its recommended Security
 score and your manual read below; any leaked secret is an automatic critical →
 `blocked`. Then apply the checklist:
 
@@ -399,9 +399,9 @@ to this repo's `/ticket` system:
 
 ```bash
 ROOT="$(git rev-parse --show-toplevel)"
-"$ROOT/.claude/skills/ticket/bin/tickets" open      # check for duplicates first
-id=$("$ROOT/.claude/skills/ticket/bin/next-ticket-id")
-# write backlog/<id>-<slug>.md per .claude/skills/ticket/EXAMPLE.md:
+"$HOME/.config/TerMinal/plugin/skills/ticket/bin/tickets" open      # check for duplicates first
+id=$("$HOME/.config/TerMinal/plugin/skills/ticket/bin/next-ticket-id")
+# write backlog/<id>-<slug>.md per the tm plugin's skills/ticket/EXAMPLE.md:
 #   status: open, source: code-review, an appropriate type + priority,
 #   and at least one concrete, testable acceptance criterion.
 ```

@@ -65,6 +65,7 @@ import type {
   PinnedPanel,
   AlertChannelId,
   UpdateCheckResult,
+  TmPluginStatus,
   BridgePairing,
   BridgePushStatus,
   BridgeStatus,
@@ -1058,6 +1059,74 @@ function RebuildPanel() {
 // origin/main (main process, update-check.ts) and offers the update action —
 // which is just the existing Rebuild flow: bin/release pulls a clean main
 // checkout before building, so "Update now" == release:start.
+// The global tm plugin (skills/hooks for every repo) is installed by the app at
+// ~/.config/TerMinal/plugin and linked as ~/.claude/skills/tm. Startup keeps it
+// current; Sync repairs the copy + symlink on demand.
+function TmPluginPanel() {
+  const [status, setStatus] = useState<TmPluginStatus | null>(null)
+  const [syncing, setSyncing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const refresh = async () => setStatus(await window.gt.plugin.status())
+  useEffect(() => {
+    void refresh()
+  }, [])
+
+  const sync = async () => {
+    setError(null)
+    setSyncing(true)
+    try {
+      const r = await window.gt.plugin.sync()
+      if (!r.ok) setError(r.error)
+      await refresh()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  const stateText = !status
+    ? 'Checking…'
+    : !status.installed
+      ? 'Not installed'
+      : status.shadowedBy
+        ? `v${status.version ?? '?'} installed but NOT loaded — ${status.shadowedBy} takes precedence. Uninstall it (claude plugin uninstall ${status.shadowedBy}) to use the app-managed copy.`
+        : !status.linked
+          ? `v${status.version ?? '?'} installed — ~/.claude/skills/tm link missing`
+          : `v${status.version ?? '?'} · /tm:* skills in every repo${status.codexSkills ? ` · ${status.codexSkills} codex tm-* skills` : ''}`
+  const stateColor =
+    status && status.installed && status.linked && !status.shadowedBy
+      ? 'text-[var(--gt-green)]'
+      : 'text-amber-400'
+
+  return (
+    <div className="mt-2 rounded-lg border border-[var(--gt-border)] bg-black/20 p-3">
+      <div className="flex items-center gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="text-[11.5px] text-zinc-300">tm plugin (global skills)</div>
+          <div className={`text-[10.5px] ${status ? stateColor : 'text-zinc-500'}`}>
+            {stateText}
+          </div>
+        </div>
+        <button
+          onClick={sync}
+          disabled={syncing}
+          className="flex items-center gap-1.5 rounded-lg border border-[var(--gt-border)] bg-black/20 px-2.5 py-1.5 text-[11px] text-zinc-200 hover:border-[var(--gt-accent)]/40 disabled:opacity-50"
+        >
+          {syncing ? (
+            <Loader2 size={12} className="animate-spin" />
+          ) : (
+            <RotateCcw size={12} strokeWidth={2} />
+          )}
+          Sync
+        </button>
+      </div>
+      {error && <div className="mt-1.5 text-[10.5px] text-amber-400">{error}</div>}
+    </div>
+  )
+}
+
 function UpdatesPanel() {
   const [result, setResult] = useState<UpdateCheckResult | null>(null)
   const [checking, setChecking] = useState(false)
@@ -2166,13 +2235,12 @@ export function SettingsPanel({
     else setMcpState({ ok: true, installed: r.installed })
   }
   const copySetupPrompt = async () => {
-    const repo = s?.templateRepo || 'https://github.com/trevormil/project-template'
     const prompt = [
       'I just installed TerMinal (an Electron alt-terminal for AI coding agents).',
       'Help me finish one-time setup on this machine. Check what already exists before changing anything.',
       '',
       '1. CLIs: ensure `claude` (required) is installed + logged in, plus any of `codex`, `gh`, `glab` I plan to use. Walk me through `gh auth login` / `glab auth login` if needed.',
-      `2. Global agent skills: clone ${repo} and follow its setup docs to install the project-template workflow skills (code-review, iterate, test-suite, document, pr-creation, stacked-mr, notify) into ~/.claude/skills (and ~/.codex/skills for codex). Verify each resolves.`,
+      '2. Global agent skills: nothing to install for Claude Code — TerMinal already installed its tm plugin (~/.claude/skills/tm; /tm:ticket, /tm:code-review, …) and synced tm-* skills into ~/.codex/skills. Just verify `/tm:` skills resolve in a fresh claude session (Settings → Updates → Sync repairs them).',
       '3. (Optional) Telegram: help me create a bot with @BotFather and find my numeric chat id, so I can paste the token + id into TerMinal → Settings → Telegram.',
       '',
       'Summarize what you did and what is left for me.',
@@ -3797,7 +3865,8 @@ export function SettingsPanel({
                           defaultValue={s.slack.defaultChannel}
                           onBlur={(e) => {
                             const v = e.target.value.trim()
-                            if (v !== s.slack.defaultChannel) save({ slack: { defaultChannel: v } })
+                            if (v !== s.slack.defaultChannel)
+                              void save({ slack: { defaultChannel: v } })
                           }}
                           placeholder="#terminal-inbox"
                           spellCheck={false}
@@ -3812,7 +3881,8 @@ export function SettingsPanel({
                           defaultValue={s.slack.channelPrefix}
                           onBlur={(e) => {
                             const v = e.target.value.trim()
-                            if (v !== s.slack.channelPrefix) save({ slack: { channelPrefix: v } })
+                            if (v !== s.slack.channelPrefix)
+                              void save({ slack: { channelPrefix: v } })
                           }}
                           placeholder="inbox"
                           spellCheck={false}
@@ -3828,7 +3898,7 @@ export function SettingsPanel({
                         defaultValue={s.slack.inviteUserId}
                         onBlur={(e) => {
                           const v = e.target.value.trim()
-                          if (v !== s.slack.inviteUserId) save({ slack: { inviteUserId: v } })
+                          if (v !== s.slack.inviteUserId) void save({ slack: { inviteUserId: v } })
                         }}
                         placeholder="U0ABC123DEF"
                         spellCheck={false}
@@ -4026,6 +4096,7 @@ export function SettingsPanel({
                   desc="Is the installed app behind main? Compares the baked build commit against origin/main (local checkout first, GitHub API fallback)."
                 >
                   <UpdatesPanel />
+                  <TmPluginPanel />
                 </Section>
 
                 {/* In-app rebuild — eats own dog food. Spawns bin/release fully

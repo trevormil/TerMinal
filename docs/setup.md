@@ -81,26 +81,38 @@ brew install glab  # then: glab auth login
 **Settings → Code forge** shows install + auth state per CLI, and lets you force
 `github`/`gitlab` instead of auto-detect.
 
-## 3. Global agent skills (recommended)
+## 3. Global agent skills
 
-Agents the app spins out are plain `claude -p` / `codex exec` processes, so they
-**inherit your global config** — `~/.claude/CLAUDE.md`, `~/.codex/`, and any
-skills you've installed. A richer global setup → better agent runs. The
-project-template workflow uses skills like `code-review`, `iterate`,
-`test-suite`, `document`, `pr-creation`, `stacked-mr`, and `notify`.
+For Claude Code the workflow skills are automatic: on launch the app installs
+the **tm plugin** to `~/.config/TerMinal/plugin` and links it as
+`~/.claude/skills/tm`, so every repo (and every `claude -p` agent) has the
+`/tm:*` skills, the merge-gate/Inbox/remote-check hooks, and the helper `bin/`
+with zero setup. **Settings → Updates** shows the installed plugin version and
+a Sync action.
 
-Two ways to set them up:
+**Not running the app?** Install the same skills straight from this repo:
 
-- **Let Claude do it (recommended):** Settings → **Copy global-skills setup
-  prompt**, paste into a Claude session. It checks what you have and installs the
-  rest from your template repo into `~/.claude/skills` (and `~/.codex/skills`).
-- **Manual:** clone your template repo (default: the TerMinal repo itself,
-  which embeds the template at `templates/project-template`; configurable in
-  **Settings → Projects & worktrees**) and follow its setup docs to symlink its
-  skills into `~/.claude/skills` / `~/.codex/skills`.
+```sh
+claude plugin marketplace add trevormil/TerMinal
+claude plugin install tm@terminal
+```
 
-The app works without these — they enhance the agent/PR workflow, they don't
-gate sessions.
+Pick **one** of the two — they're alternatives, not complements. A
+marketplace-installed `tm` takes precedence over the app's
+`~/.claude/skills/tm`, so doing both leaves the app's copy loaded-but-ignored
+(Settings flags this and tells you which one to uninstall).
+
+The install is vendor-agnostic: `~/.config/TerMinal/plugin` is the canonical
+source and per-harness adapters expose it — Claude gets the `/tm:*` plugin,
+Codex gets the same skills synced as `~/.codex/skills/tm-*` (path variables
+resolved), and new harnesses just need a new adapter. Agents the app spins out
+are plain `claude -p` / `codex exec` processes, so they also inherit the rest
+of your global config — `~/.claude/CLAUDE.md`, `~/.codex/`, and any personal
+skills. Repos bootstrapped from the template additionally carry the per-repo
+`.codex/skills` mirror (bare-name skills for existing agent specs).
+
+The app works without a rich global config — it enhances the agent/PR
+workflow, it doesn't gate sessions.
 
 Codex note: Codex skills are available to the model, but current Codex CLI builds
 do not list custom skills in the native `/` command menu. Use `$ticket` /

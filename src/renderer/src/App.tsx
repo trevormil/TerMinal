@@ -748,7 +748,7 @@ export default function App() {
   // Single-mode loop: create the loop, then open ONE live generator session in
   // the worktree. TerMinal's auto-grader (loop-listener singleTick) spawns a
   // fresh evaluator after each of its turns and delivers the next prompt back in.
-  // See .claude/skills/loop-driver (single mode).
+  // See plugin/skills/loop-driver (single mode).
   const startSingleLoop = async (
     cfg: PairedLoopConfig,
   ): Promise<{ ok: boolean; error?: string }> => {
@@ -796,7 +796,7 @@ export default function App() {
 
   // Live-paired loop: create the loop (worktree + contract state) then open its
   // two linked sessions — a worker in the worktree, a driver in the main repo —
-  // side by side. Both are seeded contract-first. See .claude/skills/loop.
+  // side by side. Both are seeded contract-first. See plugin/skills/loop-driver.
   const startPairedLoop = async (
     cfg: PairedLoopConfig,
   ): Promise<{ ok: boolean; error?: string }> => {

@@ -297,7 +297,9 @@ repo, one history).
 - **From the shell:** `bin/new-project my-app [parent-dir]`.
 
 Existing repos adopt the same workflow via the in-app Bootstrap banner (or the
-per-repo orientation's Setup row) — existing files are never overwritten.
+per-repo orientation's Setup row) — your files are never clobbered; legacy
+per-repo Claude skills are moved to a backup, since the workflow now ships
+globally as the tm plugin.
 
 ## Setup & settings
 

@@ -30,8 +30,8 @@ Use MCP for deterministic orchestration state when available:
 - `file_ticket({repo, title, body, type, priority, source, agentId, agentScope, agentKind})`
 - `emit_activity({kind, repo, title, detail})`
 
-Fallback command helpers: `.claude/bin/list-agents` and
-`.claude/bin/request-agent-artifact`.
+Fallback command helpers: `$HOME/.config/TerMinal/plugin/bin/list-agents` and
+`$HOME/.config/TerMinal/plugin/bin/request-agent-artifact`.
 
 ## Invocation
 
@@ -85,7 +85,7 @@ Keep only summaries and artifact paths in factory context.
 Discovery is off unless `--discover` is passed. When enabled:
 
 1. Run the relevant discovery/check agents.
-2. Use `list_agents({repo})` or `.claude/bin/list-agents`.
+2. Use `list_agents({repo})` or `$HOME/.config/TerMinal/plugin/bin/list-agents`.
 3. File every finding as a ticket with exactly one owner and a concrete quality/eval expectation.
 4. Split multi-phase or multi-owner findings into linked tickets with `depends_on`.
 5. Loop back to `/merge-sync`.

@@ -22,8 +22,8 @@ this session.
 
 ## Emitting an event
 
-Use the helper (shipped at `bin/activity`, and in project-template at
-`.claude/bin/activity`):
+Use the helper (shipped at `bin/activity`, and globally via the tm plugin at
+`~/.config/TerMinal/plugin/bin/activity`):
 
 ```bash
 activity <kind> "<title>" ["<detail>"]
