@@ -1,8 +1,18 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readdirSync, renameSync, rmdirSync, statSync } from 'node:fs'
+import {
+  cpSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  renameSync,
+  rmdirSync,
+  rmSync,
+  statSync,
+} from 'node:fs'
 import { join } from 'node:path'
 import { projectAreaCandidates, type ProjectArea } from './project-layout'
-import { repoStateRoot, SIDECAR_AREAS } from './repo-state'
+import { legacyStatePath, repoStateRoot, SIDECAR_AREAS, MIGRATED_STATE_RELS } from './repo-state'
 
 // One-time move of a repo's existing workflow state into its sidecar.
 //
@@ -10,12 +20,15 @@ import { repoStateRoot, SIDECAR_AREAS } from './repo-state'
 // tickets and reviews, so it is deliberately conservative: it MOVES files (a
 // rename, never a delete), refuses to overwrite anything already in the
 // sidecar, leaves the repo copy in place when it refuses, and is idempotent.
-// Repo config (template.json, tickets.json, widgets.json) and shared contracts
-// (.agents, docs) are never touched — only the five state areas move.
+// It moves the five state areas plus the personal files/dirs in
+// MIGRATED_STATE_RELS; repo-owned config (template.json, widgets.json,
+// tabs.json), shared contracts (.agents, docs), and knowledge-rag stores
+// (whose config.yaml embeds absolute paths) are never touched.
 //
-// Moving tracked files leaves deletions staged in the user's working tree on
-// purpose: committing that removal is what finally takes the state out of the
-// shared repo, and it stays reviewable rather than happening behind their back.
+// Moving tracked files leaves their deletions visible (unstaged) in the
+// user's working tree on purpose: committing that removal is what finally
+// takes the state out of the shared repo, and it stays reviewable rather
+// than happening behind their back.
 
 export type MigrateResult = {
   moved: number
@@ -40,13 +53,47 @@ function git(cwd: string, args: string[]): string {
   }).trim()
 }
 
-/** Every file under dir, as paths relative to it. */
+/** Every file under dir, as paths relative to it. lstat on purpose: a symlink
+ *  is moved AS a link (never followed — following one would recurse into, and
+ *  drain, a directory possibly outside the repo), and a broken link can't
+ *  abort the whole migration the way statSync would. */
 function* filesUnder(dir: string, prefix = ''): Generator<string> {
   for (const entry of readdirSync(dir)) {
     const abs = join(dir, entry)
     const rel = prefix ? join(prefix, entry) : entry
-    if (statSync(abs).isDirectory()) yield* filesUnder(abs, rel)
+    if (lstatSync(abs).isDirectory()) yield* filesUnder(abs, rel)
     else yield rel
+  }
+}
+
+/** rename, with a copy+delete fallback for EXDEV — a repo on an external
+ *  volume can never rename() into ~/.config, and "this repo can never
+ *  migrate" is a worse failure than a slower move. */
+function moveFile(src: string, dest: string): void {
+  try {
+    renameSync(src, dest)
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== 'EXDEV') throw e
+    cpSync(src, dest, { verbatimSymlinks: true })
+    rmSync(src)
+  }
+}
+
+/** Depth-first removal of now-empty subdirectories (then the dir itself).
+ *  A move leaves the tree of dirs behind; rmdir refuses non-empty ones, which
+ *  is exactly the guard we want — anything skipped stays visible. */
+function pruneEmptyDeep(dir: string): void {
+  let entries
+  try {
+    entries = readdirSync(dir, { withFileTypes: true })
+  } catch {
+    return
+  }
+  for (const e of entries) if (e.isDirectory()) pruneEmptyDeep(join(dir, e.name))
+  try {
+    rmdirSync(dir)
+  } catch {
+    /* not empty — the no-clobber skips live here */
   }
 }
 
@@ -83,10 +130,42 @@ export function migrateRepoState(repoRoot: string): MigrateResult {
             continue
           }
           mkdirSync(join(dest, '..'), { recursive: true })
-          renameSync(src, dest)
+          moveFile(src, dest)
           moved++
         }
-        pruneEmpty(from, repoRoot)
+        pruneEmptyDeep(from)
+        pruneEmpty(join(from, '..'), repoRoot)
+      }
+    }
+    // Personal state files/dirs that lived directly under .TerMinal/ (tickets
+    // config+views, notes, knowledge, snippets, stamp, loop + artifact runtime
+    // state). Same rules: move, never overwrite, leave the repo copy on refusal.
+    for (const rel of MIGRATED_STATE_RELS) {
+      const from = legacyStatePath(repoRoot, rel)
+      if (!existsSync(from)) continue
+      if (statSync(from).isDirectory()) {
+        for (const file of filesUnder(from)) {
+          const src = join(from, file)
+          const dest = join(root, rel, file)
+          if (existsSync(dest)) {
+            skipped.push(join(rel, file))
+            continue
+          }
+          mkdirSync(join(dest, '..'), { recursive: true })
+          moveFile(src, dest)
+          moved++
+        }
+        pruneEmptyDeep(from)
+        pruneEmpty(join(from, '..'), repoRoot)
+      } else {
+        const dest = join(root, rel)
+        if (existsSync(dest)) {
+          skipped.push(rel)
+          continue
+        }
+        mkdirSync(root, { recursive: true })
+        moveFile(from, dest)
+        moved++
       }
     }
   } catch (e) {
@@ -134,6 +213,15 @@ export function pendingMigration(repoRoot: string): number {
       const dir = join(repoRoot, rel)
       if (!existsSync(dir) || !statSync(dir).isDirectory()) continue
       for (const _ of filesUnder(dir)) n++
+    }
+  }
+  for (const rel of MIGRATED_STATE_RELS) {
+    const p = legacyStatePath(repoRoot, rel)
+    if (!existsSync(p)) continue
+    if (statSync(p).isDirectory()) {
+      for (const _ of filesUnder(p)) n++
+    } else {
+      n++
     }
   }
   return n

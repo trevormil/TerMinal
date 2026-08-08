@@ -18,23 +18,38 @@ set -euo pipefail
 area="${1:-}"
 case "$area" in
   backlog | sessions | reviews | checks | reports) ;;
+  # Personal state files/dirs formerly at .TerMinal/<name> — resolved at the
+  # sidecar ROOT (same key), printed as "<sidecar>/<name>". A file rel prints
+  # where the file LIVES (or would live); callers read/write it directly.
+  tickets.json | notes.md | knowledge.json | snippets.json | meta.json | loops | agent-requests | knowledge-rag) ;;
   *)
-    echo "usage: tm-state-dir <backlog|sessions|reviews|checks|reports>" >&2
+    echo "usage: tm-state-dir <backlog|sessions|reviews|checks|reports|tickets.json|notes.md|knowledge.json|snippets.json|meta.json|loops|agent-requests|knowledge-rag>" >&2
     exit 2
     ;;
 esac
 
-# 1. Already resolved by the spawning app.
-env_var="TERMINAL_$(printf '%s' "$area" | tr '[:lower:]' '[:upper:]')_DIR"
-resolved="${!env_var:-}"
-if [ -n "$resolved" ]; then
-  printf '%s\n' "$resolved"
+# 1. Obsidian vault owns tickets when configured. This must beat the generic
+#    env fast-path: the app injects BOTH the vault var and the sidecar vars
+#    into obsidian-provider sessions, and answering with the (empty) sidecar
+#    would hide the vault from every resolver-based lister.
+if [ "$area" = backlog ] && [ -n "${OBSIDIAN_TICKETS_DIR:-}" ]; then
+  printf '%s\n' "$OBSIDIAN_TICKETS_DIR"
   exit 0
 fi
 
-# 2. Obsidian vault owns tickets when configured.
-if [ "$area" = backlog ] && [ -n "${OBSIDIAN_TICKETS_DIR:-}" ]; then
-  printf '%s\n' "$OBSIDIAN_TICKETS_DIR"
+# 2. Already resolved by the spawning app. Area dirs each carry their own env
+#    var; the personal rels hang off TERMINAL_STATE_DIR.
+case "$area" in
+  backlog | sessions | reviews | checks | reports)
+    env_var="TERMINAL_$(printf '%s' "$area" | tr '[:lower:]' '[:upper:]')_DIR"
+    resolved="${!env_var:-}"
+    ;;
+  *)
+    resolved="${TERMINAL_STATE_DIR:+$TERMINAL_STATE_DIR/$area}"
+    ;;
+esac
+if [ -n "$resolved" ]; then
+  printf '%s\n' "$resolved"
   exit 0
 fi
 
@@ -45,18 +60,41 @@ root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 [ -n "$root" ] || { echo "tm-state-dir: not inside a git repo" >&2; exit 1; }
 
 state_root="${TERMINAL_REPO_STATE_DIR:-${TERMINAL_CONFIG_DIR:-$HOME/.config/TerMinal}/repos}"
-url="$(git -C "$root" remote get-url origin 2>/dev/null || true)"
-url="${url%.git}"
-key=""
-if [ -n "$url" ]; then
-  case "$url" in
-    http://* | https://*) key="$(printf '%s' "$url" | sed -E 's#^https?://([^@/]+@)?##')" ;;
-    *) key="$(printf '%s' "$url" | sed -E 's#^(ssh://)?[A-Za-z0-9._-]+@##; s#:#/#')" ;;
+
+# URL → host/path, mirroring src/main/repo.ts parseRemote: any scheme with an
+# optional PORT (stripped), else scp-like. A URL matching neither — a local
+# path or file:// mirror — yields no key and falls through to the hash, so a
+# plain shell and the app agree on such repos. Keys with empty/dot segments
+# (a crafted origin trying to traverse out of the state root) are rejected too.
+url_to_key() {
+  u="$(printf '%s' "$1" | sed -E 's#/+$##; s#\.git$##')"
+  k=""
+  case "$u" in
+    *://*)
+      k="$(printf '%s' "$u" | sed -En 's#^[A-Za-z][A-Za-z0-9+.-]*://([^@/]+@)?([^/:]+)(:[0-9]+)?/(.+)$#\2/\4#p')"
+      ;;
+    *@*)
+      k="$(printf '%s' "$u" | sed -En 's#^[A-Za-z0-9._-]+@([^:/]+)[:/](.+)$#\1/\2#p')"
+      ;;
   esac
-fi
+  case "/$k/" in
+    *"//"* | *"/../"* | *"/./"*) k="" ;;
+  esac
+  printf '%s' "$k"
+}
+
+# Raw configured URL first (same rule as the app: `remote get-url` applies
+# url.<base>.insteadOf rewrites that can key differently), rewritten fallback.
+key="$(url_to_key "$(git -C "$root" config --get remote.origin.url 2>/dev/null || true)")"
+[ -n "$key" ] || key="$(url_to_key "$(git -C "$root" remote get-url origin 2>/dev/null || true)")"
 if [ -z "$key" ]; then
-  hash="$(printf '%s' "$root" | shasum -a 256 | cut -c1-12)"
-  key="local/$(basename "$root")-$hash"
+  # No usable origin → hash the MAIN checkout (shared .git), so worktrees of a
+  # local-only repo agree on one sidecar. Matches the app + inline resolvers.
+  canonical="$root"
+  common="$(git -C "$root" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+  case "$common" in */.git) canonical="${common%/.git}" ;; esac
+  hash="$(printf '%s' "$canonical" | shasum -a 256 | cut -c1-12)"
+  key="local/$(basename "$canonical")-$hash"
 fi
 
 printf '%s\n' "$state_root/$key/$area"

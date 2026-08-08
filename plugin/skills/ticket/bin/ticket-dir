@@ -4,7 +4,8 @@
 # Order of resolution:
 #   1. $OBSIDIAN_TICKETS_DIR — set by TerMinal in a session whose repo uses the
 #      Obsidian ticket provider (tickets live in an external vault, not the repo).
-#   2. .TerMinal/tickets.json with provider "obsidian" — parse the vault path
+#   2. the provider config tickets.json (sidecar first, legacy in-repo copy as
+#      fallback) with provider "obsidian" — parse the vault path
 #      (works outside a TerMinal session too).
 #   3. The per-project sidecar, via $TERMINAL_BACKLOG_DIR / tm-state-dir.
 #
@@ -28,8 +29,10 @@ if [ -n "${OBSIDIAN_TICKETS_DIR:-}" ]; then
   exit 0
 fi
 
-# 2. Obsidian provider config on disk.
-CFG="$ROOT/.TerMinal/tickets.json"
+# 2. Obsidian provider config on disk — sidecar copy first (where the app
+#    writes it now), legacy in-repo copy as fallback. # state-path-ok
+CFG="$("$(dirname "$0")/../../../bin/tm-state-dir" tickets.json 2>/dev/null || true)"
+[ -n "$CFG" ] && [ -f "$CFG" ] || CFG="$ROOT/.TerMinal/tickets.json" # state-path-ok: read-only legacy fallback
 if [ -f "$CFG" ] && grep -q '"provider"[[:space:]]*:[[:space:]]*"obsidian"' "$CFG"; then
   vault="$(grep -o '"vaultPath"[[:space:]]*:[[:space:]]*"[^"]*"' "$CFG" | head -1 | sed 's/.*:[[:space:]]*"//; s/"$//')"
   sub="$(grep -o '"ticketsSubdir"[[:space:]]*:[[:space:]]*"[^"]*"' "$CFG" | head -1 | sed 's/.*:[[:space:]]*"//; s/"$//')"
@@ -40,5 +43,9 @@ if [ -f "$CFG" ] && grep -q '"provider"[[:space:]]*:[[:space:]]*"obsidian"' "$CF
   fi
 fi
 
-# 3. The sidecar. Unconditional — see the header.
-printf '%s\n' "${TERMINAL_BACKLOG_DIR:-$("$(dirname "$0")/../../../bin/tm-state-dir" backlog)}"
+# 3. The sidecar. Unconditional — see the header. A resolver failure (not
+# inside a git repo, resolver missing) must NOT print an empty line with exit
+# 0 — a caller doing `dir=$(ticket-dir)` would then write to "/" or cwd.
+dir="${TERMINAL_BACKLOG_DIR:-$("$(dirname "$0")/../../../bin/tm-state-dir" backlog 2>/dev/null || true)}"
+[ -n "$dir" ] || { echo "ticket-dir: could not resolve the backlog dir (not in a git repo?)" >&2; exit 1; }
+printf '%s\n' "$dir"

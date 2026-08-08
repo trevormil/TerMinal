@@ -46,7 +46,8 @@ you. Shell-helper path below is the fallback when MCP isn't installed; use
 [`EXAMPLE.md`](./EXAMPLE.md). Counter at `$TERMINAL_BACKLOG_DIR/.next-id`.
 Legacy v1 repos that already have `backlog/` continue to use `backlog/.next-id`.
 
-**Obsidian-provider repos** (`.TerMinal/tickets.json` → `provider: obsidian`, or
+**Obsidian-provider repos** (provider config `tickets.json` — resolve it with
+`tm-state-dir tickets.json` — has `provider: obsidian`, or
 the `$OBSIDIAN_TICKETS_DIR` env set by TerMinal) keep tickets in an external
 vault, NOT the repo. Never resolve the store by hand — always use
 `bin/ticket-dir`, which returns the right directory (vault or backlog) so

@@ -9,7 +9,24 @@ import { join } from 'node:path'
 // own; it's hand-written paths in prompts and skills that leak.
 
 const ROOT = join(import.meta.dir, '..')
-const AREAS = ['backlog', 'sessions', 'reviews', 'checks', 'reports']
+const AREAS = [
+  'backlog',
+  'sessions',
+  'reviews',
+  'checks',
+  'reports',
+  // Personal state files/dirs that moved to the sidecar ROOT (this refactor's
+  // second wave). Naming `.TerMinal/<one of these>` as a write target is the
+  // same regression as naming an area.
+  'tickets\\.json',
+  'notes\\.md',
+  'knowledge\\.json',
+  'snippets\\.json',
+  'meta\\.json',
+  'loops',
+  'agent-requests',
+  'knowledge-rag',
+]
 
 // Two literal shapes leak, and the first version of this guard only knew one.
 //
@@ -33,8 +50,20 @@ const V1_LITERAL = new RegExp(
 const V1_UNDER_ROOT = new RegExp(
   String.raw`\$\{?(ROOT|REPO|REPO_ROOT|PWD|TERMINAL_REPO|CLAUDE_PROJECT_DIR)\}?/\.?(${AREAS.join('|')})\b`,
 )
+// The "legacy layout escape hatch" — `[ -d .reviews ] && … echo .reviews`
+// style conditionals that pick the in-repo dir when it exists. This shipped
+// once already (skills carried an explicit v1 branch and every pre-v2 repo
+// matched it), and the bare-word form evades all three path regexes above, so
+// it gets its own: a `-d`/`-e` test or `echo` of a bare legacy dir is a write
+// route in the making, whatever prose surrounds it.
+const ESCAPE_HATCH =
+  /(\[+ -[de] |echo )\.?\.(reviews|checks)\b|(\[+ -[de] |echo )(backlog|sessions|reports)\//
+
 const LITERAL = (line: string) =>
-  V2_LITERAL.test(line) || V1_LITERAL.test(line) || V1_UNDER_ROOT.test(line)
+  V2_LITERAL.test(line) ||
+  V1_LITERAL.test(line) ||
+  V1_UNDER_ROOT.test(line) ||
+  ESCAPE_HATCH.test(line)
 
 // The sidecar vars are ABSOLUTE. Prefixing one with ANY path yields
 // `<prefix>/Users/...`, which silently writes inside the repo — the exact bug
@@ -98,6 +127,9 @@ describe('model-facing content resolves state instead of hardcoding it', () => {
     for (const rel of [
       'src/main/agent-catalog.ts',
       'src/main/agents.ts',
+      // Composes ticketProviderInstructions — model-facing text that once told
+      // agents to write tickets into the in-repo backlog and escaped this scan.
+      'src/main/ticket-provider.ts',
       'src/renderer/src/lib/agentPrompts.ts',
       ...MODEL_FACING_FILES,
     ]) {
@@ -115,9 +147,20 @@ describe('model-facing content resolves state instead of hardcoding it', () => {
     // A guard that cannot fail is not a guard.
     expect(LITERAL('write the artifact to .TerMinal/reviews/<pr>/<sha>.md')).toBe(true)
     expect(LITERAL('write the artifact to $TERMINAL_REVIEWS_DIR/<pr>/<sha>.md')).toBe(false)
-    // `.TerMinal/` itself is still legitimate for repo config (template.json,
-    // tickets.json, widgets.json) — only the state AREAS moved.
-    expect(LITERAL('read .TerMinal/tickets.json for the provider')).toBe(false)
+    // Personal state FILES moved in the second wave — naming them is now the
+    // same regression as naming an area. Repo-owned config stays legitimate.
+    expect(LITERAL('read .TerMinal/tickets.json for the provider')).toBe(true)
+    expect(LITERAL('append to .TerMinal/loops/<id>/events.jsonl')).toBe(true)
+    // The escape-hatch shape that shipped in the code-review skill: a bare-word
+    // legacy dir picked by a conditional, invisible to the path regexes.
+    expect(
+      LITERAL(
+        'R=$([ -d .reviews ] && [ ! -f .TerMinal/template.json ] && echo .reviews || echo $TERMINAL_REVIEWS_DIR)',
+      ),
+    ).toBe(true)
+    expect(LITERAL('mkdir -p "$([ -d .checks ] && echo .checks)"')).toBe(true)
+    expect(LITERAL('the repo layout marker is .TerMinal/template.json')).toBe(false)
+    expect(LITERAL('repo widgets come from .TerMinal/widgets.json')).toBe(false)
 
     // The v1 shape — what actually shipped, and what the first guard missed.
     // Every one of these is a line that existed in a skill and wrote into the

@@ -78,9 +78,18 @@ BACKUP="$DST/.claude/pre-tm-backup"
 migrate() { # <harness-root-relative path>, e.g. .claude/skills/ticket
   local src="$DST/$1"
   [ -e "$src" ] || return 0
-  mkdir -p "$BACKUP/$(dirname "$1")"
-  rm -rf "${BACKUP:?}/$1"
-  mv "$src" "$BACKUP/$1"
+  # NEVER clobber an earlier run's backup: run 1 may have banked a
+  # hand-customized copy, `git checkout` restored the vanilla one, and run 2
+  # would silently replace the customization with vanilla. Bank the newcomer
+  # under a numbered name instead.
+  local dest="$BACKUP/$1"
+  if [ -e "$dest" ]; then
+    local n=1
+    while [ -e "$dest.$n" ]; do n=$((n + 1)); done
+    dest="$dest.$n"
+  fi
+  mkdir -p "$(dirname "$dest")"
+  mv "$src" "$dest"
   migrated=1
 }
 # The skill set the plugin now owns. `notify` is intentionally absent: it is
@@ -211,11 +220,11 @@ mkdir -p "$DST/.TerMinal"
 [ -f "$DST/.TerMinal/template.json" ] || \
   cp "$SRC/.TerMinal/template.json" "$DST/.TerMinal/template.json"
 say "state lives in the sidecar (see Settings → Updates → Project state)"
-[ -f "$DST/.TerMinal/widgets.json" ] || \
-  cp "$SRC/.TerMinal/widgets.json" "$DST/.TerMinal/widgets.json"
-[ -f "$DST/.TerMinal/snippets.json" ] || \
-  cp "$SRC/.TerMinal/snippets.json" "$DST/.TerMinal/snippets.json"
-say "terminal widgets/snippets seeded (existing left untouched)"
+# Widgets and snippets are deliberately NOT seeded any more. Personal snippets
+# live in the sidecar / global config; repo widgets are an opt-in surface a
+# project ships on purpose (and are disabled by default in Settings → Security)
+# — seeding boilerplate copies into every repo served neither. Existing copies
+# in already-bootstrapped repos are left alone.
 
 # --- docs skeleton (seed only if absent) -------------------------------------
 echo "[docs] docs/{decisions,runbooks,learnings} + architecture.md"
@@ -227,6 +236,13 @@ mkdir -p "$DST/docs/decisions" "$DST/docs/runbooks" "$DST/docs/learnings"
 [ -f "$DST/docs/runbooks/branch-protection.md" ] || \
   cp "$SRC/docs/runbooks/branch-protection.md" "$DST/docs/runbooks/branch-protection.md"
 [ -f "$DST/docs/learnings/README.md" ] || cp "$SRC/docs/learnings/README.md" "$DST/docs/learnings/README.md"
+# CLAUDE.md links docs/workflow/{agent-process,inbox}.md — a retrofitted repo
+# without them sends every agent to a dead path on its first contract lookup.
+mkdir -p "$DST/docs/workflow"
+[ -f "$DST/docs/workflow/agent-process.md" ] || \
+  cp "$SRC/docs/workflow/agent-process.md" "$DST/docs/workflow/agent-process.md"
+[ -f "$DST/docs/workflow/inbox.md" ] || \
+  cp "$SRC/docs/workflow/inbox.md" "$DST/docs/workflow/inbox.md"
 say "docs skeleton seeded (existing docs left untouched)"
 
 # --- CLAUDE.md — don't clobber ------------------------------------------------

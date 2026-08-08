@@ -33,7 +33,9 @@ asymmetric:
 
 - **Sending** — when you finish a turn, append ONE JSONL line to
   **`events.jsonl` in the loop state dir**
-  (`<repoRoot>/.TerMinal/loops/<loop-id>/events.jsonl`). That is the whole
+  (`$TERMINAL_LOOP_DIR/events.jsonl` — TerMinal injects the resolved dir into
+  every loop role session; fall back to `$(tm-state-dir loops)/<loop-id>` only
+  when that env is absent). That is the whole
   handoff; TerMinal delivers it to your peer. Bounded summary + pointer, never a
   pasted log.
 - **Receiving** — do **nothing**. Never poll or watch the file. When your peer

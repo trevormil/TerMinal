@@ -5,8 +5,9 @@
 // reconciles completion (by a LOOP-DONE marker in the turn log) and advances.
 //
 // Store:  ~/.config/TerMinal/loops.json (index of loops)
-// State:  <repoRoot>/.TerMinal/loops/<id>/  (contract.md, feature_list.json,
-//         progress.md, log.md, events.jsonl, scores/, turns/)
+// State:  the repo's sidecar, loops/<id>/  (contract.md, feature_list.json,
+//         progress.md, log.md, events.jsonl, scores/, turns/) — legacy
+//         in-repo .TerMinal/loops dirs stay sticky until migrated
 
 import {
   existsSync,
@@ -19,7 +20,7 @@ import {
   readdirSync,
 } from 'node:fs'
 import { join, basename } from 'node:path'
-import { repoStateEnv } from './repo-state'
+import { repoStateEnv, repoStatePathSticky } from './repo-state'
 import { readFileTail } from './fs-tail'
 import { randomUUID } from 'node:crypto'
 import { spawn as cpSpawn, execFileSync } from 'node:child_process'
@@ -107,8 +108,13 @@ function saveLoop(rec: LoopRecord): void {
   )
 }
 
+// Loop runtime state is personal → the sidecar. Resolved PER LOOP with
+// STICKY semantics: a loop already running out of a legacy in-repo dir keeps
+// resolving there even if something writes the sidecar copy mid-run (the
+// flip would strand contract/progress/scores); new loops start — and stay —
+// in the sidecar, and a migrated loop follows its files there.
 function loopDir(rec: LoopRecord): string {
-  return join(rec.repoRoot, '.TerMinal', 'loops', rec.id)
+  return repoStatePathSticky(rec.repoRoot, join('loops', rec.id))
 }
 
 function slugify(s: string): string {
@@ -427,7 +433,7 @@ function turnPrompt(rec: LoopRecord, role: LoopRole): string {
     `Loop state dir (read/write here): ${d}`,
     role === 'generator'
       ? `Your worktree is the current directory. Restart deletes it — keep nothing precious here.`
-      : `Work read-only in the main repo; only the loop state dir under .TerMinal/loops/ is yours to write.`,
+      : `Work read-only in the main repo; only the loop state dir ($TERMINAL_LOOP_DIR) is yours to write.`,
     ``,
     `Do exactly ONE ${role} turn:`,
     `- Read contract.md, feature_list.json, progress.md first (they are your full brief).`,
@@ -466,6 +472,10 @@ export function spawnRoleTurn(rec: LoopRecord, role: LoopRole): { error?: string
         // injected vars; keyed off the source repo so every role in the loop
         // resolves the same sidecar regardless of which worktree it runs in.
         ...repoStateEnv(rec.repoRoot),
+        // The RESOLVED loop dir (sticky legacy-or-sidecar) — the transport
+        // contract writes events here, so a legacy in-flight loop's role
+        // sessions never scatter state across two dirs.
+        TERMINAL_LOOP_DIR: loopDir(rec),
         TERMINAL_REPO: rec.repoRoot,
         TERMINAL_AGENT_ID: `loop-${role}`,
         TERMINAL_RUN_ID: runId,
@@ -660,7 +670,7 @@ export function singleDoneNote(rec: LoopRecord): string {
   return [
     `Loop ${rec.id} is complete — contract met or the iteration cap (${rec.maxIterations}) was reached.`,
     `The auto-grader has stopped and no further turns will be delivered.`,
-    `Review the scores under .TerMinal/loops/${rec.id}/scores/ and the branch ${rec.branch}. You can stop here.`,
+    `Review the scores under ${loopDir(rec)}/scores/ and the branch ${rec.branch}. You can stop here.`,
   ].join(' ')
 }
 
@@ -696,7 +706,19 @@ export function startLoopWatcher(): void {
   watcherTimer = setInterval(() => {
     for (const rec of readLoops()) {
       if (!rec.activeRunId) continue
-      const logFile = (rec as LoopRecord & { activeLog?: string }).activeLog
+      let logFile = (rec as LoopRecord & { activeLog?: string }).activeLog
+      if (logFile && !existsSync(logFile)) {
+        // The recorded path is absolute; a sidecar migration mid-turn moves
+        // the whole loop dir and would otherwise wedge this loop forever
+        // ("a turn is already running", log never found). Re-anchor the file
+        // name under the currently-resolved loop dir before giving up.
+        const healed = join(loopDir(rec), 'turns', basename(logFile))
+        if (existsSync(healed)) {
+          logFile = healed
+          ;(rec as LoopRecord & { activeLog?: string }).activeLog = healed
+          saveLoop(rec)
+        }
+      }
       if (!logFile || !existsSync(logFile)) continue
       let tail = ''
       try {

@@ -2,6 +2,14 @@
 
 Date: 2026-08-04
 
+> Amended by [0021](./0021-agent-contracts-ship-with-the-plugin.md): default
+> agent contracts ship with the plugin now (repo `.agents/<kind>.md` only as an
+> override, resolved via `tm-agent-spec` — not relative `.agents` paths).
+> Extended by [0022](./0022-personal-state-fully-out-of-the-repo.md): the
+> personal files this ADR left behind as "repo config" (tickets.json, notes,
+> knowledge, snippets, loops, agent-requests, the stamp) move to the sidecar
+> too.
+
 Status: accepted
 
 Amends [ADR-0012](0012-ticket-log-in-markdown.md) (the comment log stays in the

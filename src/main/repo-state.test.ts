@@ -1,6 +1,6 @@
 import { describe, expect, test, beforeEach, afterEach } from 'bun:test'
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -8,8 +8,11 @@ import {
   repoStateKey,
   repoStateAreaPath,
   repoStateEnv,
+  repoStatePathForRead,
+  repoStatePathForWrite,
   clearRepoStateCache,
   SIDECAR_AREAS,
+  SIDECAR_STATE_RELS,
 } from './repo-state'
 
 // The sidecar keeps personal workflow state (tickets, reviews, sessions) out of
@@ -68,6 +71,42 @@ describe('repoStateKey', () => {
     const a = makeRepo(join('x', 'proj'))
     const b = makeRepo(join('y', 'proj'))
     expect(repoStateKey(a)).not.toBe(repoStateKey(b))
+  })
+
+  test('a PORT in an ssh origin does not fork the key (GitHub ssh-over-443)', () => {
+    // The two clone forms of the SAME repo must share one sidecar.
+    const plain = makeRepo('port-a', 'git@ssh.github.com:trevormil/TerMinal.git')
+    const port = makeRepo('port-b', 'ssh://git@ssh.github.com:443/trevormil/TerMinal.git')
+    expect(repoStateKey(port)).toBe(repoStateKey(plain))
+    expect(repoStateKey(port)).toBe('ssh.github.com/trevormil/TerMinal')
+  })
+
+  test('a crafted traversal origin cannot escape the state root', () => {
+    const evil = makeRepo('evil', 'https://host.example/a/../../../../tmp/x.git')
+    const key = repoStateKey(evil)
+    // Rejected to the hashed fallback — never a path with dot segments.
+    expect(key).toStartWith('local/')
+    expect(repoStateRoot(evil).startsWith(stateDir)).toBe(true)
+  })
+
+  test('worktrees of a NO-ORIGIN repo share the main checkout sidecar', () => {
+    const main = makeRepo('local-main')
+    writeFileSync(join(main, 'f'), 'x')
+    execFileSync('git', ['-C', main, 'add', '-A'], { stdio: 'ignore' })
+    execFileSync(
+      'git',
+      ['-C', main, '-c', 'user.email=t@e', '-c', 'user.name=t', 'commit', '-qm', 'c'],
+      { stdio: 'ignore' },
+    )
+    const wt = join(tmp, 'local-wt')
+    execFileSync('git', ['-C', main, 'worktree', 'add', wt, '-b', 'w'], { stdio: 'ignore' })
+    clearRepoStateCache()
+    expect(repoStateKey(wt)).toBe(repoStateKey(main))
+  })
+
+  test('a local-path origin (unparseable URL) falls back to the hash, like the app', () => {
+    const repo = makeRepo('pathy', '/Users/somebody/other-repo')
+    expect(repoStateKey(repo)).toStartWith('local/')
   })
 
   test('a worktree resolves to the same key as its main checkout', () => {
@@ -198,18 +237,27 @@ describe('every spawn path receives the sidecar env', () => {
   // `TERMINAL_REPO: ''` is deliberately excluded — terminal-monitor files a
   // repo-less Inbox item, so there is no sidecar to resolve.
   const NAMES_REPO_IN_CHILD_ENV = /TERMINAL_REPO:\s*(?!['"]{2})\S/
+  // The remote runner builds a SHELL SCRIPT instead of a child-env object —
+  // 'export TERMINAL_REPO=' + sq(root). That shape escaped the first two
+  // regexes, and the file defined repoStateEnv without ever calling it.
+  const EXPORTS_REPO_IN_SHELL = /export TERMINAL_REPO=/
   const RUNS_ENGINE_IN_REPO = (s: string) =>
     /cwd:\s*repoRoot\b/.test(s) && /codex exec|cursor-agent|claude -p/.test(s)
 
   const spawnSites = CANDIDATES.filter((rel) => {
     const src = stripComments(readFileSync(join(ROOT, rel), 'utf8'))
-    return NAMES_REPO_IN_CHILD_ENV.test(src) || RUNS_ENGINE_IN_REPO(src)
+    return (
+      NAMES_REPO_IN_CHILD_ENV.test(src) ||
+      EXPORTS_REPO_IN_SHELL.test(src) ||
+      RUNS_ENGINE_IN_REPO(src)
+    )
   })
 
   test('the scan finds the known spawn sites (a guard matching nothing is not a guard)', () => {
     expect(spawnSites).toContain('src/main/agents.ts')
     expect(spawnSites).toContain('bin/terminal-cron')
-    expect(spawnSites.length).toBeGreaterThanOrEqual(2)
+    expect(spawnSites).toContain('src/main/remote-host-script.cjs')
+    expect(spawnSites.length).toBeGreaterThanOrEqual(3)
   })
 
   for (const rel of ['src/main/session-registry.ts', ...spawnSites]) {
@@ -224,4 +272,62 @@ describe('every spawn path receives the sidecar env', () => {
       expect(src).toContain('repoStateEnv(')
     })
   }
+})
+
+describe('personal state files (SIDECAR_STATE_RELS)', () => {
+  test('writes always target the sidecar, even when a legacy in-repo copy exists', () => {
+    const repo = makeRepo('files', 'git@github.com:acme/files.git')
+    mkdirSync(join(repo, '.TerMinal'), { recursive: true })
+    writeFileSync(join(repo, '.TerMinal', 'tickets.json'), '{"provider":"linear"}')
+    const write = repoStatePathForWrite(repo, 'tickets.json')
+    expect(write).toBe(join(stateDir, 'github.com/acme/files', 'tickets.json'))
+  })
+
+  test('reads prefer the sidecar, fall back to the legacy in-repo copy, else point at the sidecar', () => {
+    const repo = makeRepo('reads', 'git@github.com:acme/reads.git')
+    const sidecar = join(stateDir, 'github.com/acme/reads')
+    // nothing anywhere → the (missing) sidecar path, where a write would land
+    expect(repoStatePathForRead(repo, 'notes.md')).toBe(join(sidecar, 'notes.md'))
+    // legacy only → legacy (committed state stays visible, no migration needed)
+    mkdirSync(join(repo, '.TerMinal'), { recursive: true })
+    writeFileSync(join(repo, '.TerMinal', 'notes.md'), 'old')
+    expect(repoStatePathForRead(repo, 'notes.md')).toBe(join(repo, '.TerMinal', 'notes.md'))
+    // both → sidecar wins (writes went there; it is the live copy)
+    mkdirSync(sidecar, { recursive: true })
+    writeFileSync(join(sidecar, 'notes.md'), 'new')
+    expect(repoStatePathForRead(repo, 'notes.md')).toBe(join(sidecar, 'notes.md'))
+  })
+
+  test('dir rels resolve the same way as file rels', () => {
+    const repo = makeRepo('dirs', 'git@github.com:acme/dirs.git')
+    mkdirSync(join(repo, '.TerMinal', 'loops', 'abc'), { recursive: true })
+    expect(repoStatePathForRead(repo, 'loops')).toBe(join(repo, '.TerMinal', 'loops'))
+    const sidecarLoops = join(stateDir, 'github.com/acme/dirs', 'loops')
+    mkdirSync(sidecarLoops, { recursive: true })
+    expect(repoStatePathForRead(repo, 'loops')).toBe(sidecarLoops)
+    expect(repoStatePathForWrite(repo, 'loops')).toBe(sidecarLoops)
+  })
+
+  test('no repo → empty write path (callers guard)', () => {
+    expect(repoStatePathForWrite('', 'tickets.json')).toBe('')
+  })
+
+  test('the catalog covers exactly the personal rels — repo-owned files stay out', () => {
+    expect([...SIDECAR_STATE_RELS].sort() as string[]).toEqual(
+      [
+        'agent-requests',
+        'knowledge-rag',
+        'knowledge.json',
+        'loops',
+        'meta.json',
+        'notes.md',
+        'snippets.json',
+        'tickets.json',
+      ].sort(),
+    )
+    // Deliberate exclusions — the repo owns these on purpose.
+    for (const repoOwned of ['template.json', 'widgets.json', 'tabs.json']) {
+      expect(SIDECAR_STATE_RELS as readonly string[]).not.toContain(repoOwned)
+    }
+  })
 })

@@ -1,6 +1,6 @@
 ---
 name: new-snippet
-description: "Create or update a TerMinal quick snippet (repo .TerMinal/snippets.json or global). Use on /new-snippet or wanting a reusable quick prompt / one-click launcher item."
+description: "Create or update a TerMinal quick snippet (repo sidecar snippets.json or global). Use on /new-snippet or wanting a reusable quick prompt / one-click launcher item."
 ---
 
 # /new-snippet — Create a TerMinal Quick Snippet
@@ -11,7 +11,7 @@ Create one reusable prompt snippet for TerMinal's terminal quick launcher.
 
 Default target is the current repo:
 
-- `.TerMinal/snippets.json`
+- `$(tm-state-dir snippets.json)` — the repo's sidecar (legacy in-repo `.TerMinal/snippets.json` is still read) <!-- state-path-ok: read-only legacy mention -->
 
 If the user explicitly asks for a global snippet, write:
 

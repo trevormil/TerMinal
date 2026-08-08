@@ -11,7 +11,7 @@ Save durable references into TerMinal's Knowledge Base so they show up in the ap
 
 Default to the current repo:
 
-- `.TerMinal/knowledge.json`
+- `$(tm-state-dir knowledge.json)` — the repo's sidecar (legacy in-repo `.TerMinal/knowledge.json` is still read) <!-- state-path-ok: read-only legacy mention -->
 
 If the user explicitly asks for global knowledge, write:
 

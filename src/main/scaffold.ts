@@ -106,15 +106,16 @@ export function scaffoldProject(
         /* best effort */
       }
     }
+    git('init', '-q')
     // Template provenance (ticket 0045): stamp WHICH template version was
-    // copied, before the first commit so the stamp is tracked like the rest of
-    // .TerMinal/ state. sha prefers the actual source checkout's HEAD (local
-    // submodule or tmp clone); falls back to the build-time baked submodule sha.
+    // copied. Lives in the SIDECAR now (machine-local bookkeeping), written
+    // after `git init` so the sidecar key resolves against a real repo. sha
+    // prefers the actual source checkout's HEAD (local submodule or tmp
+    // clone); falls back to the build-time baked submodule sha.
     writeBootstrapStamp(dest, {
       sha: resolveTemplateSha(src.dir, bakedTemplateSha()),
       stampedAt: new Date().toISOString(),
     })
-    git('init', '-q')
     git('add', '-A')
     git('commit', '-qm', 'chore: scaffold from project-template')
     // Write the (now-gitignored) provider config + seed the vault after the

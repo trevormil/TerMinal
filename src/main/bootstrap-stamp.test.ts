@@ -1,32 +1,45 @@
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test, beforeEach, afterEach } from 'bun:test'
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { resolveTemplateSha, writeBootstrapStamp } from './bootstrap-stamp'
+import { clearRepoStateCache, repoStateRoot } from './repo-state'
 
 const STAMP = { sha: 'abc1234def5678', stampedAt: '2026-07-17T12:00:00.000Z' }
 
+// The stamp is machine-local bookkeeping, so it lives in the repo's SIDECAR —
+// never in the repo (a collaborator must not receive "when Trevor last
+// bootstrapped"). Legacy in-repo .TerMinal/meta.json stays readable so
+// unrelated keys survive the move.
+
+let tmp: string
+
+beforeEach(() => {
+  tmp = mkdtempSync(join(tmpdir(), 'gt-stamp-'))
+  process.env.TERMINAL_REPO_STATE_DIR = join(tmp, 'state')
+  clearRepoStateCache()
+})
+
+afterEach(() => {
+  delete process.env.TERMINAL_REPO_STATE_DIR
+  rmSync(tmp, { recursive: true, force: true })
+})
+
 function tmpRepo(): string {
-  return mkdtempSync(join(tmpdir(), 'gt-stamp-'))
+  return mkdtempSync(join(tmp, 'repo-'))
 }
 
 function readMeta(repo: string): Record<string, unknown> {
-  return JSON.parse(readFileSync(join(repo, '.TerMinal', 'meta.json'), 'utf8'))
+  return JSON.parse(readFileSync(join(repoStateRoot(repo), 'meta.json'), 'utf8'))
 }
 
 describe('writeBootstrapStamp', () => {
-  test('fresh bootstrap creates .TerMinal/meta.json with the stamp', () => {
+  test('fresh bootstrap writes the stamp into the SIDECAR meta.json, not the repo', () => {
     const repo = tmpRepo()
     writeBootstrapStamp(repo, STAMP)
     expect(readMeta(repo).lastBootstrapVersion).toEqual(STAMP)
-  })
-
-  test('creates the .TerMinal dir when missing', () => {
-    const repo = tmpRepo()
-    expect(existsSync(join(repo, '.TerMinal'))).toBe(false)
-    writeBootstrapStamp(repo, STAMP)
-    expect(existsSync(join(repo, '.TerMinal', 'meta.json'))).toBe(true)
+    expect(existsSync(join(repo, '.TerMinal', 'meta.json'))).toBe(false)
   })
 
   test('re-bootstrap overwrites the previous stamp', () => {
@@ -36,7 +49,7 @@ describe('writeBootstrapStamp', () => {
     expect(readMeta(repo).lastBootstrapVersion).toEqual(STAMP)
   })
 
-  test('preserves unrelated keys already in meta.json', () => {
+  test('preserves unrelated keys from a LEGACY in-repo meta.json', () => {
     const repo = tmpRepo()
     mkdirSync(join(repo, '.TerMinal'), { recursive: true })
     writeFileSync(join(repo, '.TerMinal', 'meta.json'), JSON.stringify({ other: { keep: true } }))
@@ -46,10 +59,22 @@ describe('writeBootstrapStamp', () => {
     expect(meta.lastBootstrapVersion).toEqual(STAMP)
   })
 
+  test('preserves unrelated keys already in the sidecar meta.json', () => {
+    const repo = tmpRepo()
+    const root = repoStateRoot(repo)
+    mkdirSync(root, { recursive: true })
+    writeFileSync(join(root, 'meta.json'), JSON.stringify({ other: 1 }))
+    writeBootstrapStamp(repo, STAMP)
+    const meta = readMeta(repo)
+    expect(meta.other).toBe(1)
+    expect(meta.lastBootstrapVersion).toEqual(STAMP)
+  })
+
   test('malformed existing meta.json is replaced without crashing', () => {
     const repo = tmpRepo()
-    mkdirSync(join(repo, '.TerMinal'), { recursive: true })
-    writeFileSync(join(repo, '.TerMinal', 'meta.json'), 'not json {{{')
+    const root = repoStateRoot(repo)
+    mkdirSync(root, { recursive: true })
+    writeFileSync(join(root, 'meta.json'), 'not json {{{')
     expect(() => writeBootstrapStamp(repo, STAMP)).not.toThrow()
     expect(readMeta(repo).lastBootstrapVersion).toEqual(STAMP)
   })

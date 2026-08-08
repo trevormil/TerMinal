@@ -1,6 +1,6 @@
 ---
 name: new-knowledge
-description: "Create or update TerMinal Knowledge Base entries in repo .TerMinal/knowledge.json or global ~/.config/TerMinal/knowledge.json. Use on /new-knowledge or when the user asks to save links, media, files, snippets, or durable references."
+description: "Create or update TerMinal Knowledge Base entries in the repo sidecar knowledge.json or global ~/.config/TerMinal/knowledge.json. Use on /new-knowledge or when the user asks to save links, media, files, snippets, or durable references."
 ---
 
 # /new-knowledge — Add Knowledge Base Entries
@@ -11,7 +11,7 @@ Create focused Knowledge Base items for TerMinal's Knowledge Base tab.
 
 Default to repo scope:
 
-- `.TerMinal/knowledge.json`
+- `$(tm-state-dir knowledge.json)` — the repo's sidecar (legacy in-repo `.TerMinal/knowledge.json` is still read) <!-- state-path-ok: read-only legacy mention -->
 
 Use global scope only when the user says global/cross-project/personal:
 

@@ -16,12 +16,12 @@ Use this skill when adding searchable, category-specific knowledge that should b
 
 Knowledge Base JSON lives at:
 
-- Repo scope: `<repo>/.TerMinal/knowledge.json`
+- Repo scope: `$(tm-state-dir knowledge.json)` — the repo's sidecar
 - Global scope: `~/.config/TerMinal/knowledge.json`
 
 RAG workspaces default to:
 
-- Repo scope: `<repo>/.TerMinal/knowledge-rag/<category-or-title>/`
+- Repo scope: `$(tm-state-dir knowledge-rag)/<category-or-title>/`
 - Global scope: `~/.config/TerMinal/knowledge-rag/<category-or-title>/`
 
 Each workspace contains `config.yaml`, `documents/`, `data/`, and `models_cache/`. TerMinal creates these on first status/search/reindex/add action.

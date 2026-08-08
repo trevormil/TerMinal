@@ -26,16 +26,31 @@ kind="${1:-}"
 
 # The plugin dir this script lives in — not a hardcoded ~/.config path, so a
 # TERMINAL_CONFIG_DIR override (and the test suite) resolves correctly.
-plugin="$(cd "$(dirname "$0")/.." && pwd)"
+# $0 must be resolved PHYSICALLY first: the app symlinks this script into
+# ~/.config/TerMinal/bin (linkStateResolvers) so skills can call it bare, and
+# `dirname` of the SYMLINK would make $plugin ~/.config/TerMinal — where no
+# agents/ dir exists — silently losing every shipped default contract.
+self="$0"
+while [ -L "$self" ]; do
+  target="$(readlink "$self")"
+  case "$target" in
+    /*) self="$target" ;;
+    *) self="$(dirname "$self")/$target" ;;
+  esac
+done
+plugin="$(cd "$(dirname "$self")/.." && pwd)"
 root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 
 # --list: the union of both layers. Deriving this by taking `dirname` of some
 # arbitrary kind does not work — if that kind happens to be overridden, the
 # dirname is the repo's .agents and every plugin default is missed.
 if [ "$kind" = "--list" ]; then
+  # Each layer may legitimately be absent (no repo .agents/, say); a missing
+  # layer must not fail the listing under `set -euo pipefail` — without the
+  # closing `:` the group's non-zero status aborts before `exit 0`.
   {
-    [ -d "$plugin/agents" ] && ls -1 "$plugin/agents" 2>/dev/null | grep '\.md$'
-    [ -n "$root" ] && [ -d "$root/.agents" ] && ls -1 "$root/.agents" 2>/dev/null | grep '\.md$'
+    { [ -d "$plugin/agents" ] && ls -1 "$plugin/agents" 2>/dev/null | grep '\.md$'; } || true
+    { [ -n "$root" ] && [ -d "$root/.agents" ] && ls -1 "$root/.agents" 2>/dev/null | grep '\.md$'; } || true
   } | sed 's/\.md$//' | sort -u
   exit 0
 fi

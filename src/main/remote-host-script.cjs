@@ -71,19 +71,45 @@ function gitOut(root, args) {
     return ''
   }
 }
+// URL → host/path, mirroring src/main/repo.ts parseRemote: any scheme with an
+// optional port (stripped — ssh://git@ssh.github.com:443/owner/repo must not
+// yield "443/owner/repo"), else scp-like. Trailing slashes and .git dropped.
+function parseRemoteKey(url) {
+  const u = (url || '')
+    .trim()
+    .replace(/\/+$/, '')
+    .replace(/\.git$/, '')
+  const m =
+    u.match(/^[a-z][a-z0-9+.-]*:\/\/(?:[^@/]+@)?([^/:]+)(?::\d+)?\/(.+)$/i) ||
+    u.match(/^[\w.-]+@([^:/]+)[:/](.+)$/)
+  return m ? m[1] + '/' + m[2] : ''
+}
+// The key becomes a filesystem path under <config>/repos — a crafted origin
+// URL must not traverse out of it.
+function safeStateKey(key) {
+  if (!key) return ''
+  const parts = key.split('/')
+  if (parts.some((p) => p === '' || p === '.' || p === '..')) return ''
+  return key
+}
 function repoStateKey(root) {
   if (!root) return ''
   const hit = repoStateKeyCache.get(root)
   if (hit !== undefined) return hit
-  let key = ''
-  const url = gitOut(root, ['remote', 'get-url', 'origin']).replace(/\.git$/, '')
-  if (url) {
-    let m = url.match(/^https?:\/\/(?:[^@/]+@)?([^/]+)\/(.+)$/)
-    if (!m) m = url.match(/^(?:ssh:\/\/)?[\w.-]+@([^:/]+)[:/](.+)$/)
-    if (m) key = m[1] + '/' + m[2]
-  }
+  // Raw configured URL first, exactly like src/main/repo.ts repoForCwd:
+  // "remote get-url" applies url.<base>.insteadOf, which can rewrite a real
+  // forge URL into an ssh alias or local mirror path that keys differently
+  // (or not at all). The rewritten form stays as the fallback for the
+  // opposite setup, where only the expanded URL names a repo.
+  let key = safeStateKey(parseRemoteKey(gitOut(root, ['config', '--get', 'remote.origin.url'])))
+  if (!key) key = safeStateKey(parseRemoteKey(gitOut(root, ['remote', 'get-url', 'origin'])))
   if (!key) {
-    const canonical = gitOut(root, ['rev-parse', '--show-toplevel']) || root
+    // No (usable) origin → hash the MAIN checkout's path, not the worktree's:
+    // rev-parse --git-common-dir names the shared .git so every worktree of a
+    // local-only repo lands on one sidecar, matching the origin-keyed case.
+    let canonical = gitOut(root, ['rev-parse', '--show-toplevel']) || root
+    const common = gitOut(root, ['rev-parse', '--path-format=absolute', '--git-common-dir'])
+    if (common && common.endsWith('/.git')) canonical = common.slice(0, -'/.git'.length)
     const hash = createHash('sha256').update(canonical).digest('hex').slice(0, 12)
     key = 'local/' + basename(canonical) + '-' + hash
   }
@@ -133,6 +159,29 @@ function maxAreaId(dirs) {
     }
   }
   return max
+}
+// Personal state files/dirs formerly at <repo>/.TerMinal/<rel>, now at the
+// sidecar ROOT. Reads prefer the sidecar, fall back to the legacy in-repo
+// copy; writes always target the sidecar. Mirrors repoStatePathForRead/Write.
+function statePathForWrite(root, rel) {
+  if (!root) return ''
+  const key = repoStateKey(root)
+  return key ? join(repoStateDir(), key, rel) : ''
+}
+function statePathForRead(root, rel) {
+  const sidecar = statePathForWrite(root, rel)
+  if (sidecar && existsSync(sidecar)) return sidecar
+  const legacy = join(root, '.TerMinal', rel)
+  if (existsSync(legacy)) return legacy
+  return sidecar || legacy
+}
+// STICKY variant for live runtime dirs (loops/<id>): legacy wins while it
+// exists, so an in-flight legacy loop never flips to a half-written sidecar
+// copy mid-run. Mirrors repoStatePathSticky in src/main/repo-state.ts.
+function statePathSticky(root, rel) {
+  const legacy = join(root, '.TerMinal', rel)
+  if (existsSync(legacy)) return legacy
+  return statePathForWrite(root, rel) || legacy
 }
 // Env handed to a spawned agent/script: the same TERMINAL_<AREA>_DIR values
 // the app injects, so a scheduled run resolves state identically to an
@@ -531,8 +580,13 @@ function docs(root) {
     if (p[0] === '.checks' || p[0] === 'reports' || p[0] === 'checks') return p[1]
     return undefined
   }
-  function add(p) {
-    const rel = path.relative(root, p).split(path.sep).join('/')
+  const seen = new Set()
+  // rel is the CANONICAL path (area alias for reports/checks) — a sidecar dir
+  // is outside the repo, where path.relative gives ../../… and no category.
+  function add(p, rel) {
+    rel = rel || path.relative(root, p).split(path.sep).join('/')
+    if (seen.has(rel)) return
+    seen.add(rel)
     const txt = fs.readFileSync(p, 'utf8')
     const h = txt.match(/^#\s+(.+?)\s*$/m)
     let c = 'other'
@@ -556,20 +610,21 @@ function docs(root) {
       subgroup: c === 'reports' ? reportGroup(rel) : undefined,
     })
   }
-  function walk(d) {
+  function walk(d, base, alias) {
     if (!exists(d)) return
     for (const n of fs.readdirSync(d)) {
       if (n.startsWith('.')) continue
       const p = path.join(d, n),
         st = stat(p)
       if (!st) continue
-      if (st.isDirectory()) walk(p)
-      else if (/\.(md|mdx|markdown)$/i.test(n)) add(p)
+      if (st.isDirectory()) walk(p, base, alias)
+      else if (/\.(md|mdx|markdown)$/i.test(n))
+        add(p, alias ? alias + '/' + path.relative(base, p).split(path.sep).join('/') : undefined)
     }
   }
   walk(path.join(root, 'docs'))
-  for (const d of areaPaths(root, 'reports')) walk(d)
-  for (const d of areaPaths(root, 'checks')) walk(d)
+  for (const d of areaPaths(root, 'reports')) walk(d, d, 'reports')
+  for (const d of areaPaths(root, 'checks')) walk(d, d, 'checks')
   const changelog = path.join(root, 'CHANGELOG.md')
   if (exists(changelog)) add(changelog)
   return {
@@ -583,6 +638,24 @@ function docs(root) {
 function isExecutable(p) {
   const st = stat(p)
   return !!(st && st.isFile() && st.mode & 0o111)
+}
+// docs() emits area-ALIASED paths (reports/<kind>/x.md) that may live in the
+// sidecar, outside the repo — resolve those through the same area roots, with
+// the traversal fence per root; everything else is a plain repo-guarded read.
+function docGet(root, relPath) {
+  const p = String(relPath || '').split('/')
+  if ((p[0] === 'reports' || p[0] === 'checks') && /\.(md|mdx|markdown)$/i.test(relPath)) {
+    const rest = p.slice(1).join(path.sep)
+    for (const base of areaPaths(root, p[0])) {
+      const full = path.join(base, rest)
+      if (!full.startsWith(base + path.sep)) return ''
+      try {
+        return fs.readFileSync(full, 'utf8')
+      } catch {}
+    }
+    return ''
+  }
+  return readFile(root, relPath).content || ''
 }
 function contextPreamble(root) {
   const dirs = ['docs/learnings', 'docs/decisions', 'docs/runbooks'],
@@ -1021,33 +1094,25 @@ function sessionGet(root, slug) {
   }
   return null
 }
-function notesPath(root, scope) {
-  return scope === 'global'
-    ? path.join(cfg(), 'notes.md')
-    : path.join(root, '.TerMinal', 'notes.md')
+// Repo notes are personal state → the host's sidecar (mirrors src/main/notes.ts:
+// reads fall back to a legacy in-repo copy; writes go sidecar-only).
+function notesPath(root, scope, mode) {
+  if (scope === 'global') return path.join(cfg(), 'notes.md')
+  return mode === 'read'
+    ? statePathForRead(root, 'notes.md')
+    : statePathForWrite(root, 'notes.md') || path.join(root, '.TerMinal', 'notes.md')
 }
 function notesRead(root, scope) {
   try {
-    return fs.readFileSync(notesPath(root, scope), 'utf8')
+    return fs.readFileSync(notesPath(root, scope, 'read'), 'utf8')
   } catch {
     return ''
   }
 }
 function notesWrite(root, scope, content) {
-  const p = notesPath(root, scope)
+  const p = notesPath(root, scope, 'write')
   fs.mkdirSync(path.dirname(p), { recursive: true })
   fs.writeFileSync(p, String(content || ''))
-  if (scope === 'repo') {
-    try {
-      const gi = path.join(root, '.gitignore'),
-        entry = '.TerMinal/notes.md'
-      let c = exists(gi) ? fs.readFileSync(gi, 'utf8') : ''
-      if (!c.split('\n').some((l) => l.trim() === entry)) {
-        if (c && !c.endsWith('\n')) c += '\n'
-        fs.writeFileSync(gi, c + entry + '\n')
-      }
-    } catch {}
-  }
   return true
 }
 function expandPath(p) {
@@ -1369,6 +1434,10 @@ function runStart(root, input) {
     'export TERMINAL_BRANCH=' + sq(branch),
     'export TERMINAL_WORKTREE=' + sq(worktree),
     'export TERMINAL_ENGINE=' + sq(engine),
+    // Sidecar state env — same TERMINAL_STATE_DIR/TERMINAL_<AREA>_DIR values
+    // the app injects locally, so a remote agent's skills resolve state
+    // identically instead of re-deriving (and possibly diverging) per call.
+    ...Object.entries(repoStateEnv(root)).map(([k, v]) => 'export ' + k + '=' + sq(v)),
     model ? 'export TERMINAL_MODEL=' + sq(model) : '',
     effort ? 'export TERMINAL_EFFORT=' + sq(effort) : '',
     'finish() {',
@@ -1760,7 +1829,7 @@ try {
       out(true)
     }
   } else if (op === 'docs.list') out(docs(root))
-  else if (op === 'docs.get') out(readFile(root, input.relPath || '').content || '')
+  else if (op === 'docs.get') out(docGet(root, input.relPath || ''))
   else if (op === 'agents.list') out(readRepoAgents(root))
   else if (op === 'agents.script') out(readAgentScript(root, input.id))
   else if (op === 'schedules.list') out(schedules())

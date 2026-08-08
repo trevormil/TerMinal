@@ -121,7 +121,7 @@ ${reviewAgent.instructions.prompt || ''}
 
 Output contract:
 ${reviewAgent.instructions.outputContract || 'Write the review artifact and findings/suggestions state expected by the repository.'}`
-    : 'Use the repository code-review agent contract from .agents/code-review.md when present.'
+    : 'Use the code-review agent contract — resolve it with `tm-agent-spec code-review` (repo .agents/code-review.md override, else the plugin default).'
   return withLaunchContext(
     kind === 'review'
       ? `Review ${ctx}.

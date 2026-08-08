@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { REPO_STATE_BLOCK } from './repo-state-inline'
-import { repoStateAreaPath } from './repo-state'
+import { clearRepoStateCache, repoStateAreaPath } from './repo-state'
 
 // bin/terminal-cli, bin/terminal-cron and bin/terminal-mcp-server cannot import
 // from the app bundle, so each carries a copy of the sidecar resolver. Three
@@ -85,6 +85,67 @@ describe('inline resolver agrees with the app resolver', () => {
       rmSync(tmp, { recursive: true, force: true })
     }
   })
+
+  // The URL shapes that historically forked keys between implementations:
+  // ports (GitHub ssh-over-443), insteadOf rewrites in BOTH directions, a
+  // traversal attempt, and an unparseable local-path origin. Each must
+  // resolve identically in the app and the inline block.
+  const parityCase = (name: string, setup: (repo: string) => void, expectKeyPrefix?: string) => {
+    test(`app and inline agree: ${name}`, () => {
+      const tmp = mkdtempSync(join(tmpdir(), 'parity-shape-'))
+      try {
+        const repo = join(tmp, 'r')
+        mkdirSync(repo)
+        execFileSync('git', ['-C', repo, 'init', '-q'], { stdio: 'ignore' })
+        setup(repo)
+        const stateDir = join(tmp, 'state')
+        const prev = process.env.TERMINAL_REPO_STATE_DIR
+        process.env.TERMINAL_REPO_STATE_DIR = stateDir
+        clearRepoStateCache()
+        const fromApp = repoStateAreaPath(repo, 'backlog')
+        if (prev === undefined) delete process.env.TERMINAL_REPO_STATE_DIR
+        else process.env.TERMINAL_REPO_STATE_DIR = prev
+        clearRepoStateCache()
+
+        expect(run('inline', repo, stateDir)).toBe(fromApp)
+        if (expectKeyPrefix) {
+          expect(fromApp).toBe(join(stateDir, expectKeyPrefix, 'backlog'))
+        }
+      } finally {
+        rmSync(tmp, { recursive: true, force: true })
+      }
+    })
+  }
+  const g = (repo: string, ...args: string[]) =>
+    execFileSync('git', ['-C', repo, ...args], { stdio: 'ignore' })
+
+  parityCase(
+    'ssh origin with a port (ssh-over-443)',
+    (repo) => g(repo, 'remote', 'add', 'origin', 'ssh://git@ssh.github.com:443/o/parity.git'),
+    'ssh.github.com/o/parity',
+  )
+  parityCase(
+    'insteadOf REWRITING a real https origin to an ssh alias (raw config wins)',
+    (repo) => {
+      g(repo, 'remote', 'add', 'origin', 'https://github.com/o/parity.git')
+      g(repo, 'config', 'url.git@github-personal:.insteadOf', 'https://github.com/')
+    },
+    'github.com/o/parity',
+  )
+  parityCase(
+    'short-alias origin EXPANDED by insteadOf (rewritten fallback wins)',
+    (repo) => {
+      g(repo, 'remote', 'add', 'origin', 'gh:o/parity')
+      g(repo, 'config', 'url.https://github.com/.insteadOf', 'gh:')
+    },
+    'github.com/o/parity',
+  )
+  parityCase('traversal origin falls back to the hashed local key', (repo) =>
+    g(repo, 'remote', 'add', 'origin', 'https://host.example/a/../../../../tmp/x.git'),
+  )
+  parityCase('local-path origin (unparseable) falls back to the hashed local key', (repo) =>
+    g(repo, 'remote', 'add', 'origin', '/Users/somebody/other-repo'),
+  )
 
   test('no-origin repo hashes the same canonical path in both', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'parity-local-'))

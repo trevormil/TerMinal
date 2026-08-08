@@ -1,4 +1,6 @@
+import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
+import { existsSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { configPath } from './config-dir'
 import { repoForCwd, repoRootOf } from './repo'
@@ -28,6 +30,78 @@ export function isSidecarArea(area: ProjectArea): boolean {
   return SIDECAR_AREAS.includes(area)
 }
 
+/**
+ * Personal per-repo state that lived at `<repo>/.TerMinal/<rel>` and now lives
+ * at the sidecar ROOT under the same relative name. Unlike SIDECAR_AREAS these
+ * never had a v1 layout — the one legacy location is always `.TerMinal/<rel>`.
+ *
+ * Deliberately NOT here: `template.json` (the layout marker is ABOUT the repo),
+ * and `widgets.json`/`tabs.json` (repo-provided extension surfaces a project
+ * ships on purpose, gated by Settings → Security).
+ */
+export const SIDECAR_STATE_RELS = [
+  'tickets.json', // ticket provider config + custom/saved views
+  'notes.md', // repo notes
+  'knowledge.json', // knowledge base entries
+  'snippets.json', // repo prompt snippets
+  'meta.json', // bootstrap stamp
+  'loops', // loop-driver runtime state
+  'agent-requests', // delegated-artifact runtime state
+  'knowledge-rag', // knowledge-RAG stores (resolution only — see below)
+] as const
+
+/**
+ * The subset the one-time migration MOVES. knowledge-rag is excluded on
+ * purpose: each store's config.yaml embeds ABSOLUTE documents/data paths, so
+ * moving the directory breaks every ingested index while the RAG server keeps
+ * writing at the old location. Legacy stores stay (and keep working) where
+ * they are; only NEW stores resolve to the sidecar.
+ */
+export const MIGRATED_STATE_RELS = SIDECAR_STATE_RELS.filter((r) => r !== 'knowledge-rag')
+
+/** The legacy in-repo location of a sidecar state rel. */
+export function legacyStatePath(repoRoot: string, rel: string): string {
+  return join(repoRoot, '.TerMinal', rel)
+}
+
+/**
+ * Where NEW content for a personal state file/dir goes: always the sidecar
+ * (same write-one rule as areas). '' only when there is no repo at all.
+ */
+export function repoStatePathForWrite(repoRoot: string, rel: string): string {
+  const root = repoStateRoot(repoRoot)
+  return root ? join(root, rel) : ''
+}
+
+/**
+ * Where to READ a personal state file/dir: the sidecar copy when it exists,
+ * else the legacy in-repo copy when THAT exists (state already committed stays
+ * visible with no migration), else the sidecar path (i.e. "missing", and where
+ * a subsequent write will land). Mirrors projectAreaPathForRead's asymmetry.
+ */
+export function repoStatePathForRead(repoRoot: string, rel: string): string {
+  const sidecar = repoStatePathForWrite(repoRoot, rel)
+  if (sidecar && existsSync(sidecar)) return sidecar
+  const legacy = legacyStatePath(repoRoot, rel)
+  if (existsSync(legacy)) return legacy
+  return sidecar || legacy
+}
+
+/**
+ * Like ForRead but LEGACY WINS while it exists — for live runtime dirs
+ * (loops/<id>). ForRead's sidecar-first rule is right for files, but for a
+ * runtime dir it flips resolution the moment ANY writer creates the sidecar
+ * copy: a legacy in-flight loop whose transport appended one event to the
+ * sidecar would suddenly "lose" its contract/progress/scores mid-run. Sticky
+ * resolution keeps the loop where it started; after migration moves the legacy
+ * dir, this naturally resolves to the sidecar.
+ */
+export function repoStatePathSticky(repoRoot: string, rel: string): string {
+  const legacy = legacyStatePath(repoRoot, rel)
+  if (existsSync(legacy)) return legacy
+  return repoStatePathForWrite(repoRoot, rel) || legacy
+}
+
 /** Root holding every project's sidecar. Env-overridable like terminalConfigDir(). */
 export function repoStateDir(): string {
   return process.env.TERMINAL_REPO_STATE_DIR?.trim() || configPath('repos')
@@ -52,6 +126,25 @@ export function clearRepoStateCache(): void {
   keyCache.clear()
 }
 
+/** The key becomes a filesystem path under <config>/repos — a crafted origin
+ *  URL (`https://host/a/../../../x.git`) must not traverse out of it. Any
+ *  empty/dot segment invalidates the whole key → hashed fallback. */
+function safeKey(key: string): string {
+  if (!key) return ''
+  return key.split('/').some((p) => p === '' || p === '.' || p === '..') ? '' : key
+}
+
+function gitOut(root: string, args: string[]): string {
+  try {
+    return execFileSync('git', ['-C', root, ...args], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim()
+  } catch {
+    return ''
+  }
+}
+
 export function repoStateKey(repoRoot: string): string {
   if (!repoRoot) return ''
   const cached = keyCache.get(repoRoot)
@@ -60,13 +153,19 @@ export function repoStateKey(repoRoot: string): string {
   // worktrees share one backlog — which is what you want when a worktree is
   // just another branch of the same project.
   const id = repoForCwd(repoRoot)
-  const key = id
-    ? `${id.host}/${id.path}`
-    : (() => {
-        const canonical = repoRootOf(repoRoot) || repoRoot
-        const hash = createHash('sha256').update(canonical).digest('hex').slice(0, 12)
-        return `local/${basename(canonical)}-${hash}`
-      })()
+  const remoteKey = safeKey(id ? `${id.host}/${id.path}` : '')
+  const key =
+    remoteKey ||
+    (() => {
+      // No (usable) origin → hash the MAIN checkout's path, not the
+      // worktree's: --git-common-dir names the shared .git so every worktree
+      // of a local-only repo lands on one sidecar, like the origin-keyed case.
+      let canonical = repoRootOf(repoRoot) || repoRoot
+      const common = gitOut(repoRoot, ['rev-parse', '--path-format=absolute', '--git-common-dir'])
+      if (common.endsWith('/.git')) canonical = common.slice(0, -'/.git'.length)
+      const hash = createHash('sha256').update(canonical).digest('hex').slice(0, 12)
+      return `local/${basename(canonical)}-${hash}`
+    })()
   keyCache.set(repoRoot, key)
   return key
 }
