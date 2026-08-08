@@ -3865,7 +3865,8 @@ export function SettingsPanel({
                           defaultValue={s.slack.defaultChannel}
                           onBlur={(e) => {
                             const v = e.target.value.trim()
-                            if (v !== s.slack.defaultChannel) save({ slack: { defaultChannel: v } })
+                            if (v !== s.slack.defaultChannel)
+                              void save({ slack: { defaultChannel: v } })
                           }}
                           placeholder="#terminal-inbox"
                           spellCheck={false}
@@ -3880,7 +3881,8 @@ export function SettingsPanel({
                           defaultValue={s.slack.channelPrefix}
                           onBlur={(e) => {
                             const v = e.target.value.trim()
-                            if (v !== s.slack.channelPrefix) save({ slack: { channelPrefix: v } })
+                            if (v !== s.slack.channelPrefix)
+                              void save({ slack: { channelPrefix: v } })
                           }}
                           placeholder="inbox"
                           spellCheck={false}
@@ -3896,7 +3898,7 @@ export function SettingsPanel({
                         defaultValue={s.slack.inviteUserId}
                         onBlur={(e) => {
                           const v = e.target.value.trim()
-                          if (v !== s.slack.inviteUserId) save({ slack: { inviteUserId: v } })
+                          if (v !== s.slack.inviteUserId) void save({ slack: { inviteUserId: v } })
                         }}
                         placeholder="U0ABC123DEF"
                         spellCheck={false}
