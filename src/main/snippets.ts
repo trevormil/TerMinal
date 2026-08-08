@@ -21,7 +21,6 @@ type SnippetFile = {
 const CFG = (): string => terminalConfigDir()
 const GLOBAL_FILE = (): string => join(CFG(), 'snippets.json')
 const REPO_FILE = '.TerMinal/snippets.json'
-const LEGACY_REPO_FILE = '.terminal/snippets.json'
 const SNIPPET_SCHEMA_VERSION = 2
 
 export const BUILT_IN_SNIPPETS: PromptSnippet[] = [
@@ -470,19 +469,16 @@ export function listPromptSnippets(repoRoot: string): {
   repoPath: string
 } {
   ensureGlobalFile()
-  // Read-merge, lowest priority first: legacy .terminal → legacy .TerMinal →
-  // sidecar. Later writers win per id, so a sidecar copy shadows the in-repo
-  // one it was migrated from.
+  // Read-merge, lowest priority first: the legacy in-repo file → sidecar. Later
+  // writers win per id, so a sidecar copy shadows the in-repo one it was
+  // migrated from.
   const sidecarPath = repoRoot ? repoStatePathForWrite(repoRoot, 'snippets.json') : ''
   const repoPath = repoRoot ? join(repoRoot, REPO_FILE) : ''
-  const legacyRepoPath = repoRoot ? join(repoRoot, LEGACY_REPO_FILE) : ''
   const byId = new Map<string, PromptSnippet>()
   const hidden = hiddenPresetIds('snippets')
   for (const s of BUILT_IN_SNIPPETS)
     if (!hidden.has(s.id)) byId.set(s.id, { ...s, source: 'preset' })
   for (const s of readSnippetFile(GLOBAL_FILE())) byId.set(s.id, { ...s, source: 'global' })
-  for (const s of legacyRepoPath ? readSnippetFile(legacyRepoPath) : [])
-    byId.set(s.id, { ...s, source: 'repo' })
   for (const s of repoPath ? readSnippetFile(repoPath) : [])
     byId.set(s.id, { ...s, source: 'repo' })
   for (const s of sidecarPath ? readSnippetFile(sidecarPath) : [])
