@@ -11,18 +11,22 @@ import { appBundlePath, readSignatureKind } from './code-signature'
 // So the detection is measured, and these tests pin the parsing against real
 // `codesign -dv` output rather than a guess at its shape.
 
-/** Real output from a Developer ID-signed, notarized TerMinal.app. */
+// The identities below are placeholders. The shape is what these fixtures pin —
+// a real signing identity and team id in a public repo is an identifier leak
+// that teaches nothing extra about the parsing.
+
+/** `codesign -dv` output from a Developer ID-signed, notarized TerMinal.app. */
 const DEVELOPER_ID = `Executable=/Applications/TerMinal.app/Contents/MacOS/TerMinal
 Identifier=com.terminal.app
 Format=app bundle with Mach-O thin (arm64)
 CodeDirectory v=20500 size=1234 flags=0x10000(runtime) hashes=12+7
 Signature size=9000
-Authority=Developer ID Application: Trevor Miller (8UWQ486J94)
+Authority=Developer ID Application: Example Dev (ABCDE12345)
 Authority=Developer ID Certification Authority
 Authority=Apple Root CA
 Timestamp=Aug 1, 2026 at 9:32:28 AM
 Info.plist entries=30
-TeamIdentifier=8UWQ486J94
+TeamIdentifier=ABCDE12345
 Runtime Version=26.4.0
 Sealed Resources version=2 rules=13 files=200`
 
@@ -39,10 +43,10 @@ Sealed Resources version=2 rules=13 files=200`
 /** An Apple Development cert — signed, but NOT trusted for distribution. */
 const APPLE_DEVELOPMENT = `Executable=/x/Contents/MacOS/x
 Identifier=com.terminal.app
-Authority=Apple Development: Trevor Miller (UFV6JPJBQX)
+Authority=Apple Development: Example Dev (ABCDE12345)
 Authority=Apple Worldwide Developer Relations Certification Authority
 Authority=Apple Root CA
-TeamIdentifier=8UWQ486J94`
+TeamIdentifier=ABCDE12345`
 
 const stub = (out: string) => (): string => out
 const throwing = (text: string) => (): string => {
@@ -122,11 +126,15 @@ describe('appBundlePath resolves the BUNDLE, not the inner binary (ticket 93)', 
 })
 
 describe('the installed app is actually signed (ticket 93, live check)', () => {
-  // Not a unit test — a claim about this machine. Skipped when TerMinal is not
-  // installed (CI, a fresh clone) so it never fails for the wrong reason.
+  // Not a unit test — a claim about ONE machine's install, and an opt-in one.
+  // A contributor who installed an unsigned local build (the documented
+  // TERMINAL_UNSIGNED=1 path) is not broken, so this must not fail their suite:
+  // it runs only when the operator asks for it with
+  // TERMINAL_VERIFY_INSTALLED_SIGNATURE=1, and only when the app is present.
   const installed = '/Applications/TerMinal.app'
+  const opted = process.env.TERMINAL_VERIFY_INSTALLED_SIGNATURE === '1'
   const present =
-    process.platform === 'darwin' && Bun.file(`${installed}/Contents/Info.plist`).size > 0
+    opted && process.platform === 'darwin' && Bun.file(`${installed}/Contents/Info.plist`).size > 0
 
   test.if(present)('/Applications/TerMinal.app carries a Developer ID signature', () => {
     expect(readSignatureKind(installed)).toBe('developer-id')

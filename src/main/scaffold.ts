@@ -1,10 +1,11 @@
 import { execFileSync } from 'node:child_process'
-import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 import { app } from 'electron'
 import { resolvedProjectsDir, resolvedTemplateRepo } from './settings'
 import {
   cloneTemplateToTmp,
+  fillLicense,
   pickTemplateSource,
   templateCandidates,
   type TemplateSource,
@@ -75,6 +76,26 @@ export function scaffoldProject(
       recursive: true,
       filter: (s) => !SKIP.has(basename(s)) && s !== modulesDir,
     })
+    // The template's LICENSE ships {{YEAR}}/{{AUTHOR}} placeholders, so fill them
+    // from the scaffolding user's own git identity — otherwise every new repo
+    // would claim the template author's copyright.
+    const license = join(dest, 'LICENSE')
+    if (existsSync(license)) {
+      let author = ''
+      try {
+        author = execFileSync('git', ['config', '--get', 'user.name'], { encoding: 'utf8' }).trim()
+      } catch {
+        /* no git identity configured — fillLicense falls back to a neutral holder */
+      }
+      try {
+        writeFileSync(
+          license,
+          fillLicense(readFileSync(license, 'utf8'), author, new Date().getFullYear()),
+        )
+      } catch {
+        /* a placeholder LICENSE is better than a failed scaffold */
+      }
+    }
     const git = (...args: string[]) =>
       execFileSync('git', ['-C', dest, ...args], {
         stdio: 'ignore',

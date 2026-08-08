@@ -855,6 +855,36 @@ function MonitorRow({
   )
 }
 
+// ---- optimistic write, with a rollback -------------------------------------
+/**
+ * Paint `next`, persist it, and on failure paint `prev` back and report why.
+ *
+ * Swallowing the rejection (the previous `.catch(() => {})`) was the bug: a
+ * failed save left the UI asserting a monitor that was never written — a
+ * disabled check looked disabled while the daemon kept alerting on it, until the
+ * 15s poll happened to overwrite the lie. Exported so the rollback is testable
+ * without mounting the tab.
+ */
+export async function saveMonitors(
+  next: MonitorWithState[],
+  prev: MonitorWithState[],
+  io: {
+    save: (list: Monitor[]) => Promise<unknown>
+    setMonitors: (list: MonitorWithState[]) => void
+    flash: (message: string) => void
+  },
+): Promise<boolean> {
+  io.setMonitors(next)
+  try {
+    await io.save(stripState(next))
+    return true
+  } catch (e) {
+    io.setMonitors(prev)
+    io.flash(`could not save monitors · ${e instanceof Error ? e.message : String(e)}`)
+    return false
+  }
+}
+
 // ---- main tab --------------------------------------------------------------
 function MonitoringTab(_: { ctx: TabContext }) {
   const [monitors, setMonitors] = useState<MonitorWithState[] | null>(null)
@@ -862,7 +892,12 @@ function MonitoringTab(_: { ctx: TabContext }) {
   const [editing, setEditing] = useState<Monitor | null>(null)
   const [adding, setAdding] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [msg, setMsg] = useState('')
   const railW = useResizableWidth('gt.monitoringRailWidth', 384, { min: 280, max: 640 })
+  const flash = (m: string) => {
+    setMsg(m)
+    setTimeout(() => setMsg(''), 8000)
+  }
 
   const load = () => {
     window.gt.monitors
@@ -891,10 +926,13 @@ function MonitoringTab(_: { ctx: TabContext }) {
   const selected = monitors?.find((m) => m.id === selectedId) ?? null
   const showForm = adding || editing !== null
 
-  const persist = async (next: MonitorWithState[]) => {
-    setMonitors(next)
-    await window.gt.monitors.save(stripState(next)).catch(() => {})
+  const io = {
+    save: (list: Monitor[]) => window.gt.monitors.save(list),
+    setMonitors,
+    flash,
   }
+
+  const persist = (next: MonitorWithState[]) => saveMonitors(next, monitors ?? [], io)
 
   const handleSave = async (m: Monitor) => {
     const current = monitors ?? []
@@ -902,7 +940,9 @@ function MonitoringTab(_: { ctx: TabContext }) {
     const next: MonitorWithState[] = exists
       ? current.map((x) => (x.id === m.id ? { ...m, state: x.state } : x))
       : [...current, { ...m, state: null }]
-    await window.gt.monitors.save(stripState(next)).catch(() => {})
+    // Keep the form open when the write fails — closing it would throw away the
+    // edit the user just made and claim it landed.
+    if (!(await saveMonitors(next, current, io))) return
     setAdding(false)
     setEditing(null)
     setSelectedId(m.id)
@@ -966,6 +1006,14 @@ function MonitoringTab(_: { ctx: TabContext }) {
             Add monitor
           </button>
         </div>
+        {msg && (
+          <div
+            role="alert"
+            className="shrink-0 border-b border-[var(--gt-border)] bg-[var(--gt-red)]/10 px-3 py-2 text-[11px] leading-relaxed text-[var(--gt-red)]"
+          >
+            {msg}
+          </div>
+        )}
         {daemon.stale && (
           <div className="shrink-0 border-b border-[var(--gt-border)] bg-[var(--gt-red)]/10 px-3 py-2">
             <div className="flex items-start gap-1.5">

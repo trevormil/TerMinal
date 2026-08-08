@@ -146,25 +146,34 @@ use them.
 **[Download the latest `.dmg` →](https://github.com/trevormil/TerMinal/releases/latest)**
 (Apple Silicon). Every release ships the DMG plus a `SHA256SUMS.txt`.
 
-The build is **unsigned and un-notarized**, so verify it and then let Gatekeeper
-through by hand — right-click → **Open** the first time, not a double-click:
+Releases are **signed with a Developer ID and notarized**, so a normal
+double-click opens them — no Gatekeeper right-click dance. Verify the checksum
+anyway; it is cheap and it is the one check that does not depend on trusting the
+signature:
 
 ```bash
 shasum -a 256 -c SHA256SUMS.txt   # expect: TerMinal-<ver>-arm64.dmg: OK
+spctl --assess --type execute -vv /Applications/TerMinal.app   # → accepted
 ```
 
-If the checksum does not match, do not open it. (Signing + notarization is a
-tracked follow-up; until then the checksum is the integrity signal — see
-[`docs/setup.md`](docs/setup.md#verifying-a-download).)
+If the checksum does not match, do not open it. Signing is conditional on the
+release pipeline having the Apple credentials: a fork (or a tag built without
+them) falls back to an **unsigned** DMG, which still runs but needs right-click →
+**Open** the first time and cannot deliver macOS notifications. See
+[`docs/setup.md`](docs/setup.md#verifying-a-download).
 
 ### Or build and install it yourself
 
 ```bash
-bun run dist        # → dist/TerMinal-<ver>-arm64.dmg + dist/mac-arm64/TerMinal.app
-codesign --force --deep --sign - "dist/mac-arm64/TerMinal.app"
-cp -R "dist/mac-arm64/TerMinal.app" /Applications/
-open "/Applications/TerMinal.app"   # right-click → Open the first time
+bun run release     # build → sign (if you have a Developer ID) → notarize → install → relaunch
 ```
+
+`bin/release` picks its path from what your keychain actually holds: with a
+Developer ID it signs and notarizes (which needs an App Store Connect key — it
+aborts rather than shipping a signed-but-un-notarized build); with no identity,
+or with `TERMINAL_UNSIGNED=1`, it ad-hoc signs a local build instead. Ad-hoc is
+fine for development, but macOS will not deliver notifications from it
+(Electron 42+).
 
 Details: [`docs/runbooks/build-and-release.md`](docs/runbooks/build-and-release.md).
 
@@ -205,13 +214,21 @@ Settings → Tabs.
 | **Agents** | The roster: definitions, model policy, contracts, run history, one-click ticket implementation. |
 | **Runs** | Every run with log, lineage, evaluation, and cost. |
 | **Schedules** | launchd/systemd/k8s-backed cadence with run history and a reconcile that surfaces dark jobs. |
-| **Factory** | The orchestrator toggle plus cross-repo health: throughput, cycle time, failures. |
+| **Monitoring** | Deterministic infra checks — HTTP, TLS-cert expiry, TCP, DNS, shell — on their own intervals, grouped by status. No inference, and it flags its own daemon going stale so a frozen green can't read as healthy. |
 | **Observability** | The AI-spend and trace explorer — every request, priced. |
+| **Reports** | Scheduled-agent output: `reports/<kind>/<sha>.md` grouped by agent, with each run's status, metrics, and PR/ticket links parsed out of its frontmatter. |
+| **Search** | One query across the workspace — files, tickets, MRs, docs, runs, activity, snippets, agent artifacts — with click-through to the owning tab. |
+| **Sessions** | The repo's session history: `/session-start` working notes plus a search over the raw engine transcripts. |
+| **Docs** | GitBook-style reader over `docs/`, grouped by category (Changelog, Maintainer, Developer, Personal, Other) with rendered markdown. |
+| **Activity** | The chronological event feed — runs, tickets, PR verdicts, deploys, errors — each row click-through to the surface it came from. |
+| **Inbox** | The global, cross-repo HITL queue: decisions, approvals, credentials, failed cron jobs. Badge counts unread and always visible. |
+| **Agent Config** | An editor over `~/.claude` and `~/.codex` — your global agent config, edited in place instead of in a side terminal. |
+| **Panels** | Pin arbitrary web dashboards (Grafana, a status page, anything) and view them embedded. Hidden until you configure one. |
 | **CI / Browser / Files / Notes** | Forge CI page, embedded webview, a CodeMirror editor with project search, autosaving markdown notes. |
-| **Inbox** (top-right) | The global HITL queue, badge always visible. |
 
-Secondary surfaces (Activity feed, Docs, Reports, Sessions, Help, custom
-Panels) are one toggle away.
+Not every surface is on by default. Activity, Docs, Notes, Reports, Sessions,
+Agent Config, and Help ship hidden; Panels appears only once you configure one.
+All of it is one toggle away in Settings → Tabs.
 
 ## Extending it
 

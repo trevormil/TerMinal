@@ -32,7 +32,7 @@ final class MonitoringTests: XCTestCase {
                   "id": "api-http",
                   "name": "API",
                   "type": "http",
-                  "target": "https://api.trevormil.com",
+                  "target": "https://api.example.com",
                   "intervalSec": 60,
                   "enabled": true,
                   "group": "Production",
@@ -56,7 +56,7 @@ final class MonitoringTests: XCTestCase {
                             {
                               "label": "GET /health",
                               "health": "ok",
-                              "meta": { "url": "https://api.trevormil.com/health", "code": 200, "ok": true }
+                              "meta": { "url": "https://api.example.com/health", "code": 200, "ok": true }
                             },
                             { "label": "GET /slow", "health": "warn" }
                           ]
@@ -76,7 +76,7 @@ final class MonitoringTests: XCTestCase {
                   "id": "cert",
                   "name": "TLS cert",
                   "type": "tls-cert",
-                  "target": "trevormil.com:443",
+                  "target": "example.com:443",
                   "intervalSec": 3600,
                   "enabled": true,
                   "notify": {
@@ -101,7 +101,7 @@ final class MonitoringTests: XCTestCase {
         XCTAssertEqual(api.id, "api-http")
         XCTAssertEqual(api.name, "API")
         XCTAssertEqual(api.type, "http")
-        XCTAssertEqual(api.target, "https://api.trevormil.com")
+        XCTAssertEqual(api.target, "https://api.example.com")
         XCTAssertEqual(api.intervalSec, 60)
         XCTAssertTrue(api.enabled)
         XCTAssertEqual(api.group, "Production")
@@ -126,7 +126,7 @@ final class MonitoringTests: XCTestCase {
         XCTAssertEqual(items?.map(\.label), ["GET /health", "GET /slow"])
         XCTAssertEqual(items?.map(\.health), ["ok", "warn"])
         XCTAssertEqual(
-            items?[0].meta, ["url": "https://api.trevormil.com/health", "code": "200", "ok": "true"])
+            items?[0].meta, ["url": "https://api.example.com/health", "code": "200", "ok": "true"])
         XCTAssertNil(items?[1].meta)
 
         let cert = monitors[1]

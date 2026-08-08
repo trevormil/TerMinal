@@ -27,19 +27,35 @@ lets you pin explicit binary paths when a CLI lives somewhere unusual.
 
 ## Verifying a download
 
-TerMinal ships as an **unsigned, un-notarized** `.dmg`, so macOS Gatekeeper will
-ask you to right-click → **Open** the first time. Because it's unsigned, verify
-the download's integrity before you do. Each release emits a `SHA256SUMS.txt`
-next to the `.dmg` (produced by `bin/release`):
+Published releases are **signed with an Apple Developer ID and notarized**
+(`.github/workflows/release.yml`), so the `.dmg` opens with a normal
+double-click. Each release also emits a `SHA256SUMS.txt` next to it (produced by
+`bin/release`), and the checksum is worth checking regardless:
 
 ```bash
 # from the folder holding the .dmg and SHA256SUMS.txt
 shasum -a 256 -c SHA256SUMS.txt        # expect: TerMinal-<ver>-arm64.dmg: OK
+# after installing — the check Gatekeeper itself performs
+spctl --assess --type execute -vv /Applications/TerMinal.app   # → accepted
 ```
 
 If the check fails, do **not** open the app — re-download from the official
-source. (Code-signing + notarization with an Apple Developer ID is tracked as a
-follow-up; until then, checksums are the integrity signal.)
+source.
+
+### The unsigned fallback
+
+Signing is conditional on credentials, so an **unsigned** build is a supported
+outcome, not a broken one:
+
+- **Building locally** without a Developer ID in your keychain — or with
+  `TERMINAL_UNSIGNED=1` to force it — `bun run release` ad-hoc signs instead.
+- **A fork's release pipeline** without the signing secrets builds unsigned and
+  says so in the workflow log.
+
+An unsigned build runs, but: macOS asks you to right-click → **Open** the first
+time, and since Electron 42 it will **not deliver notifications** — the Activity
+/ HITL alerts go quiet (Telegram mirroring still works). Verify the checksum
+before that first open; on an unsigned build it is the only integrity signal.
 
 ## Keeping the app current
 

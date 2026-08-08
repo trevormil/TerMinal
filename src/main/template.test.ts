@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { pickTemplateSource } from './template'
+import { fillLicense, pickTemplateSource } from './template'
 
 function tempDir(name: string): string {
   return mkdtempSync(join(tmpdir(), name))
@@ -171,5 +171,26 @@ describe('pickTemplateSource', () => {
     } finally {
       rmSync(configured, { recursive: true, force: true })
     }
+  })
+})
+
+describe('fillLicense', () => {
+  // The template LICENSE ships placeholders so a scaffolded repo is never
+  // stamped with the TEMPLATE author's copyright — and never ships a literal
+  // {{AUTHOR}} either, which is the other way to get this wrong.
+  const TEMPLATE = 'MIT License\n\nCopyright (c) {{YEAR}} {{AUTHOR}}\n\nPermission is hereby…\n'
+
+  test('substitutes the scaffolding user and year', () => {
+    const out = fillLicense(TEMPLATE, 'Ada Lovelace', 2031)
+    expect(out).toContain('Copyright (c) 2031 Ada Lovelace')
+    expect(out).not.toContain('{{')
+  })
+
+  test('a machine with no git identity gets a neutral holder, not a placeholder', () => {
+    expect(fillLicense(TEMPLATE, '   ', 2031)).toContain('Copyright (c) 2031 the copyright holders')
+  })
+
+  test('the rest of the licence text is untouched', () => {
+    expect(fillLicense(TEMPLATE, 'Ada', 2031)).toContain('Permission is hereby…')
   })
 })
