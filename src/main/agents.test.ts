@@ -249,3 +249,48 @@ console.log(JSON.stringify(listAgentDefinitions(repo)));`,
     }
   })
 })
+
+// The lane gate is enforced in main, not just hidden in the UI: runTicketLanes
+// must refuse a fan-out before it spawns anything. Both rejection paths return
+// before any engine process starts, so these run safely in a subprocess with a
+// throwaway HOME/config dir holding the settings that decide the flag.
+describe('runTicketLanes gates', () => {
+  const laneAttempt = (home: string, experiments: string, acceptance: string) =>
+    run(
+      home,
+      `import { mock } from 'bun:test';
+mock.module('electron', () => ({ Notification: class { static isSupported() { return false } show() {} } }));
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+const cfg = join('${home}', '.config', 'TerMinal');
+mkdirSync(cfg, { recursive: true });
+writeFileSync(join(cfg, 'settings.json'), JSON.stringify({ experiments: ${experiments} }));
+const repo = join('${home}', 'repo');
+mkdirSync(repo, { recursive: true });
+const { runTicketLanes } = await import('./src/main/agents.ts');
+const res = runTicketLanes(repo, { id: 7, slug: '0007-x', title: 'X', body: 'b', acceptance: ${acceptance} }, 'codex', undefined, undefined, undefined, 3);
+console.log(JSON.stringify(res));`,
+    )
+
+  test('lanes > 1 is refused while the lanes experiment is off', () => {
+    const home = mkdtempSync(join(tmpdir(), 'terminal-lanes-off-'))
+    try {
+      const res = laneAttempt(home, '{ "lanes": false }', "['tests pass']")
+      expect(res.error).toContain('Experimental')
+      expect(res.runs).toBeUndefined()
+    } finally {
+      rmSync(home, { recursive: true, force: true })
+    }
+  })
+
+  test('lanes > 1 is refused when the ticket has no acceptance criteria', () => {
+    const home = mkdtempSync(join(tmpdir(), 'terminal-lanes-accept-'))
+    try {
+      const res = laneAttempt(home, '{ "lanes": true }', '[]')
+      expect(res.error).toContain('acceptance criteria')
+      expect(res.runs).toBeUndefined()
+    } finally {
+      rmSync(home, { recursive: true, force: true })
+    }
+  })
+})

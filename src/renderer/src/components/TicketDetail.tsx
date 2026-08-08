@@ -55,9 +55,10 @@ function FieldSelect({
   )
 }
 
-// Acceptance criteria: the strict checklist a lane must satisfy to be eligible
-// (tests pass + every criterion met) before lanes are ranked. Editable inline,
-// one criterion per line; persisted to ticket frontmatter as a block list.
+// Acceptance criteria: the checklist every implementation must satisfy, and the
+// thing a human compares competing lanes against — main refuses a lane fan-out
+// on a ticket without them. Editable inline, one criterion per line; persisted
+// to ticket frontmatter as a block list.
 function AcceptanceSection({
   criteria,
   slug,
@@ -154,8 +155,8 @@ function AcceptanceSection({
         </ul>
       ) : (
         <div className="text-[11.5px] text-zinc-600">
-          None yet. Required before running more than one implementation lane — lanes are gated and
-          ranked against these.
+          None yet. Required before running more than one implementation lane — the fan-out is
+          refused without them, and they are what you compare the lanes' MRs against.
         </div>
       )}
     </div>

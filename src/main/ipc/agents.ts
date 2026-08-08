@@ -263,6 +263,8 @@ export function registerAgentsIpc(deps: AgentsIpcDeps): void {
         url: t.url,
         comments: t.comments,
         agent: t.agent,
+        // The lane gate refuses a fan-out on a ticket with no acceptance criteria.
+        acceptance: t.acceptance,
         modelTier: t.modelTier,
       }
       const res = runTicketLanes(
@@ -278,8 +280,8 @@ export function registerAgentsIpc(deps: AgentsIpcDeps): void {
       )
       if ('error' in res) return res
       // Link the ticket's run pointer to the first lane (solo runs have exactly
-      // one). Lanes deliberately don't each write the ticket — the judge links the
-      // winner — so we record the lead run here for the at-a-glance run badge.
+      // one). Lanes deliberately don't each write the ticket — a human compares the
+      // MRs and links the winner — so we record the lead run here for the badge.
       const lead = res.runs[0]
       updateTicket(root, t.slug, {
         run: {

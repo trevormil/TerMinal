@@ -27,6 +27,8 @@ import { EffortSelect, ModelSelect } from './ModelSelect'
 import { SkillHint } from './SkillHint'
 import { EngineLogo } from './EngineLogo'
 import { engineLabel, ENGINE_VENDOR, ENGINE_IDS } from '../lib/engines'
+import { useExperiment } from '../lib/useExperiment'
+import { MAX_LANES } from '../../../shared/lanes'
 
 // Three-step launch picker: engine → agent context (none + classic/persistent)
 // → pipeline (single run, or chained review/iterate stages). onPick fires with
@@ -57,6 +59,7 @@ export function EnginePicker({
   showPersona = true,
   showPipeline = true,
   showLanes = false,
+  lanesLockedReason,
   showExtraContext = false,
   initialPersona,
   onPick,
@@ -67,8 +70,13 @@ export function EnginePicker({
   showPersona?: boolean
   showPipeline?: boolean
   /** Show the lane-count stepper on the launch step (process mode only).
-   *  N>1 fans out N parallel variant attempts, each its own worktree + MR. */
+   *  N>1 fans out N parallel variant attempts, each its own worktree + MR.
+   *  Also requires the `lanes` experiment — the enforced gate lives in main. */
   showLanes?: boolean
+  /** Why a fan-out isn't available for this subject (e.g. the ticket has no
+   *  acceptance criteria). Set = lane counts > 1 are disabled and the reason is
+   *  shown, mirroring the server-side gate instead of failing after the click. */
+  lanesLockedReason?: string
   /** Show a free-text "additional context for this run" box on the launch step. */
   showExtraContext?: boolean
   initialPersona?: string
@@ -96,6 +104,12 @@ export function EnginePicker({
   const [personaConfirmed, setPersonaConfirmed] = useState(!showPersona)
   const [pipeline, setPipeline] = useState<string | null>(showPipeline ? null : 'single')
   const [lanes, setLanes] = useState(1)
+  // Lanes are experimental: the control only exists once the operator opts in,
+  // and main rejects lanes > 1 regardless of what the UI decided to show.
+  const lanesExperiment = useExperiment('lanes')
+  const lanesOn = showLanes && lanesExperiment
+  const lanesLocked = !!lanesLockedReason
+  const effectiveLanes = lanesOn && !lanesLocked ? lanes : 1
   const [personas, setPersonas] = useState<Persona[]>([])
   const [pipelines, setPipelines] = useState<PipelineInfo[]>([])
   const [env, setEnv] = useState<EnvDetect | null>(null)
@@ -442,7 +456,7 @@ export function EnginePicker({
                   {effort ? ` · effort ${effort}` : ''}
                   {persona ? ` · ${selectedContext?.title || persona}` : ''}
                   {pipeline && pipeline !== 'single' ? ` · ${pipeline}` : ''}
-                  {showLanes && lanes > 1 ? ` · ${lanes} lanes` : ''})
+                  {effectiveLanes > 1 ? ` · ${effectiveLanes} lanes` : ''})
                 </span>
               </p>
             </div>
@@ -460,7 +474,7 @@ export function EnginePicker({
                 />
               </div>
             )}
-            {showLanes && (
+            {lanesOn && (
               <div className="mb-3 rounded-xl border border-[var(--gt-border)] bg-black/20 p-3">
                 <div className="mb-1.5 flex items-center justify-between">
                   <span className="text-[11px] font-semibold text-zinc-300">Lanes</span>
@@ -473,10 +487,12 @@ export function EnginePicker({
                     <button
                       key={n}
                       onClick={() => setLanes(n)}
-                      className={`min-w-[34px] rounded-lg border px-2 py-1 text-[12px] font-semibold transition-colors ${
-                        lanes === n
+                      disabled={lanesLocked && n > 1}
+                      title={lanesLocked && n > 1 ? lanesLockedReason : undefined}
+                      className={`min-w-[34px] rounded-lg border px-2 py-1 text-[12px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                        effectiveLanes === n
                           ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/20 text-[var(--gt-accent-light)]'
-                          : 'border-[var(--gt-border)] text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200'
+                          : 'border-[var(--gt-border)] text-zinc-400 enabled:hover:border-[var(--gt-accent)]/50 enabled:hover:text-zinc-200'
                       }`}
                     >
                       {n}
@@ -485,22 +501,32 @@ export function EnginePicker({
                   <input
                     type="number"
                     min={1}
-                    max={100}
-                    value={lanes}
+                    max={MAX_LANES}
+                    value={effectiveLanes}
+                    disabled={lanesLocked}
                     onChange={(e) => {
-                      const v = Math.max(1, Math.min(100, Math.floor(Number(e.target.value) || 1)))
+                      const v = Math.max(
+                        1,
+                        Math.min(MAX_LANES, Math.floor(Number(e.target.value) || 1)),
+                      )
                       setLanes(v)
                     }}
-                    className="ml-1 w-[58px] rounded-lg border border-[var(--gt-border)] bg-[var(--gt-bg)] px-2 py-1 text-[12px] text-zinc-100 outline-none focus:border-[var(--gt-accent)]/60"
-                    title="Custom lane count (1–100)"
+                    className="ml-1 w-[58px] rounded-lg border border-[var(--gt-border)] bg-[var(--gt-bg)] px-2 py-1 text-[12px] text-zinc-100 outline-none focus:border-[var(--gt-accent)]/60 disabled:cursor-not-allowed disabled:opacity-40"
+                    title={lanesLocked ? lanesLockedReason : `Custom lane count (1–${MAX_LANES})`}
                   />
                 </div>
-                {lanes > 1 && (
-                  <p className="mt-2 text-[10px] leading-snug text-zinc-600">
-                    {lanes} independent worktrees/branches, each opening its own{' '}
-                    {/* judge is v2; v1 opens all + you compare */}MR. Compare and pick the winner;
-                    requires the ticket to have acceptance criteria.
+                {lanesLocked ? (
+                  <p className="mt-2 text-[10px] leading-snug text-amber-500/80">
+                    {lanesLockedReason}
                   </p>
+                ) : (
+                  effectiveLanes > 1 && (
+                    <p className="mt-2 text-[10px] leading-snug text-zinc-600">
+                      {effectiveLanes} independent worktrees/branches, each opening its own MR. No
+                      automated judge — you compare the MRs against the ticket&apos;s acceptance
+                      criteria and pick the winner.
+                    </p>
+                  )
                 )}
               </div>
             )}
@@ -540,7 +566,7 @@ export function EnginePicker({
                   instance
                 </span>
                 <span className="text-center text-[10px] leading-snug text-zinc-500">
-                  {showLanes && lanes > 1
+                  {effectiveLanes > 1
                     ? 'Single interactive run (lanes need process mode).'
                     : 'Open Terminal with the prompt prefilled.'}
                 </span>
@@ -554,7 +580,7 @@ export function EnginePicker({
                     model,
                     'process',
                     selectedContext,
-                    showLanes ? lanes : 1,
+                    effectiveLanes,
                     openrouterHarness,
                     extraContext.trim() || undefined,
                     effort,
@@ -564,11 +590,11 @@ export function EnginePicker({
               >
                 <Cpu size={24} strokeWidth={1.8} className="text-[var(--gt-accent-light)]" />
                 <span className="text-[13px] font-semibold text-zinc-100">
-                  {showLanes && lanes > 1 ? `Process · ${lanes} lanes` : 'Process'}
+                  {effectiveLanes > 1 ? `Process · ${effectiveLanes} lanes` : 'Process'}
                 </span>
                 <span className="text-center text-[10px] leading-snug text-zinc-500">
-                  {showLanes && lanes > 1
-                    ? `Fan out ${lanes} parallel variant runs.`
+                  {effectiveLanes > 1
+                    ? `Fan out ${effectiveLanes} parallel variant runs.`
                     : 'Fire-and-forget background run.'}
                 </span>
               </button>

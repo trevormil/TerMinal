@@ -36,6 +36,7 @@ import {
   modelTierTone,
 } from '../lib/badges'
 import { navigateTo, onNavigate } from '../lib/nav'
+import { hasLaneAcceptance, LANE_ACCEPTANCE_ERROR } from '../../../shared/lanes'
 import { engineLabel } from '../lib/engines'
 import {
   engineInstanceLabel,
@@ -902,6 +903,10 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                 <EnginePicker
                   title={`Implement ${selected.externalKey || `#${selected.id}`} → PR`}
                   showLanes
+                  // Same rule main enforces — surfaced before the click, not after.
+                  lanesLockedReason={
+                    hasLaneAcceptance(selected.acceptance) ? undefined : LANE_ACCEPTANCE_ERROR
+                  }
                   showExtraContext
                   initialPersona={ticketAgentContextId(selected.agent)}
                   hint={

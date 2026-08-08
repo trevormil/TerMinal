@@ -29,7 +29,8 @@ export const EXPERIMENT_META: Record<ExperimentId, ExperimentMeta> = {
   lanes: {
     label: 'Ticket lanes',
     desc: 'Fan a ticket out to N competing implementation attempts; human picks the winner.',
-    reveals: 'Adds a lane fan-out action on tickets and a comparison view for picking a winner.',
+    reveals:
+      'Adds a lane count (up to 8) to the ticket implement picker. Each lane is its own worktree, branch, and MR — real engine spend per lane — and the ticket must have acceptance criteria. No automated judge: you read the MRs and pick the winner.',
   },
 }
 
