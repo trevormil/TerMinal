@@ -30,10 +30,25 @@ function pluginNames(pluginDir: string, sub: string): Set<string> {
   }
 }
 
+// Hook copies that .claude/settings.json still wires by project path must
+// stay: banking them leaves every tool call in that repo pointing at a dead
+// script and silently disables the merge gate for plain checkouts (TerMinal's
+// own repo carries wired copies on purpose). A hook becomes sweepable once
+// the settings entry is gone.
+function wiredHookNames(repoRoot: string): Set<string> {
+  try {
+    const settings = readFileSync(join(repoRoot, '.claude', 'settings.json'), 'utf8')
+    return new Set([...settings.matchAll(/\.claude\/hooks\/([\w.-]+)/g)].map((m) => m[1]))
+  } catch {
+    return new Set()
+  }
+}
+
 function candidateRels(repoRoot: string, pluginDir: string): string[] {
   const skills = pluginNames(pluginDir, 'skills')
   const bins = pluginNames(pluginDir, 'bin')
   const hooks = pluginNames(pluginDir, 'hooks')
+  for (const name of wiredHookNames(repoRoot)) hooks.delete(name)
   const rels: string[] = []
   const collect = (repoSub: string, owned: Set<string>) => {
     for (const name of owned) {

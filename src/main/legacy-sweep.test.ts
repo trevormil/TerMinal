@@ -44,6 +44,33 @@ describe('legacyPluginCopies', () => {
     ])
   })
 
+  test('keeps hooks that .claude/settings.json still wires', () => {
+    // TerMinal's own repo (and any repo whose settings.json wires the hooks
+    // by project path) deliberately carries hook copies — banking them leaves
+    // every tool call pointing at a dead path and turns the merge gate off.
+    const plugin = makePlugin()
+    const repo = makeRepo()
+    mkdirSync(join(repo, '.claude', 'hooks'), { recursive: true })
+    writeFileSync(join(repo, '.claude', 'hooks', 'block-main-merge.sh'), 'hook')
+    writeFileSync(
+      join(repo, '.claude', 'settings.json'),
+      JSON.stringify({
+        hooks: {
+          PreToolUse: [
+            {
+              matcher: 'Bash',
+              hooks: [{ command: '$CLAUDE_PROJECT_DIR/.claude/hooks/block-main-merge.sh' }],
+            },
+          ],
+        },
+      }),
+    )
+    expect(legacyPluginCopies(repo, plugin)).toEqual([])
+    // Unwire it and the copy becomes sweepable again.
+    writeFileSync(join(repo, '.claude', 'settings.json'), '{}')
+    expect(legacyPluginCopies(repo, plugin)).toEqual(['.claude/hooks/block-main-merge.sh'])
+  })
+
   test('empty for a clean repo and for a missing plugin dir', () => {
     const plugin = makePlugin()
     const repo = makeRepo()
