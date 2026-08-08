@@ -22,6 +22,13 @@ console.log(JSON.stringify({
   orHermes: buildCmd('openrouter', '/wt', 'do it', 'deepseek/v3.2', 'hermes'),
   orCodex: buildCmd('openrouter', '/wt', 'do it', 'deepseek/v3.2', 'codex'),
   claude: buildCmd('claude', '/wt', 'do it', 'opus'),
+  claudeEffort: buildCmd('claude', '/wt', 'do it', 'opus', undefined, 'xhigh'),
+  codexEffort: buildCmd('codex', '/wt', 'do it', 'gpt-5.6-sol', undefined, 'high'),
+  piEffort: buildCmd('pi', '/wt', 'do it', undefined, undefined, 'max'),
+  orCodexEffort: buildCmd('openrouter', '/wt', 'do it', 'deepseek/v3.2', 'codex', 'high'),
+  orHermesEffort: buildCmd('openrouter', '/wt', 'do it', 'deepseek/v3.2', 'hermes', 'high'),
+  cursorEffort: buildCmd('cursor', '/wt', 'do it', 'gpt-5', undefined, 'high'),
+  claudeBogusEffort: buildCmd('claude', '/wt', 'do it', 'opus', undefined, 'bogus'),
 }));`,
       ],
       {
@@ -69,5 +76,28 @@ describe('buildCmd — hermes + openrouter harness', () => {
   test('claude unchanged', () => {
     expect(cmds.claude).toContain(' -p ')
     expect(cmds.claude).toContain('--permission-mode auto')
+  })
+})
+
+describe('buildCmd — reasoning effort', () => {
+  const cmds = build()
+
+  test('claude → --effort; codex → -c model_reasoning_effort', () => {
+    expect(cmds.claudeEffort).toContain('--effort xhigh')
+    expect(cmds.codexEffort).toContain('model_reasoning_effort=high')
+  })
+
+  test('pi → --thinking', () => {
+    expect(cmds.piEffort).toContain('--thinking max')
+  })
+
+  test('openrouter codex harness → or-agent --effort; hermes harness drops it', () => {
+    expect(cmds.orCodexEffort).toContain('--effort high')
+    expect(cmds.orHermesEffort).not.toContain('effort')
+  })
+
+  test('unsupported engine / off-list level → no effort args', () => {
+    expect(cmds.cursorEffort).not.toContain('effort')
+    expect(cmds.claudeBogusEffort).not.toContain('--effort')
   })
 })

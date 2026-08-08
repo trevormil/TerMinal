@@ -4,6 +4,7 @@ import { ChevronDown } from 'lucide-react'
 import type { Engine } from '../lib/types'
 import {
   engineLabel,
+  engineEffortsOf,
   ENGINE_MODELS as MODELS,
   ENGINE_VENDOR as VENDOR,
   type ModelOption,
@@ -22,6 +23,8 @@ export function EngineModelPicker({
   engine,
   model,
   onChange,
+  effort,
+  onEffortChange,
   size = 'md',
   align = 'left',
   engines,
@@ -29,6 +32,10 @@ export function EngineModelPicker({
   engine: Engine
   model: string | undefined
   onChange: (engine: Engine, model: string | undefined) => void
+  /** Reasoning-effort level (undefined = engine default). Only rendered when
+   *  onEffortChange is provided AND the active engine has an effort control. */
+  effort?: string
+  onEffortChange?: (effort: string | undefined) => void
   size?: 'sm' | 'md'
   align?: 'left' | 'right'
   /** Restrict which engines are offered (e.g. exclude 'openrouter' for
@@ -141,6 +148,12 @@ export function EngineModelPicker({
         <span>{engineLabel(engine)}</span>
         <span className="text-zinc-600">·</span>
         <span className={model ? 'text-zinc-200' : 'text-zinc-500'}>{modelLabel}</span>
+        {onEffortChange && effort && (
+          <>
+            <span className="text-zinc-600">·</span>
+            <span className="text-zinc-200">{effort}</span>
+          </>
+        )}
         <ChevronDown size={size === 'sm' ? 10 : 12} strokeWidth={2} className="text-zinc-500" />
       </button>
 
@@ -169,6 +182,7 @@ export function EngineModelPicker({
                   <div className="flex flex-wrap gap-1 px-1">
                     <button
                       onClick={() => {
+                        if (e !== engine) onEffortChange?.(undefined)
                         onChange(e, undefined)
                         setOpen(false)
                       }}
@@ -186,6 +200,9 @@ export function EngineModelPicker({
                         <button
                           key={m.id}
                           onClick={() => {
+                            // Effort levels are engine-specific — an engine
+                            // switch resets the level to that engine's default.
+                            if (e !== engine) onEffortChange?.(undefined)
                             onChange(e, m.id)
                             setOpen(false)
                           }}
@@ -200,6 +217,38 @@ export function EngineModelPicker({
                       )
                     })}
                   </div>
+                  {/* Effort row for the ACTIVE engine only — the popover stays
+                      compact and levels always match the engine they apply to. */}
+                  {onEffortChange && isActive && engineEffortsOf(e).length > 0 && (
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1 px-1">
+                      <span className="text-[9.5px] uppercase tracking-wide text-zinc-600">
+                        effort
+                      </span>
+                      <button
+                        onClick={() => onEffortChange(undefined)}
+                        className={`rounded-md border px-2 py-0.5 text-[10.5px] ${
+                          !effort
+                            ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/20 text-zinc-100'
+                            : 'border-[var(--gt-border)] text-zinc-400 hover:bg-white/5 hover:text-zinc-200'
+                        }`}
+                      >
+                        Default
+                      </button>
+                      {engineEffortsOf(e).map((l) => (
+                        <button
+                          key={l}
+                          onClick={() => onEffortChange(effort === l ? undefined : l)}
+                          className={`rounded-md border px-2 py-0.5 text-[10.5px] ${
+                            effort === l
+                              ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/20 text-zinc-100'
+                              : 'border-[var(--gt-border)] text-zinc-400 hover:bg-white/5 hover:text-zinc-200'
+                          }`}
+                        >
+                          {l}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )
             })}

@@ -14,6 +14,7 @@ import {
   FolderOpen,
   FolderTree,
   GitPullRequest,
+  Hash,
   Inbox,
   LayoutGrid,
   Loader2,
@@ -27,6 +28,7 @@ import {
   RefreshCw,
   RotateCcw,
   Rows3,
+  ShieldCheck,
   Send,
   Server,
   Settings as SettingsIcon,
@@ -43,6 +45,7 @@ import type {
   DeliveryRecord,
   Settings,
   SettingsPatch,
+  WebhookCfg,
   DaemonCfg,
   EnvDetect,
   Engine,
@@ -75,6 +78,7 @@ import {
   ENGINE_MODELS,
   ENGINE_VENDOR,
   engineAllowsCustomModel,
+  engineEffortsOf,
   ENGINE_IDS,
 } from '../lib/engines'
 import { DEFAULT_HIDDEN_TABS, loadHiddenTabs } from '../lib/tabVisibility'
@@ -84,12 +88,14 @@ import {
   CATEGORY_META,
   CHANNEL_META,
   channelWants,
+  webhookWants,
   NOTIFY_CATEGORIES,
   NOTIFY_CHANNELS,
   type NotifyCategory,
   type NotifyChannelId,
   type NotifyMatrix,
 } from '../../../shared/notifications'
+import { slackChannelName } from '../../../shared/slack'
 
 const inp =
   'w-full rounded-md border border-[var(--gt-border)] bg-black/35 px-2.5 py-1.5 text-[12px] text-zinc-200 outline-none transition-colors placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60 focus:bg-black/45'
@@ -143,6 +149,170 @@ function SecretInput({
   )
 }
 
+// Any number of outbound webhook destinations. They exist as a LIST rather than
+// one URL because a Slack channel, a Discord channel and a homegrown endpoint
+// rarely want the same traffic — hence the per-destination category chips,
+// which override the `webhook` row of the notification matrix below.
+//
+// Every edit saves the WHOLE list (main replaces it wholesale so deletes stick,
+// and restores each entry's saved URL when the patch omits it — the renderer
+// only ever holds a mask).
+function WebhookList({
+  webhooks,
+  secretsSet,
+  matrix,
+  save,
+  test,
+  results,
+}: {
+  webhooks: WebhookCfg[]
+  secretsSet?: Record<string, boolean>
+  matrix: NotifyMatrix
+  save: (webhooks: (Partial<WebhookCfg> & { id: string })[]) => void
+  test: (channel: AlertChannelId, webhookId?: string) => void
+  results: Record<string, { busy?: boolean; ok?: boolean; error?: string } | undefined>
+}) {
+  // Patches drop `url` for every untouched entry, so main restores it by id.
+  const stripped = () => webhooks.map(({ url: _url, ...rest }) => rest)
+  const patch = (id: string, fields: Partial<WebhookCfg>) =>
+    save(stripped().map((w) => (w.id === id ? { ...w, ...fields } : w)))
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-[12px] font-semibold text-zinc-200">Outbound webhooks</div>
+          <div className="text-[10.5px] text-zinc-600">
+            POST each alert as JSON — paste a Slack or Discord incoming-webhook URL, or your own
+            endpoint.
+          </div>
+        </div>
+        <button
+          onClick={() =>
+            save([
+              ...stripped(),
+              { id: crypto.randomUUID(), name: 'Webhook', url: '', enabled: false },
+            ])
+          }
+          className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 py-1 text-[11px] text-zinc-300 transition-colors hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
+        >
+          <Plus size={12} strokeWidth={2.25} />
+          Add
+        </button>
+      </div>
+
+      {webhooks.length === 0 ? (
+        <div className="rounded-md border border-dashed border-[var(--gt-border)] px-3 py-2 text-[11px] text-zinc-600">
+          No webhooks configured.
+        </div>
+      ) : (
+        webhooks.map((w) => {
+          const result = results[`webhook:${w.id}`]
+          return (
+            <div
+              key={w.id}
+              className="space-y-2 rounded-md border border-[var(--gt-border)] bg-black/20 p-2.5"
+            >
+              <div className="flex items-center gap-2">
+                {/* A compact switch, not <Toggle> — that one is a full-width
+                    labelled row and would swallow the rest of this line. */}
+                <button
+                  onClick={() => patch(w.id, { enabled: !w.enabled })}
+                  title={w.enabled ? 'Disable this webhook' : 'Enable this webhook'}
+                  aria-pressed={w.enabled}
+                  className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+                    w.enabled ? 'bg-[var(--gt-accent)]' : 'bg-white/10'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      w.enabled ? 'translate-x-4' : 'translate-x-0.5'
+                    }`}
+                  />
+                </button>
+                <input
+                  defaultValue={w.name}
+                  onBlur={(e) => {
+                    const name = e.target.value.trim() || 'Webhook'
+                    if (name !== w.name) patch(w.id, { name })
+                  }}
+                  placeholder="Name"
+                  className={`${inp} h-8 flex-1`}
+                />
+                <button
+                  onClick={() => test('webhook', w.id)}
+                  disabled={result?.busy}
+                  title="Send a test alert to this endpoint"
+                  className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 text-[11.5px] text-zinc-200 transition-colors hover:border-[var(--gt-accent)]/60 disabled:opacity-50"
+                >
+                  {result?.busy ? (
+                    <Loader2 size={12} className="animate-spin" />
+                  ) : (
+                    <Send size={12} strokeWidth={2} />
+                  )}
+                  Test
+                </button>
+                <button
+                  onClick={() => save(stripped().filter((x) => x.id !== w.id))}
+                  title="Remove this webhook"
+                  className="shrink-0 rounded-md p-1.5 text-zinc-600 transition-colors hover:text-amber-400"
+                >
+                  <Trash2 size={13} strokeWidth={2} />
+                </button>
+              </div>
+
+              <SecretInput
+                set={!!secretsSet?.[`alerts.webhooks.${webhooks.indexOf(w)}.url`]}
+                onSave={(url) => patch(w.id, { url })}
+                placeholder="https://hooks.slack.com/services/…"
+              />
+
+              <div className="flex flex-wrap items-center gap-1">
+                <span className="mr-0.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+                  Sends
+                </span>
+                {NOTIFY_CATEGORIES.map((cat) => {
+                  const on = webhookWants(cat, w.categories, matrix)
+                  return (
+                    <button
+                      key={cat}
+                      title={CATEGORY_META[cat].desc}
+                      onClick={() =>
+                        patch(w.id, { categories: { ...(w.categories || {}), [cat]: !on } })
+                      }
+                      className={`rounded border px-1.5 py-0.5 text-[10px] transition-colors ${
+                        on
+                          ? 'border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/20 text-zinc-100'
+                          : 'border-[var(--gt-border)] text-zinc-600 hover:text-zinc-400'
+                      }`}
+                    >
+                      {CATEGORY_META[cat].label}
+                    </button>
+                  )
+                })}
+              </div>
+
+              {result && !result.busy && (
+                <div
+                  className={`text-[11px] ${result.ok ? 'text-[var(--gt-green)]' : 'text-amber-400'}`}
+                >
+                  {result.ok ? '✓ Sent — check the receiver.' : result.error}
+                </div>
+              )}
+            </div>
+          )
+        })
+      )}
+
+      <div className="text-[10.5px] text-zinc-600">
+        Payload: {'{'} source, kind (done|blocked|question|info), title, detail, refs, ts, text,
+        content {'}'} — <span className="font-mono">text</span> renders in Slack,{' '}
+        <span className="font-mono">content</span> in Discord.
+      </div>
+    </div>
+  )
+}
+
 const tilde = (p: string) => p.replace(/^\/Users\/[^/]+/, '~')
 const formatBytes = (bytes: number): string => {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
@@ -163,7 +333,7 @@ const emptyDaemon = (): DaemonCfg => ({
   // Derived from the registry — this was the third hand-written copy of the
   // per-engine defaults (main had two more).
   engines: Object.fromEntries(
-    ENGINE_IDS.map((id) => [id, { path: '', defaultModel: '', baseUrl: '' }]),
+    ENGINE_IDS.map((id) => [id, { path: '', defaultModel: '', defaultEffort: '', baseUrl: '' }]),
   ) as DaemonCfg['engines'],
   defaultEngine: 'claude',
   forge: 'auto',
@@ -657,8 +827,10 @@ const SETTING_NAV: { id: string; title: string; icon: LucideIcon }[] = [
   { id: 'alerts', title: 'Alerts', icon: BellRing },
   { id: 'notifications', title: 'Routing', icon: BellDot },
   { id: 'telegram', title: 'Telegram', icon: MessageCircle },
+  { id: 'slack', title: 'Slack', icon: Hash },
   { id: 'integrations', title: 'Setup', icon: PlugZap },
   { id: 'tabs', title: 'Tabs', icon: Rows3 },
+  { id: 'security', title: 'Security', icon: ShieldCheck },
   { id: 'presets', title: 'Presets', icon: Eye },
   { id: 'status', title: 'Status', icon: Activity },
   { id: 'updates', title: 'Updates', icon: ArrowUpCircle },
@@ -1504,6 +1676,27 @@ function TicketProviderPanel() {
               Teams
             </button>
           </div>
+          <label className="block space-y-1">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+              Workspace URL
+            </span>
+            <input
+              value={draft.linear?.workspace || ''}
+              onChange={(e) =>
+                setDraft({
+                  provider: 'linear',
+                  linear: {
+                    ...defaultLinearConfig(),
+                    ...(draft.linear || {}),
+                    workspace: e.target.value,
+                  },
+                })
+              }
+              placeholder="https://linear.app/your-workspace — start page for the embedded Linear view"
+              spellCheck={false}
+              className="h-[33px] w-full rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 font-mono text-[12px] text-zinc-200 outline-none"
+            />
+          </label>
           <details>
             <summary className="cursor-pointer text-[10.5px] text-zinc-600 hover:text-zinc-400">
               Advanced MCP command
@@ -1908,6 +2101,7 @@ export function SettingsPanel({
   > | null>(null)
   const [storageBusy, setStorageBusy] = useState<'scan' | 'reclaim' | 'scratch' | null>(null)
   const [tg, setTg] = useState<{ busy?: boolean; ok?: boolean; error?: string } | null>(null)
+  const [sl, setSl] = useState<{ busy?: boolean; ok?: boolean; error?: string } | null>(null)
   const [notify, setNotify] = useState<{
     busy?: boolean
     ok?: boolean
@@ -2082,13 +2276,20 @@ export function SettingsPanel({
     setTg({ busy: true })
     setTg(await window.gt.telegram.test())
   }
+  const testSlack = async () => {
+    setSl({ busy: true })
+    setSl(await window.gt.slack.test())
+  }
+  // Keyed by channel, except webhooks — there can be several, so each
+  // destination gets its own `webhook:<id>` slot and its own result line.
   const [alertTest, setAlertTest] = useState<
-    Partial<Record<AlertChannelId, { busy?: boolean; ok?: boolean; error?: string; note?: string }>>
+    Record<string, { busy?: boolean; ok?: boolean; error?: string; note?: string } | undefined>
   >({})
-  const testAlert = async (channel: AlertChannelId) => {
-    setAlertTest((p) => ({ ...p, [channel]: { busy: true } }))
-    const r = await window.gt.alerts.test(channel)
-    setAlertTest((p) => ({ ...p, [channel]: r }))
+  const testAlert = async (channel: AlertChannelId, webhookId?: string) => {
+    const key = webhookId ? `webhook:${webhookId}` : channel
+    setAlertTest((p) => ({ ...p, [key]: { busy: true } }))
+    const r = await window.gt.alerts.test(channel, webhookId)
+    setAlertTest((p) => ({ ...p, [key]: r }))
   }
   const installNotify = async () => {
     setNotify({ busy: true })
@@ -2296,6 +2497,25 @@ export function SettingsPanel({
               </select>
             )}
           </label>
+          {engineEffortsOf(e).length > 0 && (
+            <label className="flex items-center gap-2 text-[10.5px] text-zinc-500">
+              Default effort
+              <select
+                value={selectedDaemon.engines[e].defaultEffort || ''}
+                onChange={(ev) =>
+                  saveDaemon({ engines: { [e]: { defaultEffort: ev.target.value } } })
+                }
+                className="rounded-md border border-[var(--gt-border)] bg-black/30 px-1.5 py-0.5 text-[11px] text-zinc-200 outline-none"
+              >
+                <option value="">(engine default)</option>
+                {engineEffortsOf(e).map((l) => (
+                  <option key={l} value={l}>
+                    {l}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
         </div>
         {e === 'openai-compat' && (
           <label className="mt-2 block text-[10.5px] text-zinc-500">
@@ -3330,7 +3550,7 @@ export function SettingsPanel({
                   id="inbox"
                   icon={Inbox}
                   title="Inbox"
-                  desc="Global human-needed queue. Manual blockers, cron failures, and budget alerts always go here; completion hooks are configurable."
+                  desc="Global human-needed queue. Manual blockers and cron failures always go here; completion hooks are configurable."
                 >
                   <div className="space-y-2">
                     <Toggle
@@ -3483,54 +3703,14 @@ export function SettingsPanel({
                         </div>
                       )}
                     </div>
-                    <div className="space-y-2">
-                      <Toggle
-                        on={s.alerts.webhook.enabled}
-                        onToggle={() =>
-                          save({ alerts: { webhook: { enabled: !s.alerts.webhook.enabled } } })
-                        }
-                        label="Outbound webhook"
-                        hint="POST each alert as JSON — paste a Slack or Discord incoming-webhook URL, or your own endpoint"
-                      />
-                      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-                        <label className="block min-w-0 space-y-1">
-                          <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
-                            Webhook URL
-                          </span>
-                          <SecretInput
-                            set={!!s.secretsSet?.['alerts.webhook.url']}
-                            onSave={(v) => save({ alerts: { webhook: { url: v } } })}
-                            placeholder="https://hooks.slack.com/services/…"
-                          />
-                        </label>
-                        <button
-                          onClick={() => testAlert('webhook')}
-                          disabled={alertTest.webhook?.busy}
-                          className={actionButton}
-                        >
-                          {alertTest.webhook?.busy ? (
-                            <Loader2 size={13} className="animate-spin" />
-                          ) : (
-                            <Send size={13} strokeWidth={2} />
-                          )}
-                          Test
-                        </button>
-                      </div>
-                      {alertTest.webhook && !alertTest.webhook.busy && (
-                        <div
-                          className={`text-[11px] ${alertTest.webhook.ok ? 'text-[var(--gt-green)]' : 'text-amber-400'}`}
-                        >
-                          {alertTest.webhook.ok
-                            ? '✓ Sent — check the receiver.'
-                            : alertTest.webhook.error}
-                        </div>
-                      )}
-                      <div className="text-[10.5px] text-zinc-600">
-                        Payload: {'{'} source, kind (done|blocked|question|info), title, detail,
-                        refs, ts, text, content {'}'} — <span className="font-mono">text</span>{' '}
-                        renders in Slack, <span className="font-mono">content</span> in Discord.
-                      </div>
-                    </div>
+                    <WebhookList
+                      webhooks={s.alerts.webhooks}
+                      secretsSet={s.secretsSet}
+                      matrix={s.notifications.matrix}
+                      save={(webhooks) => save({ alerts: { webhooks } })}
+                      test={testAlert}
+                      results={alertTest}
+                    />
                     <div className="space-y-2">
                       <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
                         <Toggle
@@ -3679,7 +3859,7 @@ export function SettingsPanel({
                           <span>/reset-state &lt;agent&gt;</span>
                           <span>/bg [@repo] &lt;prompt&gt;</span>
                           <span>/bg list · /bg cancel &lt;n&gt;</span>
-                          <span>/budget [set &lt;usd&gt;]</span>
+                          <span>/spend</span>
                           <span>/status · /harness · /activity</span>
                           <span>/install &lt;agent&gt;</span>
                           <span>/rebuild</span>
@@ -3692,6 +3872,152 @@ export function SettingsPanel({
                         </div>
                       </details>
                     )}
+                  </div>
+                </Section>
+
+                {/* Slack */}
+                <Section
+                  id="slack"
+                  icon={Hash}
+                  title="Slack"
+                  desc="Mirror Inbox filings to Slack — each category posts to its own channel. Needs a Slack app bot token (chat:write, channels:manage, reactions:write), not an incoming webhook."
+                >
+                  <div className="space-y-2">
+                    <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-3 py-2">
+                      <div className="text-[11.5px] font-medium text-zinc-200">
+                        Inbox destination
+                      </div>
+                      <div className="mt-0.5 text-[10.5px] text-zinc-500">
+                        Where filings surface. Slack only still persists every item to the in-app
+                        Inbox (browsable, badge quiet) — Slack becomes the nag surface.
+                      </div>
+                      <div className="mt-2 flex gap-1">
+                        {(
+                          [
+                            ['inbox', 'Inbox only'],
+                            ['both', 'Inbox + Slack'],
+                            ['slack', 'Slack only'],
+                          ] as const
+                        ).map(([val, label]) => (
+                          <button
+                            key={val}
+                            onClick={() => save({ inbox: { destination: val } })}
+                            className={`rounded-md border px-2.5 py-1 text-[11px] ${
+                              s.inbox.destination === val
+                                ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/20 text-zinc-100'
+                                : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      {s.inbox.destination !== 'inbox' && !s.secretsSet?.['slack.botToken'] && (
+                        <div className="mt-1.5 text-[11px] text-amber-400">
+                          Slack posting is off until a bot token is set — filings currently reach
+                          only the in-app Inbox.
+                        </div>
+                      )}
+                    </div>
+                    <label className="block space-y-1">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+                        Bot token
+                      </span>
+                      <SecretInput
+                        set={!!s.secretsSet?.['slack.botToken']}
+                        onSave={(v) => save({ slack: { botToken: v } })}
+                        placeholder="xoxb-..."
+                      />
+                    </label>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <label className="block min-w-0 space-y-1">
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+                          Default channel
+                        </span>
+                        <input
+                          defaultValue={s.slack.defaultChannel}
+                          onBlur={(e) => {
+                            const v = e.target.value.trim()
+                            if (v !== s.slack.defaultChannel) save({ slack: { defaultChannel: v } })
+                          }}
+                          placeholder="#terminal-inbox"
+                          spellCheck={false}
+                          className={`${inp} font-mono`}
+                        />
+                      </label>
+                      <label className="block min-w-0 space-y-1">
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+                          Channel prefix
+                        </span>
+                        <input
+                          defaultValue={s.slack.channelPrefix}
+                          onBlur={(e) => {
+                            const v = e.target.value.trim()
+                            if (v !== s.slack.channelPrefix) save({ slack: { channelPrefix: v } })
+                          }}
+                          placeholder="inbox"
+                          spellCheck={false}
+                          className={`${inp} font-mono`}
+                        />
+                      </label>
+                    </div>
+                    <label className="block space-y-1">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+                        Auto-invite member ID
+                      </span>
+                      <input
+                        defaultValue={s.slack.inviteUserId}
+                        onBlur={(e) => {
+                          const v = e.target.value.trim()
+                          if (v !== s.slack.inviteUserId) save({ slack: { inviteUserId: v } })
+                        }}
+                        placeholder="U0ABC123DEF"
+                        spellCheck={false}
+                        className={`${inp} font-mono`}
+                      />
+                      <span className="block text-[10.5px] text-zinc-600">
+                        Your Slack member ID (Profile → three-dot menu → Copy member ID). Invited to
+                        every channel the bot creates, so new categories appear in your sidebar
+                        without a channel-browser hunt.
+                      </span>
+                    </label>
+                    <Toggle
+                      on={s.slack.autoCreateChannels}
+                      onToggle={() =>
+                        save({ slack: { autoCreateChannels: !s.slack.autoCreateChannels } })
+                      }
+                      label="Auto-create channels"
+                      hint="Create + join a missing public channel on first post; off, unroutable posts fall back to the default channel."
+                    />
+                    <div className="flex items-center gap-2">
+                      <button onClick={testSlack} disabled={sl?.busy} className={actionButton}>
+                        {sl?.busy ? (
+                          <Loader2 size={13} className="animate-spin" />
+                        ) : (
+                          <Send size={13} strokeWidth={2} />
+                        )}
+                        Test
+                      </button>
+                      {sl && !sl.busy && (
+                        <span
+                          className={`text-[11px] ${sl.ok ? 'text-[var(--gt-green)]' : 'text-amber-400'}`}
+                        >
+                          {sl.ok ? '✓ Posted — check the default channel.' : sl.error}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[10.5px] text-zinc-600">
+                      Categories map to channels by slug — e.g. Monitoring/Certs →{' '}
+                      <span className="font-mono text-zinc-500">
+                        #{slackChannelName('Monitoring/Certs', s.slack)}
+                      </span>
+                      ; Uncategorized →{' '}
+                      <span className="font-mono text-zinc-500">
+                        #{slackChannelName(undefined, s.slack)}
+                      </span>
+                      . Recurrences thread under the original message; resolving adds a checkmark
+                      reaction.
+                    </div>
                   </div>
                 </Section>
 
@@ -3797,6 +4123,20 @@ export function SettingsPanel({
                   desc="Hide tabs you don't use. They stay registered (so cross-tab nav still works); they just don't render in the tab bar."
                 >
                   <TabsVisibilityPanel />
+                </Section>
+
+                <Section
+                  id="security"
+                  icon={ShieldCheck}
+                  title="Security"
+                  desc="What third-party repos are allowed to bring into the app."
+                >
+                  <Toggle
+                    on={s.allowRepoExtensions}
+                    onToggle={() => save({ allowRepoExtensions: !s.allowRepoExtensions })}
+                    label="Allow repo-provided widgets and tabs"
+                    hint="Off (default): .TerMinal/widgets.json and tabs.json from repos are ignored entirely — no commands, no embeds, no approval prompts. On: they go through the per-repo trust approval flow before anything runs. Your own global widgets/tabs (~/.config/TerMinal) are always allowed."
+                  />
                 </Section>
 
                 <Section

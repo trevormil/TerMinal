@@ -3,7 +3,9 @@ import {
   ENGINE_IDS,
   ENGINES,
   engineAllowsCustomModelOf,
+  engineEffortsOf,
   engineLabelOf,
+  engineSupportsEffort,
   type ModelOption,
 } from '../../../shared/engines'
 
@@ -41,6 +43,10 @@ export const ENGINE_VENDOR: Record<Engine, string> = Object.fromEntries(
 /** Engines that take an arbitrary model slug — their step shows a free-text field. */
 export const engineAllowsCustomModel = (engine: Engine): boolean =>
   engineAllowsCustomModelOf(engine)
+
+/** Per-engine reasoning-effort levels ([] = no effort control) — drives
+ *  whether pickers render an effort row at all. */
+export { engineEffortsOf, engineSupportsEffort }
 
 export function sessionEngineLabel(engine: SessionEngine | string): string {
   return engineLabelOf(engine)

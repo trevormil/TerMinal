@@ -54,6 +54,24 @@ import {
 } from './repo'
 import { getWorkingStructuralDiff } from './local-structural'
 import {
+  gitBranches,
+  gitCheckout,
+  gitCompareFilesPatch,
+  gitCreateBranch,
+  gitLog,
+  gitShow,
+  gitStashes,
+  gitTags,
+  gitWorkingFilePatch,
+  type GitBranchesResult,
+  type GitCommitDetail,
+  type GitLogResult,
+  type GitOpResult,
+  type GitPatchResult,
+  type GitStashesResult,
+  type GitTagsResult,
+} from './git-views'
+import {
   listProjectSessions,
   getProjectSession,
   hasSessions as repoHasSessions,
@@ -129,6 +147,19 @@ export type WorkspaceDaemon = {
   fileAtHead(rel: string): Promise<HeadFile> | HeadFile
   fileAtHeadBinary(rel: string): Promise<HeadFileBinary> | HeadFileBinary
   statusPorcelain(): Promise<string> | string
+  gitLog(opts?: {
+    limit?: number
+    skip?: number
+    ref?: string
+  }): Promise<GitLogResult> | GitLogResult
+  gitShow(ref: string): Promise<GitCommitDetail> | GitCommitDetail
+  gitBranches(): Promise<GitBranchesResult> | GitBranchesResult
+  gitCheckout(branch: string): Promise<GitOpResult> | GitOpResult
+  gitCreateBranch(name: string, from?: string): Promise<GitOpResult> | GitOpResult
+  gitStashes(): Promise<GitStashesResult> | GitStashesResult
+  gitTags(): Promise<GitTagsResult> | GitTagsResult
+  gitWorkingFilePatch(rel: string): Promise<GitPatchResult> | GitPatchResult
+  gitCompareFilesPatch(a: string, b: string): Promise<GitPatchResult> | GitPatchResult
   workingStructuralDiff(
     path: string,
     width?: number,
@@ -249,6 +280,15 @@ export function createLocalWorkspaceDaemon(cwd: string): WorkspaceDaemon {
     fileAtHead: (rel: string) => getFileAtHead(root(), rel),
     fileAtHeadBinary: (rel: string) => getFileAtHeadBinary(root(), rel),
     statusPorcelain: () => getStatusPorcelain(root()),
+    gitLog: (opts?: { limit?: number; skip?: number; ref?: string }) => gitLog(root(), opts),
+    gitShow: (ref: string) => gitShow(root(), ref),
+    gitBranches: () => gitBranches(root()),
+    gitCheckout: (branch: string) => gitCheckout(root(), branch),
+    gitCreateBranch: (name: string, from?: string) => gitCreateBranch(root(), name, from),
+    gitStashes: () => gitStashes(root()),
+    gitTags: () => gitTags(root()),
+    gitWorkingFilePatch: (rel: string) => gitWorkingFilePatch(root(), rel),
+    gitCompareFilesPatch: (a: string, b: string) => gitCompareFilesPatch(root(), a, b),
     workingStructuralDiff: (path: string, width?: number) =>
       getWorkingStructuralDiff(root(), path, width),
     docsList: () => listDocs(root() || ''),
@@ -351,6 +391,43 @@ export function createSshWorkspaceDaemon(
       reason: 'Image diff is not supported on remote workspaces yet.',
     }),
     statusPorcelain: () => '',
+    // Git views mirror the working-diff stance: not supported over SSH yet.
+    gitLog: (): GitLogResult => ({
+      ok: false,
+      error: 'Git history is not supported on remote workspaces yet.',
+    }),
+    gitShow: (): GitCommitDetail => ({
+      ok: false,
+      error: 'Commit view is not supported on remote workspaces yet.',
+    }),
+    gitBranches: (): GitBranchesResult => ({
+      ok: false,
+      error: 'Branch view is not supported on remote workspaces yet.',
+    }),
+    gitCheckout: (): GitOpResult => ({
+      ok: false,
+      error: 'Checkout is not supported on remote workspaces yet.',
+    }),
+    gitCreateBranch: (): GitOpResult => ({
+      ok: false,
+      error: 'Branch create is not supported on remote workspaces yet.',
+    }),
+    gitStashes: (): GitStashesResult => ({
+      ok: false,
+      error: 'Stashes are not supported on remote workspaces yet.',
+    }),
+    gitTags: (): GitTagsResult => ({
+      ok: false,
+      error: 'Tags are not supported on remote workspaces yet.',
+    }),
+    gitWorkingFilePatch: (): GitPatchResult => ({
+      ok: false,
+      error: 'Per-file diff is not supported on remote workspaces yet.',
+    }),
+    gitCompareFilesPatch: (): GitPatchResult => ({
+      ok: false,
+      error: 'File compare is not supported on remote workspaces yet.',
+    }),
     workingStructuralDiff: (): StructuralDiffResult => ({
       ok: false,
       reason: 'error',

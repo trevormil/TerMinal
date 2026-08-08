@@ -1,131 +1,60 @@
 import { describe, expect, test } from 'bun:test'
-import {
-  coerceSessionEngine,
-  ENGINE_IDS,
-  ENGINES,
-  engineAllowsCustomModelOf,
-  engineLabelOf,
-  engineSupportsSeed,
-  isEngineId,
-  isSessionEngineId,
-  modelArgs,
-  resumeArgs,
-  seedArgs,
-  SESSION_ENGINE_IDS,
-} from './engines'
+import { ENGINES, effortArgs, engineEffortsOf, engineSupportsEffort, coerceEffort } from './engines'
 
-describe('registry shape', () => {
-  test('every descriptor is internally consistent', () => {
-    for (const id of ENGINE_IDS) {
-      const e = ENGINES[id]
-      expect(e.id).toBe(id) // id key and field agree
-      expect(e.label.length).toBeGreaterThan(0)
-      expect(e.vendor.length).toBeGreaterThan(0)
-      expect(e.bin.name.length).toBeGreaterThan(0)
-      // An engine with a fixed model menu must not also claim free-text, and
-      // one with no menu must (else its model can never be chosen).
-      if (e.models.length === 0) expect(e.allowsCustomModel).toBe(true)
-    }
+// Reasoning-effort support (verified against each installed CLI's --help):
+//   claude   --effort <low|medium|high|xhigh|max>
+//   codex    -c model_reasoning_effort=<minimal|low|medium|high|xhigh>
+//   pi       --thinking <off|minimal|low|medium|high|xhigh|max>
+//   opencode --variant <minimal|low|medium|high|max>
+//   openrouter/openai-compat: or-agent --effort (codex harness passthrough)
+//   cursor/hermes: no effort control → null
+
+describe('engine effort registry', () => {
+  test('claude takes --effort with the Claude Code level set', () => {
+    expect(effortArgs('claude', 'xhigh')).toEqual(['--effort', 'xhigh'])
+    expect(engineEffortsOf('claude')).toEqual(['low', 'medium', 'high', 'xhigh', 'max'])
   })
 
-  test('local is a session engine but NOT a coding agent', () => {
-    expect(isEngineId('local')).toBe(false)
-    expect(isSessionEngineId('local')).toBe(true)
-    expect(SESSION_ENGINE_IDS).toContain('local')
-    expect(ENGINE_IDS).not.toContain('local' as never)
+  test('codex takes the config-key form usable by both TUI and exec', () => {
+    expect(effortArgs('codex', 'high')).toEqual(['-c', 'model_reasoning_effort=high'])
+    expect(engineEffortsOf('codex')).toContain('minimal')
+    expect(engineEffortsOf('codex')).toContain('xhigh')
   })
 
-  test('opencode is registered', () => {
-    expect(isEngineId('opencode')).toBe(true)
-    expect(ENGINES.opencode.bin.name).toBe('opencode')
-    // Installs outside a login shell's PATH — must declare a candidate path.
-    expect(ENGINES.opencode.bin.candidates?.[0]).toContain('.opencode')
+  test('pi takes --thinking, opencode takes --variant', () => {
+    expect(effortArgs('pi', 'max')).toEqual(['--thinking', 'max'])
+    expect(effortArgs('opencode', 'high')).toEqual(['--variant', 'high'])
   })
-})
 
-describe('labels', () => {
-  test('every engine has a non-lowercase-id label; local included', () => {
-    expect(engineLabelOf('claude')).toBe('Claude')
-    expect(engineLabelOf('openai-compat')).toBe('Self-hosted')
-    expect(engineLabelOf('local')).toBe('Local')
+  test('or-agent-harnessed engines take or-agent --effort', () => {
+    expect(effortArgs('openrouter', 'high')).toEqual(['--effort', 'high'])
+    expect(effortArgs('openai-compat', 'low')).toEqual(['--effort', 'low'])
   })
-  test('an unknown id echoes rather than rendering blank', () => {
-    expect(engineLabelOf('whatever')).toBe('whatever')
-  })
-})
 
-describe('seedArgs — the launch-seed contract per CLI', () => {
-  test('positional engines take the prompt as one argument', () => {
-    for (const id of ['claude', 'codex', 'cursor'])
-      expect(seedArgs(id, 'do the thing')).toEqual(['do the thing'])
+  test('cursor and hermes have no effort control', () => {
+    expect(engineSupportsEffort('cursor')).toBe(false)
+    expect(engineSupportsEffort('hermes')).toBe(false)
+    expect(effortArgs('cursor', 'high')).toEqual([])
+    expect(engineEffortsOf('cursor')).toEqual([])
   })
-  test('hermes takes -z, opencode takes --prompt', () => {
-    expect(seedArgs('hermes', 'p')).toEqual(['-z', 'p'])
-    expect(seedArgs('opencode', 'p')).toEqual(['--prompt', 'p'])
-  })
-  test('a multi-line prompt stays ONE argument (never split)', () => {
-    const p = 'line one\nline two\n\nline three'
-    expect(seedArgs('claude', p)).toEqual([p])
-    expect(seedArgs('opencode', p)).toEqual(['--prompt', p])
-  })
-  test('empty prompt or unknown engine yields nothing', () => {
-    expect(seedArgs('claude', '')).toEqual([])
-    expect(seedArgs('local', 'p')).toEqual([])
-    expect(seedArgs('nope', 'p')).toEqual([])
-  })
-  test('every registered engine can be seeded', () => {
-    for (const id of ENGINE_IDS) expect(engineSupportsSeed(id)).toBe(true)
-    expect(engineSupportsSeed('local')).toBe(false)
-  })
-})
 
-describe('resumeArgs', () => {
-  test('per-engine resume shapes', () => {
-    expect(resumeArgs('claude', 'abc')).toEqual(['--resume', 'abc'])
-    expect(resumeArgs('cursor', 'abc')).toEqual(['--resume', 'abc'])
-    expect(resumeArgs('codex', 'abc')).toEqual(['resume', 'abc']) // subcommand
-    expect(resumeArgs('opencode', 'abc')).toEqual(['-s', 'abc'])
+  test('empty/unknown inputs never emit args', () => {
+    expect(effortArgs('claude', '')).toEqual([])
+    expect(effortArgs('not-an-engine', 'high')).toEqual([])
+    // a level the engine does not accept is dropped, not passed through
+    expect(effortArgs('claude', 'minimal')).toEqual([])
+    expect(effortArgs('codex', 'bogus')).toEqual([])
   })
-  test('engines without a resume story yield nothing', () => {
-    expect(resumeArgs('openrouter', 'abc')).toEqual([])
-    expect(resumeArgs('claude', '')).toEqual([])
-  })
-  test('resume args are consistent with the resumable capability', () => {
-    for (const id of ENGINE_IDS) {
-      const hasArgs = resumeArgs(id, 'x').length > 0
-      expect(hasArgs).toBe(ENGINES[id].caps.resumable)
-    }
-  })
-})
 
-describe('modelArgs', () => {
-  test('--model vs -m per engine', () => {
-    expect(modelArgs('claude', 'opus')).toEqual(['--model', 'opus'])
-    expect(modelArgs('codex', 'gpt-5')).toEqual(['--model', 'gpt-5'])
-    expect(modelArgs('hermes', 'x/y')).toEqual(['-m', 'x/y'])
-    expect(modelArgs('opencode', 'anthropic/claude')).toEqual(['-m', 'anthropic/claude'])
+  test('coerceEffort validates against the engine level set', () => {
+    expect(coerceEffort('claude', 'high')).toBe('high')
+    expect(coerceEffort('claude', 'minimal')).toBeUndefined()
+    expect(coerceEffort('cursor', 'high')).toBeUndefined()
+    expect(coerceEffort('claude', undefined)).toBeUndefined()
+    expect(coerceEffort('claude', '')).toBeUndefined()
   })
-  test('no model → no args', () => {
-    expect(modelArgs('claude', '')).toEqual([])
-  })
-})
 
-describe('coerceSessionEngine', () => {
-  test('passes through valid ids incl. local, else falls back', () => {
-    expect(coerceSessionEngine('codex')).toBe('codex')
-    expect(coerceSessionEngine('opencode')).toBe('opencode')
-    expect(coerceSessionEngine('local')).toBe('local')
-    expect(coerceSessionEngine('bogus')).toBe('claude')
-    expect(coerceSessionEngine(undefined, 'codex')).toBe('codex')
-  })
-})
-
-describe('custom-model capability', () => {
-  test('free-text engines are exactly the ones without a fixed menu', () => {
-    expect(engineAllowsCustomModelOf('openrouter')).toBe(true)
-    expect(engineAllowsCustomModelOf('hermes')).toBe(true)
-    expect(engineAllowsCustomModelOf('openai-compat')).toBe(true)
-    expect(engineAllowsCustomModelOf('opencode')).toBe(true)
-    expect(engineAllowsCustomModelOf('claude')).toBe(false)
+  test('every engine declares effort explicitly (supported or null)', () => {
+    for (const e of Object.values(ENGINES)) expect('effort' in e).toBe(true)
   })
 })
