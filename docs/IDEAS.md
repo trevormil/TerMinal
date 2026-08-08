@@ -1,5 +1,10 @@
 # Ideas & backlog
 
+> **Maintainer scratch-notes, not a roadmap.** Nothing here is planned,
+> promised, or prioritized, and entries go stale without being swept. Don't read
+> it as a commitment or as documentation of how something works — the live
+> backlog is the Tickets tab, and the authoritative docs are the rest of `docs/`.
+
 Running notes for TerMinal — deferred prompts, known gaps, and creative
 ideas. Vibe-coded; this is the "what's next / what we punted" list.
 

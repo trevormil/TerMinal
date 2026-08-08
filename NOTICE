@@ -27,3 +27,36 @@ those owners. TerMinal's own MIT license does NOT extend to these marks.
 
 If you fork or redistribute TerMinal, review each owner's brand/trademark
 guidelines. Remove or replace any mark you are not authorized to use.
+
+================================================================================
+Bundled fonts — IBM Plex
+================================================================================
+
+TerMinal uses the IBM Plex typefaces:
+
+  - Desktop: via the @fontsource/ibm-plex-sans and @fontsource/ibm-plex-mono
+      npm packages (a dependency, not vendored source).
+  - iOS: the .ttf files vendored at ios/TerMinalRemote/Fonts/ (IBM Plex Sans
+      Regular/Medium/SemiBold, IBM Plex Mono Regular/Medium).
+
+IBM Plex is Copyright (c) IBM Corp., licensed under the SIL Open Font License,
+Version 1.1 <https://openfontlicense.org>. The OFL is a separate licence from
+TerMinal's MIT: the fonts may be bundled and redistributed under its terms, and
+those terms are NOT superseded by LICENSE. Reserved Font Name: "IBM Plex".
+
+================================================================================
+vendor/agentview — third-party reference submodule
+================================================================================
+
+vendor/agentview is a git submodule pointing at an UNRELATED third-party
+project (https://github.com/the-real-adammork/agentview), kept purely as a
+reference. It is:
+
+  - NOT built, bundled, imported, or shipped in any TerMinal artifact,
+  - optional to fetch — a plain `git clone` without --recurse-submodules leaves
+    it empty and everything still builds,
+  - licensed by its own upstream, on its own terms; TerMinal's MIT LICENSE does
+    not cover it and makes no claim over it.
+
+CI's machine-path check and the repo's own tooling exclude vendor/ for the same
+reason: it is not our code.
