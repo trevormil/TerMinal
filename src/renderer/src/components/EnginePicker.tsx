@@ -23,7 +23,7 @@ import {
 } from 'lucide-react'
 import type { Engine, Persona, PipelineInfo, EnvDetect } from '../lib/types'
 import type { LaunchMode } from '../lib/launch'
-import { ModelSelect } from './ModelSelect'
+import { EffortSelect, ModelSelect } from './ModelSelect'
 import { SkillHint } from './SkillHint'
 import { EngineLogo } from './EngineLogo'
 import { engineLabel, ENGINE_VENDOR, ENGINE_IDS } from '../lib/engines'
@@ -82,11 +82,13 @@ export function EnginePicker({
     lanes?: number,
     openrouterHarness?: 'codex' | 'hermes',
     extraContext?: string,
+    effort?: string,
   ) => void
   onClose: () => void
 }) {
   const [engine, setEngine] = useState<Engine | null>(null)
   const [model, setModel] = useState<string | undefined>(undefined)
+  const [effort, setEffort] = useState<string | undefined>(undefined)
   const [openrouterHarness, setOpenrouterHarness] = useState<'codex' | 'hermes'>('codex')
   const [extraContext, setExtraContext] = useState('')
   const [modelConfirmed, setModelConfirmed] = useState(false)
@@ -229,6 +231,7 @@ export function EnginePicker({
                       if (!ok) return
                       setEngine(e)
                       setModel(undefined)
+                      setEffort(undefined) // effort levels are engine-specific
                       setModelConfirmed(false)
                     }}
                     disabled={!ok}
@@ -277,7 +280,10 @@ export function EnginePicker({
                   {(['codex', 'hermes'] as const).map((h) => (
                     <button
                       key={h}
-                      onClick={() => setOpenrouterHarness(h)}
+                      onClick={() => {
+                        setOpenrouterHarness(h)
+                        if (h === 'hermes') setEffort(undefined) // hermes: no effort control
+                      }}
                       className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-left transition-colors ${
                         openrouterHarness === h
                           ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/20 text-zinc-100'
@@ -293,8 +299,13 @@ export function EnginePicker({
                 </div>
               </div>
             )}
-            <div className="max-h-[340px] overflow-y-auto pr-0.5">
+            <div className="max-h-[340px] space-y-3 overflow-y-auto pr-0.5">
               <ModelSelect engine={engine as Engine} model={model} onChange={setModel} />
+              {/* Hermes has no effort control, so the OpenRouter hermes harness
+                  hides the row rather than offering levels that would be dropped. */}
+              {!(engine === 'openrouter' && openrouterHarness === 'hermes') && (
+                <EffortSelect engine={engine as Engine} effort={effort} onChange={setEffort} />
+              )}
             </div>
             {engine === 'openai-compat' && !model && !ocDefaultModel ? (
               <button
@@ -428,6 +439,7 @@ export function EnginePicker({
                 {stepNum} · Launch as{' '}
                 <span className="text-zinc-600">
                   ({engineLabel(engine || '')} · {model || 'default'}
+                  {effort ? ` · effort ${effort}` : ''}
                   {persona ? ` · ${selectedContext?.title || persona}` : ''}
                   {pipeline && pipeline !== 'single' ? ` · ${pipeline}` : ''}
                   {showLanes && lanes > 1 ? ` · ${lanes} lanes` : ''})
@@ -505,6 +517,7 @@ export function EnginePicker({
                     1,
                     openrouterHarness,
                     extraContext.trim() || undefined,
+                    effort,
                   )
                 }
                 className="flex flex-col items-center gap-2 rounded-xl border border-[var(--gt-border)] bg-black/20 px-3 py-4 transition-colors hover:border-[var(--gt-accent)]/60 hover:bg-white/5"
@@ -544,6 +557,7 @@ export function EnginePicker({
                     showLanes ? lanes : 1,
                     openrouterHarness,
                     extraContext.trim() || undefined,
+                    effort,
                   )
                 }
                 className="flex flex-col items-center gap-2 rounded-xl border border-[var(--gt-border)] bg-black/20 px-3 py-4 transition-colors hover:border-[var(--gt-accent)]/60 hover:bg-white/5"

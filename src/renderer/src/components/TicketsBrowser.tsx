@@ -19,6 +19,12 @@ import { EngineModelPicker } from './EngineModelPicker'
 import { MrDetailView } from './MrDetail'
 import { SkillHint } from './SkillHint'
 import { TicketDetail } from './TicketDetail'
+import {
+  LinearAssignee,
+  LinearLabelChips,
+  LinearPriorityChip,
+  LinearStateChip,
+} from './LinearBadges'
 import { prIidFromUrl } from './TicketLineagePanel'
 import { ticketAgentContextId } from '../lib/ticketOwner'
 import {
@@ -719,17 +725,31 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                               <Hand size={10} strokeWidth={2.25} />
                             </Badge>
                           )}
-                          {t.horizon !== 'now' && (
-                            <Badge tone={horizonTone(t.horizon)}>
-                              {labelFrom(HORIZON_LABELS, t.horizon)}
-                            </Badge>
+                          {t.linear ? (
+                            // Linear-native row chips: exact state name + color,
+                            // Linear's own priority scale, assignee, labels —
+                            // not the coerced md-ticket vocabulary.
+                            <>
+                              <LinearLabelChips labels={t.linear.labels} max={2} />
+                              <LinearStateChip meta={t.linear} />
+                              <LinearPriorityChip meta={t.linear} />
+                              {t.linear.assignee && <LinearAssignee name={t.linear.assignee} />}
+                            </>
+                          ) : (
+                            <>
+                              {t.horizon !== 'now' && (
+                                <Badge tone={horizonTone(t.horizon)}>
+                                  {labelFrom(HORIZON_LABELS, t.horizon)}
+                                </Badge>
+                              )}
+                              {t.modelTier !== 'auto' && (
+                                <Badge tone={modelTierTone(t.modelTier)}>{t.modelTier}</Badge>
+                              )}
+                              <Badge tone={priorityTone(t.priority)}>
+                                {labelFrom(PRIORITY_LABELS, t.priority)}
+                              </Badge>
+                            </>
                           )}
-                          {t.modelTier !== 'auto' && (
-                            <Badge tone={modelTierTone(t.modelTier)}>{t.modelTier}</Badge>
-                          )}
-                          <Badge tone={priorityTone(t.priority)}>
-                            {labelFrom(PRIORITY_LABELS, t.priority)}
-                          </Badge>
                           {t.depends_on.length > 0 &&
                             t.depends_on.some((id) => {
                               const dep = tickets?.find((x) => x.id === id)
@@ -902,6 +922,7 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                     lanes,
                     _harness,
                     extraContext,
+                    effort,
                   ) => {
                     setPickImpl(false)
                     if (launchMode === 'terminal') {
@@ -917,6 +938,8 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                         engine: e,
                         cwd: ctx.repoRoot,
                         name: `Implement ${selected.externalKey || `#${selected.id}`}`,
+                        model,
+                        effort,
                         ticketSlug: selected.slug,
                         prompt: extraContext
                           ? `${prompt}\n\n--- Additional context for THIS run ---\n${extraContext}`
@@ -934,6 +957,7 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                       remoteForTabContext(ctx),
                       lanes,
                       extraContext,
+                      effort,
                     )
                     if (!('error' in r)) {
                       setStarted(true)

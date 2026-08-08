@@ -27,7 +27,6 @@ import { spawn as cpSpawn, execFileSync } from 'node:child_process'
 import { emitActivity } from './events'
 import { enginePath, resolvedWorktreesDir } from './settings'
 import { parseWeightedScore } from './loop-score'
-import { gateSpawn } from './budgets'
 import { decideOutcome } from './loop-decide'
 import { localDay } from './local-day'
 import { readJsonState, updateJsonState } from './atomic-write'
@@ -456,9 +455,6 @@ function turnPrompt(rec: LoopRecord, role: LoopRole): string {
  * Shared by stepLoop (headless) and singleEnterEvaluate (single-mode grader).
  */
 export function spawnRoleTurn(rec: LoopRecord, role: LoopRole): { error?: string } {
-  const gate = gateSpawn('loop')
-  if (gate.decision === 'refuse') return { error: gate.reason || 'blocked by budget' }
-
   const runId = randomUUID().slice(0, 8)
   const logFile = join(loopDir(rec), 'turns', `${rec.iteration}-${role}-${runId}.log`)
   const prompt = turnPrompt(rec, role)

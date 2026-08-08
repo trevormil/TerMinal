@@ -64,6 +64,88 @@ const SETTINGS_FILE = join(CFG, 'settings.json')
 const TG_SIDECAR = join(CFG, 'telegram.local.json')
 const LEGACY_TG_SCRIPT = join(homedir(), '.claude', 'bin', 'telegram-notify.sh')
 
+// ── slack inbox destination ──────────────────────────────────────────────
+// Canonical impl + tests: src/shared/slack.ts + src/main/slack-mirror.ts —
+// keep in sync (inlined: this file runs standalone under launchd and is baked
+// into remote images with no sibling modules). The app mirrors the decrypted
+// bot token + channel config to a 0600 sidecar (slack.local.json) whenever
+// inbox.destination posts to Slack; no sidecar → Slack off, all no-ops.
+const SLACK_SIDECAR = join(CFG, 'slack.local.json')
+function slackCfg() {
+  try {
+    const c = JSON.parse(readFileSync(SLACK_SIDECAR, 'utf8'))
+    return typeof c?.botToken === 'string' && c.botToken ? c : null
+  } catch {
+    return null
+  }
+}
+// In 'slack' mode Slack is the sole nag surface — the Telegram ping goes quiet.
+function slackQuietsTelegram() {
+  return slackCfg()?.destination === 'slack'
+}
+function slackSlug(raw) {
+  return String(raw || '')
+    .toLowerCase()
+    .replace(/[/\s]+/g, '-')
+    .replace(/[^a-z0-9_-]+/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+}
+function slackChannelFor(category, cfg) {
+  const fallback = slackSlug(cfg.defaultChannel).slice(0, 80) || 'terminal-inbox'
+  const slug = category && category !== 'Uncategorized' ? slackSlug(category) : ''
+  if (!slug) return fallback
+  const prefix = slackSlug(cfg.channelPrefix)
+  return (prefix ? `${prefix}-${slug}` : slug).slice(0, 80)
+}
+function slackApi(token, method, body) {
+  return fetch(`https://slack.com/api/${method}`, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${token}`,
+      'content-type': 'application/json; charset=utf-8',
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(8000),
+  }).then((r) => r.json())
+}
+// Post a filing to its category's channel (create-on-miss, default-channel
+// fallback), then stamp the message ref back onto the stored item so the app
+// can thread recurrences + react on resolve. Best-effort, never blocks filing.
+function mirrorHitlToSlack(item) {
+  const cfg = slackCfg()
+  if (!cfg) return
+  ;(async () => {
+    const channel = slackChannelFor(item.category, cfg)
+    const fallback = slackChannelFor(undefined, cfg)
+    const marker = item.source === 'completion-hook' ? '✅' : '⛔'
+    const text = `${marker} ${item.title}${item.action ? ` — ${item.action}` : ''}`
+    const post = (to) => slackApi(cfg.botToken, 'chat.postMessage', { channel: to, text })
+    let res = await post(`#${channel}`)
+    if (!res?.ok && res?.error === 'channel_not_found' && cfg.autoCreateChannels) {
+      const created = await slackApi(cfg.botToken, 'conversations.create', { name: channel })
+      if (created?.ok && created.channel?.id) {
+        // Invite the operator: a bot-created channel appears in nobody's
+        // sidebar until joined. Best-effort — never blocks the post.
+        if (cfg.inviteUserId)
+          await slackApi(cfg.botToken, 'conversations.invite', {
+            channel: created.channel.id,
+            users: cfg.inviteUserId,
+          }).catch(() => {})
+        res = await post(created.channel.id)
+      }
+    }
+    if (!res?.ok && channel !== fallback) res = await post(`#${fallback}`)
+    if (res?.ok && typeof res.channel === 'string' && typeof res.ts === 'string') {
+      updateJsonListShared(HITL_FILE, (list) =>
+        list.map((h) =>
+          h.id === item.id ? { ...h, slackChannel: res.channel, slackTs: res.ts } : h,
+        ),
+      )
+    }
+  })().catch(() => {})
+}
+
 // --- crash-safe shared-state writes (ticket 0068) ----------------------------
 //
 // Canonical implementation + tests: src/main/atomic-write.ts. This is inlined
@@ -463,90 +545,6 @@ function writeAIRun(opts) {
   }
 }
 
-// ABSENT vs PRESENT-BUT-UNREADABLE — the distinction ticket 111 is about.
-//
-// `dailyTotalUsd: 0` is a REAL configuration meaning "no cap", so a reader that
-// swallows a parse failure and falls through to the defaults makes a torn
-// budgets.json indistinguishable from an account the operator deliberately left
-// uncapped. This gate then spawns unbounded, and the refusal HITL never fires
-// because from here there was never a cap. Every other guard in this runner
-// fails closed; this one used to be the exception, and it is the only one where
-// guessing wrong costs money directly.
-//
-// Returns { value: object }  — caps to apply
-//         { value: null }    — no file: no cap was ever configured, proceed
-//         { refused: string }— unreadable: refuse, do not guess
-function readBudgetsOrRefuse() {
-  const budgetsFile = join(CFG, 'budgets.json')
-  if (!existsSync(budgetsFile)) return { value: null }
-  let raw
-  try {
-    raw = readFileSync(budgetsFile, 'utf8')
-  } catch (e) {
-    return { refused: `budgets.json unreadable (${e && e.message}) — refusing rather than assuming no cap` }
-  }
-  // An empty file is what a truncating writer leaves behind mid-crash, but it is
-  // also what `touch` leaves. Treat it as absent rather than wedging every run.
-  if (raw.trim() === '') return { value: null }
-  let parsed
-  try {
-    parsed = JSON.parse(raw)
-  } catch {
-    return { refused: 'budgets.json is corrupt — refusing rather than assuming no cap' }
-  }
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    return { refused: 'budgets.json is not a budgets object — refusing rather than assuming no cap' }
-  }
-  return { value: parsed }
-}
-
-// Budget gate — cron-side mirror of src/main/budgets.gateSpawn. Reads the
-// budgets.json + sums today's ai-runs to decide. Returns true to allow,
-// or { refused } to refuse. Refused fires emit a HITL via fileHitl so the
-// operator sees the skipped run.
-function budgetAllowsSpawn(agentId) {
-  const budgets = readBudgetsOrRefuse()
-  if (budgets.refused) return budgets
-  if (budgets.value === null) return true // no cap ever configured
-  try {
-    const b = budgets.value
-    // Override window bypasses entirely
-    if (b.overrideUntil && b.overrideUntil > Date.now()) return true
-    const cap = b.dailyTotalUsd || 0
-    const agentCap = (b.perAgent && b.perAgent[agentId]) || 0
-    if (cap <= 0 && agentCap <= 0) return true
-    // Sum today's spend from ai-runs/
-    if (!existsSync(AI_RUNS_DIR)) return true
-    const dayStart = (() => {
-      const d = new Date()
-      d.setHours(0, 0, 0, 0)
-      return d.getTime()
-    })()
-    let total = 0
-    let agentTotal = 0
-    for (const f of readdirSync(AI_RUNS_DIR)) {
-      if (!f.endsWith('.json')) continue
-      try {
-        const r = JSON.parse(readFileSync(join(AI_RUNS_DIR, f), 'utf8'))
-        if ((r.startedAt || 0) < dayStart) continue
-        total += r.costUsd || 0
-        if (agentId && r.agentId === agentId) agentTotal += r.costUsd || 0
-      } catch {}
-    }
-    if (agentCap > 0 && agentTotal >= agentCap) {
-      return {
-        refused: `per-agent cap $${agentCap.toFixed(2)} reached ($${agentTotal.toFixed(2)} spent)`,
-      }
-    }
-    if (cap > 0 && total >= cap) {
-      return { refused: `daily cap $${cap.toFixed(2)} reached ($${total.toFixed(2)} spent)` }
-    }
-    return true
-  } catch {
-    return true // never block on observability glitches
-  }
-}
-
 // Resolve the per-engine default model from settings — same fallback the
 // in-process runner (src/main/agents.ts) applies, so cron runs respect the
 // user's "always use sonnet" preference when the schedule itself has no
@@ -558,6 +556,46 @@ function engineDefaultModel(engine) {
   } catch {
     return ''
   }
+}
+
+// Per-engine reasoning-effort support — mirrors src/shared/engines.ts (keep in
+// sync by hand, like OR_PREAMBLE). Level set validated here so a stale/foreign
+// value in schedules.json or settings.json is dropped, never passed to a CLI
+// that would reject it.
+const ENGINE_EFFORTS = {
+  claude: ['low', 'medium', 'high', 'xhigh', 'max'],
+  codex: ['minimal', 'low', 'medium', 'high', 'xhigh'],
+  pi: ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
+  opencode: ['minimal', 'low', 'medium', 'high', 'max'],
+  openrouter: ['minimal', 'low', 'medium', 'high', 'xhigh'],
+  'openai-compat': ['minimal', 'low', 'medium', 'high', 'xhigh'],
+}
+
+function engineDefaultEffort(engine) {
+  try {
+    const s = JSON.parse(readFileSync(SETTINGS_FILE, 'utf8'))
+    return (s?.engines?.[engine]?.defaultEffort || '').trim()
+  } catch {
+    return ''
+  }
+}
+
+/** The resolved, validated effort level for a schedule ('' = none). */
+function resolveEffort(sched) {
+  const level = (sched.effort || '').trim() || engineDefaultEffort(sched.engine)
+  return (ENGINE_EFFORTS[sched.engine] || []).includes(level) ? level : ''
+}
+
+/** The engine-native effort args as a shell fragment ('' when none apply). */
+function effortFlag(sched) {
+  const level = resolveEffort(sched)
+  if (!level) return ''
+  if (sched.engine === 'claude') return ` --effort ${level}`
+  if (sched.engine === 'pi') return ` --thinking ${level}`
+  if (sched.engine === 'opencode') return ` --variant ${level}`
+  if (sched.engine === 'openrouter' || sched.engine === 'openai-compat')
+    return ` --effort ${level}` // or-agent passthrough → codex model_reasoning_effort
+  return ` -c model_reasoning_effort=${level}` // codex (TUI and exec take -c)
 }
 
 // The openai-compat base URL is a PLAIN settings value (unlike the sealed API
@@ -672,11 +710,12 @@ function fileHitl(item) {
   } catch (e) {
     log(`hitl write failed: ${e}`)
   }
+  mirrorHitlToSlack(rec)
   // An item that carries an explicit severity honors the same
   // inbox.notifyThreshold gate the desktop applies (mirrors terminal-cli's
   // fileHitl). Without one, the legacy always-ping policy stands so nothing
   // that used to alert goes silent.
-  if (!hitlIsLoud(rec.severity)) return
+  if (!hitlIsLoud(rec.severity) || slackQuietsTelegram()) return
   try {
     // HITL ALWAYS pings Telegram when bot+chat configured, regardless of the
     // general activity-feed `telegram.notify` toggle. HITL is by definition the
@@ -1178,22 +1217,6 @@ async function runSchedule(id) {
     return 0
   }
 
-  // Budget spawn-gate — refuse if today's spend hit the daily cap or this
-  // agent's per-agent cap. Mirrors src/main/budgets.gateSpawn so cron-fired
-  // runs respect the same boundary as in-process /bg spawns.
-  const budget = budgetAllowsSpawn(sched.agentId)
-  if (budget !== true && budget.refused) {
-    log(`run: schedule ${id} refused by budget gate — ${budget.refused}`)
-    fileHitl({
-      title: `Cron run refused · ${sched.agentTitle}`,
-      action: `Budget cap reached: ${budget.refused}. /budget override <Nh> to bypass.`,
-      detail: `schedule ${id} · agent ${sched.agentId}`,
-      repo: sched.repoLabel,
-      repoRoot: sched.repoRoot,
-    })
-    return 0
-  }
-
   // Concurrent-run guard. Stale runs were just swept; anything still
   // status:running for this schedule is a true overlap. Never allow two
   // concurrent runs of the same agent — they'd race on the same worktree
@@ -1333,19 +1356,20 @@ async function runSchedule(id) {
   // openai-compat = or-agent retargeted by OPENAI_BASE_URL (injected into the
   // child env below from settings.json); guard here so an unset base URL fails
   // loudly instead of or-agent silently falling back to OpenRouter.
+  const effFlag = effortFlag(sched)
   const cmd = scriptPath
     ? shq(scriptPath)
     : sched.engine === 'claude'
-      ? `claude -p ${shq(sched.prompt)} --permission-mode auto${modelFlag}`
+      ? `claude -p ${shq(sched.prompt)} --permission-mode auto${modelFlag}${effFlag}`
       : sched.engine === 'cursor'
         ? `cursor-agent -p --force --trust --output-format text --workspace ${shq(worktree)}${modelFlag} ${shq(sched.prompt)}`
         : sched.engine === 'openrouter'
-          ? `or-agent --dir ${shq(worktree)}${modelFlag} ${shq(`${OR_PREAMBLE}\n\n${sched.prompt}`)}`
+          ? `or-agent --dir ${shq(worktree)}${modelFlag}${effFlag} ${shq(`${OR_PREAMBLE}\n\n${sched.prompt}`)}`
           : sched.engine === 'openai-compat'
-            ? `[ -n "$OPENAI_BASE_URL" ] || { echo "openai-compat: no base URL configured (TerMinal Settings → Engines → Self-hosted)"; exit 2; }; or-agent --dir ${shq(worktree)}${modelFlag} ${shq(`${OR_PREAMBLE}\n\n${sched.prompt}`)}`
+            ? `[ -n "$OPENAI_BASE_URL" ] || { echo "openai-compat: no base URL configured (TerMinal Settings → Engines → Self-hosted)"; exit 2; }; or-agent --dir ${shq(worktree)}${modelFlag}${effFlag} ${shq(`${OR_PREAMBLE}\n\n${sched.prompt}`)}`
             : sched.engine === 'hermes'
               ? `hermes -z ${shq(`${OR_PREAMBLE}\n\n${sched.prompt}`)}${hermesModel} --usage-file ${shq(hermesUsage)} --yolo --accept-hooks`
-              : `codex exec -s danger-full-access -C ${shq(worktree)}${modelFlag} ${shq(sched.prompt)}`
+              : `codex exec -s danger-full-access -C ${shq(worktree)}${modelFlag}${effFlag} ${shq(sched.prompt)}`
   // zsh is macOS's default but usually absent on Linux hosts — fall back to bash there.
   const isMac = process.platform === 'darwin'
   const shell = process.env.SHELL || (isMac ? '/bin/zsh' : '/bin/bash')
@@ -1379,6 +1403,7 @@ async function runSchedule(id) {
     ...(sched.model || engineDefaultModel(sched.engine)
       ? { TERMINAL_MODEL: sched.model || engineDefaultModel(sched.engine) }
       : {}),
+    ...(resolveEffort(sched) ? { TERMINAL_EFFORT: resolveEffort(sched) } : {}),
     ...(sched.engine === 'openai-compat'
       ? {
           ...(openAICompatBaseUrl() ? { OPENAI_BASE_URL: openAICompatBaseUrl() } : {}),

@@ -12,7 +12,9 @@ export type NotifyChannelId = (typeof NOTIFY_CHANNELS)[number]
 export const CHANNEL_META: Record<NotifyChannelId, { label: string }> = {
   desktop: { label: 'Desktop' },
   telegram: { label: 'Telegram' },
-  webhook: { label: 'Webhook' },
+  // The row is the DEFAULT for every configured webhook; a destination that
+  // sets its own categories (WebhookRouting) overrides it.
+  webhook: { label: 'Webhook default' },
   push: { label: 'Phone' },
 }
 
@@ -134,7 +136,39 @@ export function channelWants(
   return typeof override === 'boolean' ? override : DEFAULT_MATRIX[channel][category]
 }
 
-/** Would ANY channel fire for this category — the gate on emitting a notification at all. */
-export function anyChannelWants(category: NotifyCategory, matrix?: NotifyMatrix): boolean {
-  return NOTIFY_CHANNELS.some((c) => channelWants(c, category, matrix))
+/**
+ * Per-destination category overrides. Unlike the other channels, `webhook` can
+ * have several configured destinations (a Slack URL, a Discord URL, your own
+ * endpoint) that each want different traffic — so routing for a webhook is its
+ * own overrides layered on top of the matrix's `webhook` row, not the row alone.
+ * `undefined` (or `{}`) means "whatever the row says", which is what every
+ * pre-existing single-webhook config becomes.
+ */
+export type WebhookRouting = Partial<Record<NotifyCategory, boolean>> | undefined
+
+/** Does THIS webhook destination want this category? Own override, else the row. */
+export function webhookWants(
+  category: NotifyCategory,
+  own: WebhookRouting,
+  matrix?: NotifyMatrix,
+): boolean {
+  const override = own?.[category]
+  return typeof override === 'boolean' ? override : channelWants('webhook', category, matrix)
+}
+
+/**
+ * Would ANY channel fire for this category — the gate on emitting a notification
+ * at all. `webhooks` carries each destination's overrides: one that opted into a
+ * category the matrix row declines would otherwise be dropped here, before
+ * dispatch ever sees the event.
+ */
+export function anyChannelWants(
+  category: NotifyCategory,
+  matrix?: NotifyMatrix,
+  webhooks: WebhookRouting[] = [],
+): boolean {
+  return (
+    NOTIFY_CHANNELS.some((c) => channelWants(c, category, matrix)) ||
+    webhooks.some((w) => webhookWants(category, w, matrix))
+  )
 }

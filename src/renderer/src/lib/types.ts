@@ -1,9 +1,13 @@
 import type { ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import type { NotifyMatrix } from '../../../shared/notifications'
+import type { NotifyCategory, NotifyMatrix } from '../../../shared/notifications'
 
 // Mirror of the preload `gt` bridge. Kept hand-written so plugins have a clean
 // typed surface without reaching across tsconfig roots into the preload build.
+
+/** One prompt the human typed, as extracted from the transcript. */
+export type UserPrompt = { text: string; ts: number }
+
 export type TranscriptStats = {
   ok: boolean
   sessionId: string
@@ -22,6 +26,8 @@ export type TranscriptStats = {
   aiTitle: string
   permissionMode: string
   lastPrompt: string
+  /** The last few prompts the human typed, oldest first. */
+  recentPrompts: UserPrompt[]
   toolCounts: Record<string, number>
   mtime: number
   ts: number
@@ -380,6 +386,23 @@ export type RepoTrustStatus = {
   commands: string[]
 }
 
+/** Linear's own schema on Linear-provider tickets — mirrors src/main/backlog.ts. */
+export type LinearMeta = {
+  identifier: string
+  stateName: string
+  stateType: string
+  stateColor?: string
+  priority: number
+  priorityLabel: string
+  assignee?: string
+  labels: { name: string; color?: string }[]
+  project?: string
+  cycle?: string
+  team?: string
+  estimate?: number
+  dueDate?: string
+}
+
 export type Ticket = {
   slug: string
   id: number
@@ -414,6 +437,8 @@ export type Ticket = {
   comments?: TicketComment[]
   provider?: 'local' | 'github' | 'linear' | 'obsidian'
   providerLabel?: string
+  /** Linear-native fields — set only when provider === 'linear'. */
+  linear?: LinearMeta
   externalId?: string
   externalKey?: string
   url?: string
@@ -499,6 +524,8 @@ export type TicketProviderConfig = {
     team?: string
     teamKey?: string
     listArgs?: Record<string, unknown>
+    /** linear.app workspace URL for the auto-synthesized embedded view. */
+    workspace?: string
   }
   obsidian?: ObsidianTicketConfig
   webview?: WebviewTicketConfig
@@ -535,12 +562,26 @@ export type DocsTree = {
 // From the shared registry — was a third copy of the same union.
 export type Engine = import('../../../shared/engines').EngineId
 export type SessionEngine = import('../../../shared/engines').SessionEngineId
-export type EngineCfg = { path: string; defaultModel: string; baseUrl: string }
+export type EngineCfg = {
+  path: string
+  defaultModel: string
+  defaultEffort: string
+  baseUrl: string
+}
 export type ForgePref = 'auto' | 'github' | 'gitlab'
 export type TelegramCfg = { notify: boolean; control: boolean; botToken: string; chatId: string }
+/** One outbound webhook destination. `categories` overrides the notification
+ *  matrix's `webhook` row for this destination only. */
+export type WebhookCfg = {
+  id: string
+  name: string
+  url: string
+  enabled: boolean
+  categories?: Partial<Record<NotifyCategory, boolean>>
+}
 export type AlertsCfg = {
   desktop: { enabled: boolean }
-  webhook: { enabled: boolean; url: string }
+  webhooks: WebhookCfg[]
 }
 export type AlertChannelId = 'telegram' | 'desktop' | 'webhook'
 export type InboxCfg = {
@@ -548,6 +589,19 @@ export type InboxCfg = {
   agentContextPreamble: boolean
   /** Minimum severity that fires a notification; below it, items are inbox-only. */
   notifyThreshold: 'urgent' | 'normal' | 'low'
+  /** Where filings surface: in-app Inbox, Slack, or both (shared/slack.ts).
+   *  'slack' still persists items — it only quiets the desktop/Telegram nag. */
+  destination: import('../../../shared/slack').InboxDestination
+}
+/** Slack as an inbox destination — bot token (sealed), not a webhook, so
+ *  per-category channels can be created/routed at post time. */
+export type SlackCfg = {
+  botToken: string
+  defaultChannel: string
+  channelPrefix: string
+  autoCreateChannels: boolean
+  /** Slack member id (U…) auto-invited to bot-created channels. '' → skip. */
+  inviteUserId: string
 }
 // Mobile bridge (TerMinal Remote for iOS). Token + TLS cert live outside
 // settings.json — see src/main/bridge/identity.ts.
@@ -663,6 +717,57 @@ export type WorkingDiff = {
   branch: string
   error?: string
 }
+// Git views (Files tab history/branches/stashes/tags) — mirrors src/main/git-views.ts.
+export type GitCommit = {
+  sha: string
+  shortSha: string
+  parents: string[]
+  author: string
+  date: number
+  subject: string
+  refs: string[]
+}
+export type GitLogResult = { ok: true; commits: GitCommit[] } | { ok: false; error: string }
+export type GitCommitFile = {
+  path: string
+  insertions: number
+  deletions: number
+  binary: boolean
+}
+export type GitCommitDetail =
+  | {
+      ok: true
+      sha: string
+      shortSha: string
+      author: string
+      email: string
+      date: number
+      subject: string
+      body: string
+      refs: string[]
+      files: GitCommitFile[]
+      patch: string
+      patchTruncated: boolean
+    }
+  | { ok: false; error: string }
+export type GitBranch = {
+  name: string
+  current: boolean
+  remote: boolean
+  sha: string
+  subject: string
+  date: number
+  upstream: string
+  ahead: number
+  behind: number
+}
+export type GitBranchesResult = { ok: true; branches: GitBranch[] } | { ok: false; error: string }
+export type GitStash = { ref: string; branch: string; subject: string; date: number }
+export type GitStashesResult = { ok: true; stashes: GitStash[] } | { ok: false; error: string }
+export type GitTag = { name: string; sha: string; subject: string; date: number }
+export type GitTagsResult = { ok: true; tags: GitTag[] } | { ok: false; error: string }
+export type GitOpResult = { ok: true } | { ok: false; error: string }
+export type GitPatchResult = { ok: true; patch: string } | { ok: false; error: string }
 export type Settings = {
   onboarded: boolean
   projectsDir: string
@@ -673,6 +778,7 @@ export type Settings = {
   telegram: TelegramCfg
   alerts: AlertsCfg
   inbox: InboxCfg
+  slack: SlackCfg
   notifications: { matrix: NotifyMatrix }
   bridge: BridgeCfg
   appearance: AppearanceCfg
@@ -685,6 +791,9 @@ export type Settings = {
   pinnedPanels: PinnedPanel[]
   openrouterApiKey: string
   openaiCompatApiKey: string
+  /** Allow repo-provided widgets/tabs (.TerMinal/widgets.json + tabs.json).
+   *  Off by default — repo code execution is opt-in, above the trust flow. */
+  allowRepoExtensions: boolean
   /**
    * Which sealed secrets are set. `settings:get` masks the VALUES (see
    * src/main/settings-mask.ts), so this is the only way the UI can tell
@@ -697,15 +806,26 @@ export type Settings = {
 export type SettingsPatch = Partial<
   Omit<
     Settings,
-    'telegram' | 'alerts' | 'inbox' | 'bridge' | 'appearance' | 'engines' | 'apps' | 'suggestions'
+    | 'telegram'
+    | 'alerts'
+    | 'inbox'
+    | 'slack'
+    | 'bridge'
+    | 'appearance'
+    | 'engines'
+    | 'apps'
+    | 'suggestions'
   >
 > & {
   telegram?: Partial<TelegramCfg>
   alerts?: {
     desktop?: Partial<AlertsCfg['desktop']>
-    webhook?: Partial<AlertsCfg['webhook']>
+    /** The whole list, always — main replaces it wholesale so deletes stick,
+     *  and restores each entry's saved url when the patch omits it. */
+    webhooks?: (Partial<WebhookCfg> & { id: string })[]
   }
   inbox?: Partial<InboxCfg>
+  slack?: Partial<SlackCfg>
   bridge?: Partial<BridgeCfg>
   appearance?: Partial<AppearanceCfg>
   engines?: Partial<Record<Engine, Partial<EngineCfg>>>
@@ -837,6 +957,8 @@ export type Agent = {
   engine?: Engine
   model?: string
   modelPolicy?: AgentModelPolicy
+  /** Reasoning-effort level for the agent's engine. undefined → engine default. */
+  effort?: string
   quality?: AgentQuality
   outputContract?: string
   acceptanceCriteria?: string[]
@@ -1016,6 +1138,8 @@ export type AgentRun = {
   agentTitle: string
   engine: Engine
   model?: string
+  /** The RESOLVED reasoning-effort level the run launched with. */
+  effort?: string
   persona?: string
   pipeline?: string
   status: AgentRunStatus
@@ -1046,6 +1170,7 @@ export type Schedule = {
   agentTitle: string
   engine: Engine
   model?: string
+  effort?: string
   prompt: string
   spec: ScheduleSpec
   enabled: boolean
@@ -1871,11 +1996,19 @@ export type GtApi = {
   telegram: {
     test: () => Promise<{ ok: boolean; error?: string }>
   }
+  slack: {
+    test: () => Promise<{ ok: boolean; error?: string }>
+  }
   alerts: {
     // `note` = succeeded WITH a caveat. macOS delivers notifications only for
     // signed apps since Electron 42, and this build is unsigned (ticket 93), so
     // the desktop channel can report ok while showing nothing.
-    test: (channel: AlertChannelId) => Promise<{ ok: boolean; error?: string; note?: string }>
+    /** `webhookId` names which destination to ping — required for 'webhook',
+     *  since the renderer only holds a mask of the URL. */
+    test: (
+      channel: AlertChannelId,
+      webhookId?: string,
+    ) => Promise<{ ok: boolean; error?: string; note?: string }>
   }
   cheapLlm: (opts: {
     messages: { role: string; content: string }[]
@@ -1950,6 +2083,7 @@ export type GtApi = {
       remote?: RemoteSession,
       openrouterHarness?: 'codex' | 'hermes',
       extraContext?: string,
+      effort?: string,
     ) => Promise<AgentRun | { error: string }>
     runTicket: (
       slug: string,
@@ -1960,6 +2094,7 @@ export type GtApi = {
       remote?: RemoteSession,
       lanes?: number,
       extraContext?: string,
+      effort?: string,
     ) => Promise<AgentRun | { error: string }>
     runPr: (
       pr: { iid: number; sourceBranch: string; title?: string; webUrl?: string },
@@ -1969,6 +2104,7 @@ export type GtApi = {
       pipeline?: string,
       model?: string,
       remote?: RemoteSession,
+      effort?: string,
     ) => Promise<AgentRun | { error: string }>
     runs: () => Promise<AgentRun[]>
     rerun: (runId: string) => Promise<AgentRun | { error: string }>
@@ -2030,6 +2166,7 @@ export type GtApi = {
       agentId: string
       engine: Engine
       model?: string
+      effort?: string
       spec: ScheduleSpec
       enabled?: boolean
       env?: ScheduleEnv
@@ -2206,6 +2343,17 @@ export type GtApi = {
   getFileAtHeadBinary: (rel: string) => Promise<{ ok: boolean; base64: string; reason?: string }>
   /** Raw `git status --porcelain`, for per-file tree decorations. */
   getStatusPorcelain: () => Promise<string>
+  /** Git views for the Files tab — history / branches / stashes / tags.
+   *  Shapes mirror src/main/git-views.ts. */
+  gitLog: (opts?: { limit?: number; skip?: number; ref?: string }) => Promise<GitLogResult>
+  gitShow: (ref: string) => Promise<GitCommitDetail>
+  gitBranches: () => Promise<GitBranchesResult>
+  gitCheckout: (branch: string) => Promise<GitOpResult>
+  gitCreateBranch: (name: string, from?: string) => Promise<GitOpResult>
+  gitStashes: () => Promise<GitStashesResult>
+  gitTags: () => Promise<GitTagsResult>
+  gitWorkingFilePatch: (rel: string) => Promise<GitPatchResult>
+  gitCompareFilesPatch: (a: string, b: string) => Promise<GitPatchResult>
   /** Per-turn workspace snapshots, in a shadow git repo (never the user's). */
   checkpoints: {
     list: () => Promise<{ sha: string; at: number; label: string }[]>
@@ -2333,24 +2481,6 @@ export type GtApi = {
       centerLine?: number,
       radius?: number,
     ) => Promise<ObservabilityTranscriptWindow | null>
-  }
-  budgets: {
-    get: () => Promise<{
-      dailyTotalUsd: number
-      perAgent: Record<string, number>
-      warnAt: number[]
-      overrideUntil: number | null
-    }>
-    setDaily: (usd: number) => Promise<unknown>
-    setAgent: (agentId: string, usd: number) => Promise<unknown>
-    override: (durationMs: number) => Promise<unknown>
-    gate: (agentId?: string) => Promise<{
-      decision: 'allow' | 'warn' | 'refuse'
-      reason?: string
-      spentTodayUsd: number
-      capRemainingUsd: number
-      capUsd: number
-    }>
   }
   bg: {
     list: () => Promise<BgTask[]>

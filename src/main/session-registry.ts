@@ -18,6 +18,7 @@ import { repoForCwd, repoRootOf } from './repo'
 import { createEpochRegistry } from './session-epoch'
 import {
   engineDefaultModel,
+  engineDefaultEffort,
   enginePath,
   openAICompatBaseUrl,
   readSettings,
@@ -123,6 +124,9 @@ export type StartOpts = {
   engine?: SessionEngine
   /** Per-session model override → passed as --model. Falls back to the engine's default. */
   model?: string
+  /** Per-session reasoning-effort override. Falls back to the engine's
+   *  configured default; dropped for engines without an effort control. */
+  effort?: string
   sessionId?: string
   cwd?: string
   name?: string
@@ -236,12 +240,20 @@ export function startSession(key: string, opts: StartOpts) {
         remote?.daemon?.engines?.[engine]?.defaultModel ||
         (!remote ? engineDefaultModel(engine) : '')
       : ''
+  // Same per-session-pick-then-engine-default ladder as the model above.
+  const defaultEffort =
+    engine !== 'local'
+      ? opts.effort ||
+        remote?.daemon?.engines?.[engine]?.defaultEffort ||
+        (!remote ? engineDefaultEffort(engine) : '')
+      : ''
   const { sessionId, args: launchArgs } = buildEngineLaunch({
     engine,
     mode: opts.mode,
     sessionId: opts.sessionId,
     name: opts.name,
     model: defaultModel,
+    effort: defaultEffort || undefined,
     openrouterHarness: opts.openrouterHarness,
     openAICompatBaseUrl: engine === 'openai-compat' ? openAICompatBaseUrl() : undefined,
   })

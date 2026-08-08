@@ -8,8 +8,7 @@ describe('localDay', () => {
   })
 
   // The bug: toISOString() is UTC, so an evening edit west of UTC stamped
-  // TOMORROW's date on ticket frontmatter, loop-log headings and the budget
-  // day-key (rolling the daily spend cap over hours early).
+  // TOMORROW's date on ticket frontmatter and loop-log headings.
   test('a local evening is still today, even though UTC has moved on', () => {
     const evening = new Date(2026, 6, 31, 22, 30) // 22:30 local, whatever the zone
     expect(localDay(evening)).toBe('2026-07-31')

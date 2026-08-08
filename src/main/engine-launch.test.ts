@@ -149,3 +149,84 @@ describe('buildEngineLaunch', () => {
     expect(r.args.length).toBeGreaterThan(0)
   })
 })
+
+describe('buildEngineLaunch — reasoning effort', () => {
+  test('claude gets --effort; local never does', () => {
+    const r = buildEngineLaunch({
+      engine: 'claude',
+      mode: 'new',
+      effort: 'xhigh',
+      newSessionId: fixed,
+    })
+    expect(r.args).toContain('--effort')
+    expect(r.args).toContain('xhigh')
+    expect(
+      buildEngineLaunch({ engine: 'local', mode: 'new', effort: 'high', newSessionId: fixed }).args,
+    ).toEqual([])
+  })
+
+  test('codex gets the -c config form (works for TUI and exec)', () => {
+    const r = buildEngineLaunch({
+      engine: 'codex',
+      mode: 'new',
+      effort: 'high',
+      newSessionId: fixed,
+    })
+    expect(r.args).toContain('model_reasoning_effort=high')
+  })
+
+  test('openrouter: codex harness gets the -c form, hermes harness gets nothing', () => {
+    const codexH = buildEngineLaunch({
+      engine: 'openrouter',
+      mode: 'new',
+      effort: 'high',
+      openrouterHarness: 'codex',
+      newSessionId: fixed,
+    })
+    expect(codexH.args).toContain('model_reasoning_effort=high')
+    const hermesH = buildEngineLaunch({
+      engine: 'openrouter',
+      mode: 'new',
+      effort: 'high',
+      openrouterHarness: 'hermes',
+      newSessionId: fixed,
+    })
+    expect(hermesH.args.join(' ')).not.toContain('effort')
+  })
+
+  test('openai-compat (codex TUI) gets the -c form', () => {
+    const r = buildEngineLaunch({
+      engine: 'openai-compat',
+      mode: 'new',
+      effort: 'low',
+      openAICompatBaseUrl: 'http://x',
+      newSessionId: fixed,
+    })
+    expect(r.args).toContain('model_reasoning_effort=low')
+  })
+
+  test('unsupported engines and off-list levels are dropped', () => {
+    expect(
+      buildEngineLaunch({
+        engine: 'cursor',
+        mode: 'new',
+        effort: 'high',
+        newSessionId: fixed,
+      }).args.join(' '),
+    ).not.toContain('effort')
+    expect(
+      buildEngineLaunch({
+        engine: 'claude',
+        mode: 'new',
+        effort: 'bogus',
+        newSessionId: fixed,
+      }).args.join(' '),
+    ).not.toContain('--effort')
+  })
+
+  test('pi gets --thinking', () => {
+    const r = buildEngineLaunch({ engine: 'pi', mode: 'new', effort: 'max', newSessionId: fixed })
+    expect(r.args).toContain('--thinking')
+    expect(r.args).toContain('max')
+  })
+})

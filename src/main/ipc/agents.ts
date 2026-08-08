@@ -151,6 +151,7 @@ export function registerAgentsIpc(deps: AgentsIpcDeps): void {
       requested?: unknown,
       openrouterHarness?: 'codex' | 'hermes',
       extraContext?: string,
+      effort?: string,
     ) =>
       (async () => {
         const remote = deps.requestedRemote(requested) || deps.curRemote()
@@ -164,6 +165,7 @@ export function registerAgentsIpc(deps: AgentsIpcDeps): void {
             model,
             openrouterHarness,
             extraContext,
+            effort,
           )
         const agent = (await deps.remoteAgentCatalog(remote)).find((a) => a.id === agentId)
         if (!agent) return { error: 'unknown agent' }
@@ -182,6 +184,7 @@ export function registerAgentsIpc(deps: AgentsIpcDeps): void {
           agentTitle: agent.title,
           engine: resolvedEngine,
           model: deps.remoteEngineModel(remote, resolvedEngine, model ?? agent.model),
+          effort: effort ?? agent.effort,
           steps,
           inPlace: agent.inPlace,
         })
@@ -211,6 +214,7 @@ export function registerAgentsIpc(deps: AgentsIpcDeps): void {
       requested?: unknown,
       lanes?: number,
       extraContext?: string,
+      effort?: string,
     ) => {
       const remote = deps.requestedRemote(requested) || deps.curRemote()
       if (remote) {
@@ -229,6 +233,7 @@ export function registerAgentsIpc(deps: AgentsIpcDeps): void {
             agentTitle: `Implement #${t.id}`,
             engine,
             model: deps.remoteEngineModel(remote, engine, model),
+            effort,
             steps,
           })
           if ('error' in run) return run
@@ -269,6 +274,7 @@ export function registerAgentsIpc(deps: AgentsIpcDeps): void {
         model,
         lanes,
         extraContext,
+        effort,
       )
       if ('error' in res) return res
       // Link the ticket's run pointer to the first lane (solo runs have exactly
@@ -298,11 +304,21 @@ export function registerAgentsIpc(deps: AgentsIpcDeps): void {
       pipeline?: string,
       model?: string,
       requested?: unknown,
+      effort?: string,
     ) =>
       (async () => {
         const remote = deps.requestedRemote(requested) || deps.curRemote()
         if (!remote)
-          return runPrAgent(repoRootOf(deps.cur().cwd), pr, kind, engine, persona, pipeline, model)
+          return runPrAgent(
+            repoRootOf(deps.cur().cwd),
+            pr,
+            kind,
+            engine,
+            persona,
+            pipeline,
+            model,
+            effort,
+          )
         if (!pr?.sourceBranch) return { error: 'PR/MR has no source branch' }
         const probe = await remoteProbe(remote).catch(() => null)
         const forgeLabel = probe?.forgeLabel || 'MR'
@@ -325,6 +341,7 @@ export function registerAgentsIpc(deps: AgentsIpcDeps): void {
           agentTitle: `${kind === 'review' ? 'Review' : 'Iterate'} ${forgeSym}${pr.iid}`,
           engine,
           model: deps.remoteEngineModel(remote, engine, model),
+          effort,
           steps,
           prRef: { iid: pr.iid, sourceBranch: pr.sourceBranch },
         })

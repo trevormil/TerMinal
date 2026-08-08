@@ -5,7 +5,9 @@ import {
   FilePlus,
   FolderPlus,
   ExternalLink,
+  GitBranch,
   GitCompare,
+  History,
   ArrowLeft,
   ArrowRight,
   MessageSquarePlus,
@@ -19,7 +21,8 @@ import { langForPath, useLangsReady } from '../../lib/lazyLang'
 import { FileTree, type FileTreeActions } from '../../components/FileTree'
 import { FileViewer, hasViewer } from '../../components/FileViewer'
 import { needsBinaryRead, viewerKindFor } from '../../../../shared/file-viewers'
-import { MergeDiffView } from '../../components/MergeDiffView'
+import { DiffView } from '../../components/MrDetail'
+import { BranchesPane, CommitDetailView, HistoryPane } from '../../components/GitViews'
 import {
   fileStatuses,
   parsePorcelain,
@@ -65,29 +68,29 @@ function filesTabPollsActive(): boolean {
   return document.visibilityState === 'visible' && document.hasFocus()
 }
 
+// Structural (difft) fetch for a single working-tree file — same helper the
+// whole-worktree WorkingDiffView passes to DiffView.
+const fetchWorkingStructural = (path: string, cols: number) =>
+  window.gt.getWorkingStructuralDiff(path, cols)
+
 /**
- * One file's HEAD vs working-tree diff — text through the CodeMirror merge
- * view, images through swipe/onion. `working` short-circuits the disk read
- * when the caller already holds the buffer (the active editor).
- *
- * A HEAD-read failure is NOT an empty original. Remote daemons answer
- * { ok: false, reason: 'Per-file diff not supported…' }, and collapsing that
- * to '' made every unchanged remote file render as a whole-file addition —
- * a confidently wrong diff, which is worse than saying we can't show one.
+ * One file's HEAD vs working-tree diff — text through the same DiffView the
+ * PRs → Diff tab renders (unified/split patch chrome), images through
+ * swipe/onion. The patch comes from git itself (git:working-file-patch), so
+ * remote daemons that can't serve it answer ok:false and we say so instead of
+ * rendering a confidently wrong whole-file addition.
  */
-function PerFileDiff({ path, working }: { path: string; working?: string }) {
+function PerFileDiff({ path }: { path: string }) {
   const isImage = viewerKindFor(path) === 'image'
-  const [head, setHead] = useState<string | null>(null)
+  const [patch, setPatch] = useState<string | null>(null)
   const [headB64, setHeadB64] = useState<string | null>(null)
-  const [work, setWork] = useState<string | null>(null)
   const [workB64, setWorkB64] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
   useEffect(() => {
     let alive = true
     setErr(null)
-    setHead(null)
+    setPatch(null)
     setHeadB64(null)
-    setWork(null)
     setWorkB64(null)
     if (isImage) {
       Promise.all([window.gt.getFileAtHeadBinary(path), window.gt.files.readBinary(path)])
@@ -104,22 +107,17 @@ function PerFileDiff({ path, working }: { path: string; working?: string }) {
       }
     }
     window.gt
-      .getFileAtHead(path)
+      .gitWorkingFilePatch(path)
       .then((r) => {
         if (!alive) return
-        if (!r.ok) return setErr(r.reason || 'Could not read this file at HEAD')
-        setHead(r.content)
+        if (!r.ok) return setErr(r.error)
+        setPatch(r.patch)
       })
       .catch((e) => alive && setErr(String(e?.message || e)))
-    if (working === undefined) {
-      window.gt.files.read(path).then((r) => alive && setWork(r.ok ? r.content : ''))
-    } else {
-      setWork(working)
-    }
     return () => {
       alive = false
     }
-  }, [path, working, isImage])
+  }, [path, isImage])
 
   if (err) return <div className="p-6 text-[12px] text-zinc-600">{err}</div>
   if (isImage) {
@@ -127,27 +125,32 @@ function PerFileDiff({ path, working }: { path: string; working?: string }) {
       return <div className="p-6 text-[12px] text-zinc-600">Loading diff…</div>
     return <ImageDiffView path={path} oldBase64={headB64} newBase64={workB64} />
   }
-  if (head === null || work === null)
-    return <div className="p-6 text-[12px] text-zinc-600">Loading diff…</div>
-  return <MergeDiffView original={head} modified={work} extensions={langForPath(path)} />
+  if (patch === null) return <div className="p-6 text-[12px] text-zinc-600">Loading diff…</div>
+  if (!patch.trim()) return <div className="p-6 text-[12px] text-zinc-600">No changes vs HEAD.</div>
+  return (
+    <DiffView
+      diff={patch}
+      scope="working-file"
+      iid={0}
+      showViewed={false}
+      allowStructural
+      fetchStructural={fetchWorkingStructural}
+    />
+  )
 }
 
 /** Two arbitrary files diffed against each other (tree "compare with"). */
 function CompareView({ a, b, onClose }: { a: string; b: string; onClose: () => void }) {
-  const [ca, setCa] = useState<string | null>(null)
-  const [cb, setCb] = useState<string | null>(null)
+  const [patch, setPatch] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
   useEffect(() => {
     let alive = true
-    setCa(null)
-    setCb(null)
+    setPatch(null)
     setErr(null)
-    Promise.all([window.gt.files.read(a), window.gt.files.read(b)]).then(([ra, rb]) => {
+    window.gt.gitCompareFilesPatch(a, b).then((r) => {
       if (!alive) return
-      if (!ra.ok) return setErr(`Can't read ${a} — ${ra.reason}`)
-      if (!rb.ok) return setErr(`Can't read ${b} — ${rb.reason}`)
-      setCa(ra.content)
-      setCb(rb.content)
+      if (!r.ok) return setErr(r.error)
+      setPatch(r.patch)
     })
     return () => {
       alive = false
@@ -172,10 +175,18 @@ function CompareView({ a, b, onClose }: { a: string; b: string; onClose: () => v
       <div className="min-h-0 flex-1 overflow-hidden">
         {err ? (
           <div className="p-6 text-[12px] text-zinc-600">{err}</div>
-        ) : ca === null || cb === null ? (
+        ) : patch === null ? (
           <div className="p-6 text-[12px] text-zinc-600">Loading…</div>
+        ) : !patch.trim() ? (
+          <div className="p-6 text-[12px] text-zinc-600">The files are identical.</div>
         ) : (
-          <MergeDiffView original={ca} modified={cb} extensions={langForPath(b)} />
+          <DiffView
+            diff={patch}
+            scope="compare"
+            iid={0}
+            showViewed={false}
+            allowStructural={false}
+          />
         )}
       </div>
     </div>
@@ -194,7 +205,14 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
   const [open, setOpen] = useState<OpenFile[]>([])
   const [activePath, setActivePath] = useState<string | null>(null)
   const [selectedDir, setSelectedDir] = useState('')
-  const [sidebar, setSidebar] = useState<'files' | 'search' | 'changes'>('files')
+  const [sidebar, setSidebar] = useState<'files' | 'search' | 'changes' | 'history' | 'branches'>(
+    'files',
+  )
+  // Git views (VS Code-style): the History pane's ref scope (null = HEAD) and
+  // the ref rendered in the main-pane commit view (a commit sha, stash ref, or
+  // tag picked from either git sidebar).
+  const [historyRef, setHistoryRef] = useState<string | null>(null)
+  const [gitDetailRef, setGitDetailRef] = useState<string | null>(null)
   // A viewer-backed file (markdown/csv/svg/...) can toggle to its raw source,
   // which hands rendering back to CodeMirror so edit/save stay in one place.
   // Owned HERE, not in FileViewer: flipping it swaps which FileViewer instance
@@ -883,6 +901,16 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
             ) : (
               <WorkingDiffView />
             )
+          ) : sidebar === 'history' || sidebar === 'branches' ? (
+            gitDetailRef ? (
+              <CommitDetailView refName={gitDetailRef} />
+            ) : (
+              <div className="flex h-full items-center justify-center text-[12px] text-zinc-600">
+                {sidebar === 'history'
+                  ? 'Select a commit to view it.'
+                  : 'Pick a branch to browse its history, or a stash/tag to view it.'}
+              </div>
+            )
           ) : compare && activeFile ? (
             <CompareView a={compare} b={activeFile.path} onClose={() => setCompare(null)} />
           ) : review && activeFile && !activeFile.err ? (
@@ -908,12 +936,7 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
               Can't open {activeFile.path} — {activeFile.err}
             </div>
           ) : fileDiff ? (
-            <PerFileDiff
-              path={activeFile.path}
-              working={
-                needsBinaryRead(viewerKindFor(activeFile.path)) ? undefined : activeFile.content
-              }
-            />
+            <PerFileDiff path={activeFile.path} />
           ) : hasViewer(activeFile.path) && !viewerSource ? (
             // Rendered viewer (markdown/image/pdf/csv/svg/binary). This runs
             // even when the utf8 read failed — an image legitimately fails that
@@ -993,9 +1016,50 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
               <GitCompare size={13} strokeWidth={2} />
               Changes
             </button>
+            <button
+              onClick={() => setSidebar('history')}
+              title="Commit history"
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium ${
+                sidebar === 'history'
+                  ? 'bg-white/10 text-zinc-100'
+                  : 'text-zinc-500 hover:text-zinc-200'
+              }`}
+            >
+              <History size={13} strokeWidth={2} />
+              History
+            </button>
+            <button
+              onClick={() => setSidebar('branches')}
+              title="Branches, stashes, and tags"
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium ${
+                sidebar === 'branches'
+                  ? 'bg-white/10 text-zinc-100'
+                  : 'text-zinc-500 hover:text-zinc-200'
+              }`}
+            >
+              <GitBranch size={13} strokeWidth={2} />
+              Branches
+            </button>
           </div>
 
-          {sidebar === 'changes' ? (
+          {sidebar === 'history' ? (
+            <HistoryPane
+              refName={historyRef}
+              onClearRef={() => setHistoryRef(null)}
+              selected={gitDetailRef}
+              onSelect={setGitDetailRef}
+            />
+          ) : sidebar === 'branches' ? (
+            <BranchesPane
+              onFilterHistory={(ref) => {
+                setHistoryRef(ref)
+                setGitDetailRef(null)
+                setSidebar('history')
+              }}
+              onShowRef={setGitDetailRef}
+              onRepoChanged={bump}
+            />
+          ) : sidebar === 'changes' ? (
             <div className="flex min-h-0 flex-1 flex-col">
               <button
                 onClick={() => setChangesFile(null)}
