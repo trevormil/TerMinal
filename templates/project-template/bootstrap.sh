@@ -119,9 +119,12 @@ migrate ".codex/hooks.workflow.json"
 # and the app both read it) before banking the file. If the resolver isn't
 # available, keep the file in place rather than lose the choice.
 if [ -f "$DST/.claude/forge" ]; then
-  # tm-state-dir keys off the repo at its CWD — run it from the target repo.
-  sidecar_forge="$(cd "$DST" && "${TERMINAL_CONFIG_DIR:-$HOME/.config/TerMinal}/plugin/bin/tm-state-dir" forge 2>/dev/null || echo "")"
+  # Force DERIVATION from the target repo: a TerMinal-spawned shell injects
+  # TERMINAL_STATE_DIR for the SESSION's repo, and honoring it here would
+  # write this repo's forge choice into a different repo's sidecar.
+  sidecar_forge="$(cd "$DST" && env -u TERMINAL_STATE_DIR "${TERMINAL_CONFIG_DIR:-$HOME/.config/TerMinal}/plugin/bin/tm-state-dir" forge 2>/dev/null || echo "")"
   if [ -n "$sidecar_forge" ]; then
+    mkdir -p "$(dirname "$sidecar_forge")"
     [ -f "$sidecar_forge" ] || cp "$DST/.claude/forge" "$sidecar_forge"
     migrate ".claude/forge"
   else
