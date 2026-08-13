@@ -33,6 +33,8 @@ import type { Tab, TabContext, HitlItem } from '../../lib/types'
 import { relativeTime } from '../../lib/time'
 import { ageColor, ageLabel, ageTierOf, untilLabel } from '../../lib/inboxAge'
 import { snoozePresets } from '../../../../shared/snooze'
+import { usePolled } from '../../lib/usePolled'
+import { getPref, setPref, usePref } from '../../lib/prefs'
 
 // Alert loudness, shown as a tag. Mirrors src/main/hitl-severity.ts; legacy
 // 'push' reads as urgent.
@@ -158,30 +160,17 @@ export function InboxDrawer({
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
   // Persisted, so it survives a reload — which is exactly why resolveSelection
   // has to cope with the category having disappeared meanwhile.
-  const [category, setCategory] = useState<string>(
-    () => localStorage.getItem('gt.inbox.category') || ALL,
-  )
-  const pickCategory = (name: string) => {
-    setCategory(name)
-    localStorage.setItem('gt.inbox.category', name)
-  }
+  const [category, pickCategory] = usePref('inboxCategory')
   // Which parents are folded shut. Persisted alongside the selection so the
   // sidebar you arranged is the sidebar you come back to.
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
-    try {
-      const raw = localStorage.getItem('gt.inbox.collapsed')
-      return new Set<string>(raw ? JSON.parse(raw) : [])
-    } catch {
-      // A corrupt value must not take the Inbox down with it — worst case the
-      // tree opens fully expanded, which is the default anyway.
-      return new Set()
-    }
-  })
+  // A corrupt stored value must not take the Inbox down with it; the registry
+  // falls back to [] there, so the tree opens fully expanded — the default anyway.
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set(getPref('inboxCollapsed')))
   const toggleCollapsed = (name: string) => {
     setCollapsed((prev) => {
       const next = new Set(prev)
       next.has(name) ? next.delete(name) : next.add(name)
-      localStorage.setItem('gt.inbox.collapsed', JSON.stringify([...next]))
+      setPref('inboxCollapsed', [...next])
       return next
     })
   }
@@ -226,23 +215,16 @@ export function InboxDrawer({
       .then(setSnoozes)
       .catch(() => {})
   useEffect(() => {
-    void reload()
-    void reloadSnoozes()
-    // pick up newly auto-filed items (e.g. a failed cron) live
+    // pick up newly auto-filed items (e.g. a failed cron) live — the initial
+    // load is the poll's own immediate first fetch, below.
     const off = window.gt.activity.onEvent((ev) => {
       if (ev.kind === 'blocked' || ev.kind === 'task-complete') void reload()
     })
-    const t = setInterval(() => {
-      void reload()
-      // Also re-reads snoozes, so an item that comes due reappears in the main
-      // list within one poll rather than waiting for a manual refresh.
-      void reloadSnoozes()
-    }, 15_000)
-    return () => {
-      off()
-      clearInterval(t)
-    }
+    return () => off()
   }, [])
+  // Poll the list. Also re-reads snoozes, so an item that comes due reappears
+  // in the main list within one poll rather than waiting for a manual refresh.
+  usePolled(async () => Promise.all([reload(), reloadSnoozes()]), { intervalMs: 15_000 })
 
   // One axis: read vs unread. No archive. Legacy items already resolved before
   // this change stay hidden (they were archived); everything else shows, newest

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   Activity,
   Play,
@@ -16,6 +16,7 @@ import { Badge } from '../../components/ui'
 import type { BadgeTone } from '../../components/ui'
 import { useResizableWidth, ResizeHandle } from '../../components/ResizeHandle'
 import { relativeTime } from '../../lib/time'
+import { usePolled } from '../../lib/usePolled'
 import { daemonHealth, stalenessOf } from '../../../../shared/monitor-liveness'
 import type {
   Tab,
@@ -870,11 +871,7 @@ function MonitoringTab(_: { ctx: TabContext }) {
       .then((list) => setMonitors(list))
       .catch(() => {})
   }
-  useEffect(() => {
-    load()
-    const t = setInterval(load, 15_000)
-    return () => clearInterval(t)
-  }, [])
+  usePolled(async () => setMonitors(await window.gt.monitors.list()), { intervalMs: 15_000 })
 
   // Group by `group`; list is already sorted worst-first, so preserve order.
   const groups = useMemo(() => {

@@ -39,12 +39,13 @@ import type {
 } from '../../lib/types'
 import { EngineModelPicker } from '../../components/EngineModelPicker'
 import { relativeTime } from '../../lib/time'
+import { usePolled } from '../../lib/usePolled'
+import { getPref, setPref } from '../../lib/prefs'
 
 const WD = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
 const FIELD =
   'rounded-lg border border-[var(--gt-border)] bg-black/30 px-2 py-1.5 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60'
 
-const SCHED_REPO_FILTER_KEY = 'gt.schedules.repoFilter'
 const repoOf = (root: string) => root.split('/').filter(Boolean).pop() || root
 
 function fmtWhen(ts?: number | null): string {
@@ -557,10 +558,12 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
   const [creating, setCreating] = useState(false)
   const [expanded, setExpanded] = useState<string | null>(null)
   const [runs, setRuns] = useState<CronRun[]>([])
-  const [log, setLog] = useState<{ runId: string; text: string } | null>(null)
+  // Which run's log pane is open. The text itself is polled (below) rather than
+  // stored, so the tail and the "which one is open" question stay separate.
+  const [openLogId, setOpenLogId] = useState<string | null>(null)
   const [msg, setMsg] = useState('')
   // '__auto__' = follow the current repo (resolved below); '' = all repos.
-  const [repo, setRepo] = useState(() => localStorage.getItem(SCHED_REPO_FILTER_KEY) ?? '__auto__')
+  const [repo, setRepo] = useState(() => getPref('schedulesRepoFilter'))
   const activeRepoLabel = ctx.repoPath || repoOf(ctx.repoRoot || ctx.cwd || '')
   // The pause-all/kill-switch (agents-disabled.ts) is a LOCAL-only mechanism;
   // the remote daemon has no disabled-list, so those IPCs no-op when a remote
@@ -573,17 +576,13 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
     setRepo(activeRepoLabel)
   }, [activeRepoLabel, repo, ctx.repoRoot])
   const setRepoFilter = (value: string) => {
-    localStorage.setItem(SCHED_REPO_FILTER_KEY, value)
+    setPref('schedulesRepoFilter', value)
     setRepo(value)
   }
   // Tick the relative "fires in 12m" labels every minute. The Schedule.nextRun
   // value is already on each record (computed by readSchedules); this just
   // forces the count-down strings to refresh in place.
-  const [, setClockTick] = useState(0)
-  useEffect(() => {
-    const id = setInterval(() => setClockTick((n) => n + 1), 60_000)
-    return () => clearInterval(id)
-  }, [])
+  usePolled(async () => Date.now(), { intervalMs: 60_000 })
   const [disabled, setDisabledIds] = useState<Set<string>>(new Set())
   // Lazy-loaded bash bodies, keyed by agentId. Same cache pattern as the Agents tab.
   const [scriptByAgent, setScriptByAgent] = useState<
@@ -612,24 +611,19 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
     return () => off()
   }, [])
 
-  // Live log tail while a running cron job's log is open. Polls every 1.5s and
-  // updates the inline log pane so the operator sees output as `script -q`
-  // streams agent stdout, instead of having to re-click "log".
-  useEffect(() => {
-    if (!log) return
-    const targetRun = runs.find((r) => r.id === log.runId)
-    if (!targetRun || targetRun.status !== 'running') return
-    let alive = true
-    const tick = async () => {
-      const text = await window.gt.schedules.runLog(log.runId)
-      if (alive && text !== log.text) setLog({ runId: log.runId, text })
-    }
-    const id = setInterval(tick, 1500)
-    return () => {
-      alive = false
-      clearInterval(id)
-    }
-  }, [log?.runId, log?.text, runs])
+  // Live log tail while the open run is still going: poll every 1.5s so the
+  // operator sees output as `script -q` streams agent stdout. Once the run
+  // finishes the log is final, so it drops to a one-shot fetch (intervalMs 0)
+  // — which also covers opening the log of an already-finished run.
+  const openLogRunning = runs.find((r) => r.id === openLogId)?.status === 'running' && !!openLogId
+  const logTail = usePolled(
+    async () => (openLogId ? await window.gt.schedules.runLog(openLogId) : ''),
+    {
+      intervalMs: openLogRunning ? 1500 : 0,
+      enabled: !!openLogId,
+      deps: [openLogId, openLogRunning],
+    },
+  )
 
   // Auto-refresh the expanded schedule's run list while any of its runs is still
   // running, so a run that finishes flips running → done/failed IN PLACE instead
@@ -638,18 +632,13 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
   // stream of same-status polls doesn't churn the interval; the effect tears the
   // poll down the moment nothing is running.
   const anyRunning = runs.some((r) => r.status === 'running')
+  const runsPoll = usePolled(
+    async () => (expanded ? await window.gt.schedules.runs(expanded) : []),
+    { intervalMs: 2000, enabled: !!expanded && anyRunning, deps: [expanded] },
+  )
   useEffect(() => {
-    if (!expanded || !anyRunning) return
-    let alive = true
-    const id = setInterval(async () => {
-      const next = await window.gt.schedules.runs(expanded)
-      if (alive) setRuns(next)
-    }, 2000)
-    return () => {
-      alive = false
-      clearInterval(id)
-    }
-  }, [expanded, anyRunning])
+    if (runsPoll.data) setRuns(runsPoll.data)
+  }, [runsPoll.data])
 
   // Global view: repo options span every repo that has a schedule. (Run-only
   // repos previously also appeared here; that's now the Runs tab's job.)
@@ -669,7 +658,7 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
       return
     }
     setExpanded(id)
-    setLog(null)
+    setOpenLogId(null)
     setRuns(await window.gt.schedules.runs(id))
     // Lazy-fetch the script body for the schedule's agent so it renders above
     // the run history. Cache including null so we don't re-hit IPC.
@@ -982,7 +971,7 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
                     </div>
                   ) : (
                     runs.map((r) => {
-                      const open = log?.runId === r.id
+                      const open = openLogId === r.id
                       const dur =
                         r.endedAt && r.startedAt
                           ? fmtDuration(r.endedAt - r.startedAt)
@@ -992,13 +981,7 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
                       return (
                         <div key={r.id}>
                           <button
-                            onClick={async () =>
-                              setLog(
-                                open
-                                  ? null
-                                  : { runId: r.id, text: await window.gt.schedules.runLog(r.id) },
-                              )
-                            }
+                            onClick={() => setOpenLogId(open ? null : r.id)}
                             className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-[11px] text-left ${
                               open ? 'bg-white/5' : 'hover:bg-white/5'
                             }`}
@@ -1017,14 +1000,14 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
                               className={open ? 'text-[var(--gt-accent-light)]' : 'text-zinc-600'}
                             />
                           </button>
-                          {open && log && (
+                          {open && (
                             <div className="mt-1 rounded-lg border border-[var(--gt-border)] bg-[var(--gt-code-bg)]">
                               <div className="flex items-center justify-between border-b border-[var(--gt-border)]/60 px-2 py-1">
                                 <span className="text-[10px] uppercase tracking-wider text-zinc-600">
                                   log
                                 </span>
                                 <button
-                                  onClick={() => setLog(null)}
+                                  onClick={() => setOpenLogId(null)}
                                   className="rounded text-zinc-600 hover:bg-white/5 hover:text-zinc-300"
                                   title="Close log"
                                 >
@@ -1032,7 +1015,7 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
                                 </button>
                               </div>
                               <div className="max-h-72 overflow-auto p-2">
-                                <RunOutputView text={log.text} engine={r.engine} />
+                                <RunOutputView text={logTail.data ?? ''} engine={r.engine} />
                               </div>
                             </div>
                           )}

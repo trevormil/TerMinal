@@ -85,7 +85,7 @@ describe('prefs registry', () => {
 
   test('survives storage being unavailable', () => {
     g.localStorage = undefined
-    expect(getPref('inboxCategory')).toBe('all')
+    expect(getPref('inboxCategory')).toBe('All')
     expect(() => setPref('inboxCategory', 'x')).not.toThrow()
   })
 

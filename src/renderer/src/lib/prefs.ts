@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { ALL as ALL_INBOX_CATEGORIES } from '../../../shared/inbox-categories'
 
 // Typed registry for renderer-local UI preferences.
 //
@@ -57,7 +58,7 @@ export const PREFS = {
   schedulesRepoFilter: str('gt.schedules.repoFilter', '__auto__'),
   runsRepoFilter: str('gt.runs.repoFilter', '__auto__'),
   activityLastSeen: num('gt.activity.lastSeen', 0),
-  inboxCategory: str('gt.inbox.category', 'all'),
+  inboxCategory: str('gt.inbox.category', ALL_INBOX_CATEGORIES),
   inboxCollapsed: strArray('gt.inbox.collapsed', []),
 } satisfies Record<string, PrefDef<never> | PrefDef<string> | PrefDef<number> | PrefDef<string[]>>
 
