@@ -1352,9 +1352,24 @@ export type Monitor = {
   intervalSec: number
   enabled: boolean
   group?: string
+  /** Failed checks in a row before the monitor is published down and alerts. */
+  minConsecutiveFailures: number
   notify: MonitorNotify
   config: Record<string, unknown>
 }
+/** Which layer a failing probe failed at — mirror of src/shared/monitor-flap.ts. */
+export type MonitorFailureCategory =
+  | 'dns'
+  | 'refused'
+  | 'unreachable'
+  | 'timeout'
+  | 'tls'
+  | 'http-status'
+  | 'body'
+  | 'command'
+  | 'unknown'
+/** Daemon verdict on whether THIS machine has connectivity. */
+export type MonitorConnectivity = { offline: boolean; since?: number }
 export type MonitorStatusState = {
   id: string
   status: MonitorState
@@ -1370,6 +1385,14 @@ export type MonitorStatusState = {
   since: number
   lastTransition: { from: string; to: string; at: number } | null
   history: { at: number; status: string }[]
+  /** Failed checks in a row, including ones held below the alert threshold. */
+  consecutiveFailures?: number
+  category?: MonitorFailureCategory
+  /** The raw probe verdict — differs from `status` while a blip is held back. */
+  observed?: MonitorState
+  /** The last cycle was discarded for lack of local connectivity. */
+  paused?: boolean
+  pausedSince?: number
 }
 export type MonitorWithState = Monitor & { state: MonitorStatusState | null }
 export type HitlItem = {
@@ -2221,6 +2244,8 @@ export type GtApi = {
      *  should not. */
     save: (list: Monitor[]) => Promise<MonitorSaveResult>
     run: (id: string) => Promise<MonitorWithState[]>
+    /** Whether the daemon has established that THIS machine is offline. */
+    connectivity: () => Promise<MonitorConnectivity>
   }
   ci: {
     list: (repoRoot: string, limit?: number) => Promise<CiListResult>

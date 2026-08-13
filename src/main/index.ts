@@ -206,6 +206,7 @@ import {
   writeMonitors,
   validateMonitors,
   runMonitorProbe,
+  readMonitorConnectivity,
 } from './monitors'
 import { startMonitorLivenessWatch } from './monitor-liveness-runtime'
 import { listCiRuns, listCiJobs, fetchCiLog } from './ci'
@@ -1295,6 +1296,10 @@ ipcMain.handle('hitl:list', () => readHitl())
 // Monitoring: read-only list for the tab; writes go through monitors.json (the
 // tab edits it directly via these handlers), and a check triggers the daemon.
 ipcMain.handle('monitors:list', () => listMonitorsWithStatus())
+// Whether the DAEMON believes THIS machine is offline. The tab renders a paused
+// banner from it: when the operator's own uplink drops, every monitor would
+// otherwise read as a red outage that nobody should act on.
+ipcMain.handle('monitors:connectivity', () => readMonitorConnectivity())
 ipcMain.handle('monitors:save', (_e, list: unknown) => {
   // monitors.json is executed by bin/terminal-monitor on a launchd timer, so
   // the write path validates rather than trusting the renderer's JSON.

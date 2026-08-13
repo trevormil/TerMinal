@@ -293,6 +293,7 @@ const gt = {
     list: () => ipcRenderer.invoke('monitors:list'),
     save: (list: unknown) => ipcRenderer.invoke('monitors:save', list),
     run: (id: string) => ipcRenderer.invoke('monitors:run', id),
+    connectivity: () => ipcRenderer.invoke('monitors:connectivity'),
   },
   ci: {
     list: (repoRoot: string, limit?: number) => ipcRenderer.invoke('ci:list', repoRoot, limit),

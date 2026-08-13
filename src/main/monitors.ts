@@ -3,6 +3,13 @@ import { readFileSync, mkdirSync, readdirSync } from 'node:fs'
 import { updateJsonState } from './atomic-write'
 import { join } from 'node:path'
 import { terminalConfigDir } from './config-dir'
+import {
+  DEFAULT_MIN_CONSECUTIVE_FAILURES,
+  normalizeMinConsecutiveFailures,
+  type FailureCategory,
+} from '../shared/monitor-flap'
+
+export { DEFAULT_MIN_CONSECUTIVE_FAILURES }
 
 // The Monitoring subsystem's app-side surface: config + latest state, read by
 // the Monitoring tab and the bridge. The DAEMON (bin/terminal-monitor) owns all
@@ -34,6 +41,13 @@ export type Monitor = {
   intervalSec: number
   enabled: boolean
   group?: string
+  /**
+   * How many checks in a row must fail before the monitor is published as
+   * down and an alert is filed. 1 restores the old alert-on-first-failure
+   * behaviour. Absent on monitors written before this field existed — read
+   * through `normalizeMinConsecutiveFailures`, never raw.
+   */
+  minConsecutiveFailures: number
   notify: MonitorNotify
   /** Type-specific knobs (thresholds, expected status, etc.). */
   config: Record<string, unknown>
@@ -55,11 +69,42 @@ export type MonitorStatus = {
   since: number
   lastTransition: { from: MonitorState; to: MonitorState; at: number } | null
   history: { at: number; status: MonitorState }[]
+  /** Failed checks in a row, including ones held below the alert threshold. */
+  consecutiveFailures?: number
+  /** What kind of failure the last non-ok probe hit. */
+  category?: FailureCategory
+  /** Raw probe verdict before the threshold held it back — the "recent blip". */
+  observed?: MonitorState
+  /** True when the last cycle was discarded for lack of local connectivity. */
+  paused?: boolean
+  pausedSince?: number
 }
 
 const CFG = (): string => terminalConfigDir()
 export const MONITORS_FILE = (): string => join(CFG(), 'monitors.json')
 export const MONITOR_STATE_DIR = (): string => join(CFG(), 'monitor-state')
+export const MONITOR_CONNECTIVITY_FILE = (): string => join(CFG(), 'monitor-connectivity.json')
+
+/** The daemon's latest verdict on whether THIS machine has connectivity. */
+export type MonitorConnectivity = { offline: boolean; since?: number }
+
+/**
+ * Read the local-connectivity verdict the daemon wrote. Absent file ⇒ online:
+ * a machine that has never been offline has no reason to render a warning, and
+ * defaulting to "offline" would grey out the whole tab on first run.
+ */
+export function readMonitorConnectivity(
+  file = MONITOR_CONNECTIVITY_FILE(),
+): MonitorConnectivity {
+  try {
+    const raw = JSON.parse(readFileSync(file, 'utf8'))
+    if (raw && typeof raw === 'object' && typeof raw.offline === 'boolean')
+      return { offline: raw.offline, since: Number(raw.since) || undefined }
+  } catch {
+    /* never written yet */
+  }
+  return { offline: false }
+}
 
 // ---- pure classifiers (the check logic — unit tested) ----------------------
 
@@ -257,6 +302,7 @@ export function validateMonitor(raw: unknown): Monitor | null {
     target: r.target,
     intervalSec: clamp(r.intervalSec, MIN_INTERVAL_SEC, MAX_INTERVAL_SEC, 300),
     enabled: r.enabled !== false,
+    minConsecutiveFailures: normalizeMinConsecutiveFailures(r.minConsecutiveFailures),
     ...(typeof r.group === 'string' ? { group: r.group } : {}),
     notify: validateNotify(r.notify),
     config:
@@ -287,10 +333,22 @@ export function validateMonitors(raw: unknown): { monitors: Monitor[]; rejected:
 
 // ---- config + state IO -----------------------------------------------------
 
+/**
+ * Config migration on load: monitors.json predates `minConsecutiveFailures`, so
+ * every entry written before it existed is filled in with the default here
+ * rather than at each use site. The file itself is left alone until the next
+ * save — a read must never rewrite state the daemon may be reading too.
+ */
 export function readMonitors(file = MONITORS_FILE()): Monitor[] {
   try {
     const raw = JSON.parse(readFileSync(file, 'utf8'))
-    return Array.isArray(raw) ? raw.filter((m) => m && typeof m.id === 'string') : []
+    if (!Array.isArray(raw)) return []
+    return raw
+      .filter((m) => m && typeof m.id === 'string')
+      .map((m) => ({
+        ...m,
+        minConsecutiveFailures: normalizeMinConsecutiveFailures(m.minConsecutiveFailures),
+      }))
   } catch {
     return []
   }

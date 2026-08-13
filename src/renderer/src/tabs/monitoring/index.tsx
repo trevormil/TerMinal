@@ -17,6 +17,12 @@ import type { BadgeTone } from '../../components/ui'
 import { useResizableWidth, ResizeHandle } from '../../components/ResizeHandle'
 import { relativeTime } from '../../lib/time'
 import { daemonHealth, stalenessOf } from '../../../../shared/monitor-liveness'
+import {
+  DEFAULT_MIN_CONSECUTIVE_FAILURES,
+  MAX_MIN_CONSECUTIVE_FAILURES,
+  categoryLabel,
+  normalizeMinConsecutiveFailures,
+} from '../../../../shared/monitor-flap'
 import type {
   Tab,
   TabContext,
@@ -158,6 +164,7 @@ type FormState = {
   intervalSec: number
   group: string
   enabled: boolean
+  minConsecutiveFailures: number
   notify: MonitorNotify
   // typed advanced config (per type)
   warnLatencyMs: string
@@ -178,6 +185,7 @@ function emptyForm(): FormState {
     intervalSec: 60,
     group: '',
     enabled: true,
+    minConsecutiveFailures: DEFAULT_MIN_CONSECUTIVE_FAILURES,
     notify: { ...DEFAULT_NOTIFY },
     warnLatencyMs: '',
     bodyContains: '',
@@ -200,6 +208,8 @@ function formFromMonitor(m: Monitor): FormState {
     intervalSec: m.intervalSec,
     group: m.group ?? '',
     enabled: m.enabled,
+    // Monitors written before this field existed carry no value.
+    minConsecutiveFailures: normalizeMinConsecutiveFailures(m.minConsecutiveFailures),
     notify: { ...DEFAULT_NOTIFY, ...m.notify },
     warnLatencyMs: str(c.warnLatencyMs),
     bodyContains: str(c.bodyContains),
@@ -274,6 +284,7 @@ function MonitorForm({
       intervalSec: f.intervalSec,
       enabled: f.enabled,
       group: f.group.trim() || undefined,
+      minConsecutiveFailures: normalizeMinConsecutiveFailures(f.minConsecutiveFailures),
       notify: f.notify,
       config: buildConfig(f),
     }
@@ -336,6 +347,24 @@ function MonitorForm({
                 onChange={(e) => set('intervalSec', Number(e.target.value) || 0)}
               />
             </div>
+          </div>
+
+          <div>
+            <label className={labelCls}>Alert after N failed checks</label>
+            <input
+              type="number"
+              min={1}
+              max={MAX_MIN_CONSECUTIVE_FAILURES}
+              className={inputCls}
+              value={f.minConsecutiveFailures}
+              onChange={(e) =>
+                set('minConsecutiveFailures', Number(e.target.value) || 0)
+              }
+            />
+            <p className="mt-1 text-[10.5px] leading-snug text-zinc-600">
+              A one-off blip stays quiet: the monitor only goes down, and only alerts, after
+              this many checks fail in a row. 1 alerts on the first failure.
+            </p>
           </div>
 
           <div>
