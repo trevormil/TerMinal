@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import type { NotifyCategory, NotifyMatrix } from '../../../shared/notifications'
+import type { ExperimentsCfg } from '../../../shared/experiments'
 
 // Mirror of the preload `gt` bridge. Kept hand-written so plugins have a clean
 // typed surface without reaching across tsconfig roots into the preload build.
@@ -794,6 +795,9 @@ export type Settings = {
   /** Allow repo-provided widgets/tabs (.TerMinal/widgets.json + tabs.json).
    *  Off by default — repo code execution is opt-in, above the trust flow. */
   allowRepoExtensions: boolean
+  /** Experimental features, off until opted in (src/shared/experiments.ts).
+   *  Gate renderer features with useExperiment, not by reading this directly. */
+  experiments: ExperimentsCfg
   /**
    * Which sealed secrets are set. `settings:get` masks the VALUES (see
    * src/main/settings-mask.ts), so this is the only way the UI can tell
@@ -815,6 +819,7 @@ export type SettingsPatch = Partial<
     | 'engines'
     | 'apps'
     | 'suggestions'
+    | 'experiments'
   >
 > & {
   telegram?: Partial<TelegramCfg>
@@ -831,6 +836,8 @@ export type SettingsPatch = Partial<
   engines?: Partial<Record<Engine, Partial<EngineCfg>>>
   apps?: Partial<AppsCfg>
   suggestions?: Partial<SuggestionsCfg>
+  /** Per-flag; main merges it over the saved block (see mergeSettingsPatch). */
+  experiments?: ExperimentsCfg
   noteFolders?: NoteFolder[]
 }
 

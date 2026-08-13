@@ -14,6 +14,7 @@ import {
 } from '../shared/notifications'
 import { ENGINE_IDS, engineOf, type EngineId } from '../shared/engines'
 import { normalizeDestination, type InboxDestination } from '../shared/slack'
+import { normalizeExperiments, type ExperimentsCfg } from '../shared/experiments'
 import { expandSecretPaths } from './secret-paths'
 
 // Persisted, self-configuring app settings. Every key has a working default —
@@ -192,6 +193,9 @@ export type Settings = {
    *  cloned repo getting command execution + in-app embeds is a real risk, so
    *  the surfaces don't exist at all unless the operator opts in globally. */
   allowRepoExtensions: boolean
+  /** Experimental features, off until opted in (src/shared/experiments.ts).
+   *  Absent flags read as off, so a pre-flag settings file stays dark. */
+  experiments: ExperimentsCfg
 }
 
 // A patch may carry partial nested telegram/engines/apps without losing siblings.
@@ -207,6 +211,7 @@ export type SettingsPatch = Partial<
     | 'engines'
     | 'apps'
     | 'suggestions'
+    | 'experiments'
   >
 > & {
   telegram?: Partial<TelegramCfg>
@@ -222,6 +227,8 @@ export type SettingsPatch = Partial<
   engines?: Partial<Record<EngineId, Partial<EngineCfg>>>
   apps?: Partial<AppsCfg>
   suggestions?: Partial<SuggestionsCfg>
+  /** Per-flag; merges over the saved block so one toggle never clears another. */
+  experiments?: ExperimentsCfg
   noteFolders?: NoteFolder[]
 }
 
@@ -306,6 +313,7 @@ export function defaultSettings(): Settings {
     openrouterApiKey: '',
     openaiCompatApiKey: '',
     allowRepoExtensions: false,
+    experiments: {}, // {} = every experiment off
   }
 }
 
@@ -544,6 +552,7 @@ export function migrate(raw: unknown): Settings {
   if (typeof r.openrouterApiKey === 'string') s.openrouterApiKey = r.openrouterApiKey
   if (typeof r.openaiCompatApiKey === 'string') s.openaiCompatApiKey = r.openaiCompatApiKey
   if (typeof r.allowRepoExtensions === 'boolean') s.allowRepoExtensions = r.allowRepoExtensions
+  s.experiments = normalizeExperiments(r.experiments)
   if (ENGINE_IDS.includes(r.defaultEngine as EngineId))
     s.defaultEngine = r.defaultEngine as EngineId
   if (r.forge === 'auto' || r.forge === 'github' || r.forge === 'gitlab') s.forge = r.forge
@@ -713,6 +722,7 @@ export function mergeSettingsPatch(cur: Settings, patch: SettingsPatch): Setting
     apps,
     engines,
     suggestions,
+    experiments,
     noteFolders: patchNoteFolders,
     ...scalarPatch
   } = legacyPatch
@@ -744,6 +754,9 @@ export function mergeSettingsPatch(cur: Settings, patch: SettingsPatch): Setting
     apps: { ...cur.apps, ...(apps || {}) },
     engines: mergeEngineCfgs(cur.engines, engines),
     suggestions: { ...cur.suggestions, ...(suggestions || {}) },
+    // Normalized on the way in: a patch can arrive from a shell-built CLI call,
+    // and an unknown id persisted here would read as a flag nothing gates on.
+    experiments: { ...cur.experiments, ...normalizeExperiments(experiments) },
     noteFolders: patchNoteFolders ? noteFolders(patchNoteFolders) : cur.noteFolders,
   }
 }
