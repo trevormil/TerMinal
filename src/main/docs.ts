@@ -1,6 +1,8 @@
 import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs'
 import { join, relative, basename, sep } from 'node:path'
 import { existingProjectAreaPaths, type ProjectArea } from './project-layout'
+import type { DocCategory, DocEntry, DocsTree } from '../shared/types/docs'
+export type { DocCategory, DocEntry, DocsTree } from '../shared/types/docs'
 
 // GitBook-style docs surface for a repo. Lists every markdown file under
 // docs/ + reports/checks + a root CHANGELOG.md, grouped by category for the
@@ -17,21 +19,6 @@ import { existingProjectAreaPaths, type ProjectArea } from './project-layout'
 //                   each kind sub-grouped in the sidebar via DocEntry.subgroup)
 //   - other       — everything else under docs/**.md (human-authored runbooks,
 //                   architecture.md at root, etc.)
-
-export type DocCategory =
-  'changelog' | 'decisions' | 'maintainer' | 'developer' | 'personal' | 'reports' | 'other'
-
-export type DocEntry = {
-  path: string // relative to repoRoot, forward slashes
-  title: string // first H1 or filename basename
-  category: DocCategory
-  managedBy?: string // agent name if a "managed by:" header is present
-  subgroup?: string // for 'reports': the agent name (second path segment)
-}
-
-export type DocsTree = {
-  categories: { id: DocCategory; label: string; items: DocEntry[] }[]
-}
 
 const CATEGORY_LABEL: Record<DocCategory, string> = {
   changelog: 'Changelog',

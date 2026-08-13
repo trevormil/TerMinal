@@ -18,6 +18,8 @@ import type { CronRun, UnifiedRun } from './cron-runs'
 import type { ProjectSession } from './sessions'
 import type { NotesScope } from './notes'
 import type { Engine } from './agents'
+import type { RemoteDirList } from '../shared/types/sessions'
+export type { RemoteDirEntry, RemoteDirList } from '../shared/types/sessions'
 
 export type RemoteSessionRef = {
   hostId: string
@@ -42,13 +44,6 @@ export type RemoteRunStartInput = {
   enginePath?: string
   scheduleId?: string
   contextPreamble?: boolean
-}
-export type RemoteDirEntry = { name: string; path: string; dir: true }
-export type RemoteDirList = {
-  cwd: string
-  parent: string
-  entries: RemoteDirEntry[]
-  error?: string
 }
 export type RemoteScaffoldResult = { ok: boolean; path?: string; error?: string }
 export type RemoteProjectsDirValidation =

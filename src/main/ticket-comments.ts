@@ -3,17 +3,8 @@
 // comment written by one run is context the next run gets for free, and the
 // whole history shows up in `git log` without any extra plumbing.
 
-export type TicketComment = {
-  /** ISO-8601 UTC, e.g. 2026-07-27T14:02:11.000Z */
-  at: string
-  /** Human username, or the agent id for `kind: 'agent'`. */
-  author: string
-  kind: 'human' | 'agent'
-  /** engine/model behind an agent comment, e.g. `codex/gpt-5`. */
-  via?: string
-  body: string
-}
-
+import type { TicketComment } from '../shared/types/tickets'
+export type { TicketComment } from '../shared/types/tickets'
 const LOG_HEADING = '## Log'
 /** `### <iso> · trevor` or `### <iso> · agent:<id> (<engine>/<model>)` */
 const HEADER = /^### (\S+) · (.+?)$/

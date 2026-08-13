@@ -5,22 +5,15 @@ import * as forge from './forge'
 import { configPath } from './config-dir'
 import { projectAreaPathForWrite } from './project-layout'
 import { repoStateEnv } from './repo-state'
+import type { DigestRunState } from '../shared/types/mrs'
+export type { DigestRunState } from '../shared/types/mrs'
+export type { DigestRunStatus } from '../shared/types/mrs'
 
 // Runs the /digest pipeline for an MR in the repo ROOT (not a worktree): the
 // digest only reads source + writes artifacts under .TerMinal/reviews/, so there
 // is no test/build contamination to isolate. Deterministic stages (diff fetch,
 // chunk-diff) run inline; the codex pass + merge run as one tracked child
 // process. Emits 'digest:status' so the renderer can spinner + auto-refresh.
-
-export type DigestRunStatus = 'running' | 'done' | 'failed'
-export type DigestRunState = {
-  iid: number
-  short: string
-  status: DigestRunStatus
-  startedAt: number
-  endedAt?: number
-  error?: string
-}
 
 const runs = new Map<string, DigestRunState>()
 const key = (repoRoot: string, iid: number) => `${repoRoot}#${iid}`

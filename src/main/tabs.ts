@@ -5,6 +5,8 @@ import { homedir } from 'node:os'
 import { repoRoot } from './widgets'
 import { isHttpUrl } from '../shared/url-safety'
 import { configPath } from './config-dir'
+import type { CustomTab, TabRunResult } from '../shared/types/app'
+export type { CustomTab, TabRunResult } from '../shared/types/app'
 
 // ---------------------------------------------------------------------------
 // Custom tabs — full-screen repo-specific views, the tab analogue of
@@ -24,16 +26,6 @@ import { configPath } from './config-dir'
 // the tab renders an explanatory placeholder instead. Global tabs are your own
 // file and are unaffected. url values are validated to http(s) below.
 // ---------------------------------------------------------------------------
-
-export type CustomTab = {
-  id: string
-  title: string
-  icon?: string
-  source: 'global' | 'repo'
-  url?: string
-  command?: string
-  intervalMs?: number
-}
 
 const GLOBAL_CFG = (): string => configPath('tabs.json')
 
@@ -85,8 +77,6 @@ export function listCustomTabs(cwd: string): CustomTab[] {
   const repo = root ? loadFile(join(root, '.TerMinal', 'tabs.json'), 'repo', root) : []
   return [...global, ...repo]
 }
-
-export type TabRunResult = { ok: boolean; html: string; code: number }
 
 // Command tabs render a full page, so allow a larger buffer / longer timeout
 // than the small status widgets do.

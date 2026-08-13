@@ -2,6 +2,8 @@ import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { deriveCategories, normalizeCategory } from '../shared/inbox-categories'
+import type { HitlItem as MainHitlItem } from './hitl'
+import type { HitlItem as RendererHitlItem } from '../renderer/src/lib/types'
 
 // Ticket 120. The derivation logic is unit-tested next to itself; this file
 // checks the thing that actually makes the feature real — that `category`
@@ -14,9 +16,20 @@ import { deriveCategories, normalizeCategory } from '../shared/inbox-categories'
 const ROOT = resolve(import.meta.dir, '../..')
 const read = (rel: string): string => readFileSync(join(ROOT, rel), 'utf8')
 
+// Type-level, not text-level: `true` only assigns if the name main exports and
+// the name the renderer exports are mutually assignable. Re-forking `HitlItem`
+// on either side makes this line a tsc error.
+type Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false
+const rendererMirrorsMain: Exact<MainHitlItem, RendererHitlItem> = true
+
 describe('category survives every writer (ticket 120)', () => {
-  test('the main-process type declares it', () => {
-    expect(read('src/main/hitl.ts')).toMatch(/category\?: string/)
+  test('the type declares it, once', () => {
+    // `HitlItem` used to be written out twice — in src/main/hitl.ts and again in
+    // the renderer's lib/types.ts — and this file had to assert the field on
+    // both. It now has ONE declaration in src/shared/types, which is why the
+    // "renderer mirrors it" test below is an identity check rather than a grep.
+    expect(read('src/shared/types/activity.ts')).toMatch(/category\?: string/)
+    expect(read('src/main/hitl.ts')).toContain("from '../shared/types/activity'")
   })
 
   test('fileHitl normalizes at the write boundary, not at read time', () => {
@@ -28,8 +41,11 @@ describe('category survives every writer (ticket 120)', () => {
 
   test('the renderer type mirrors it', () => {
     // main → preload → renderer must agree, or the field is invisible in the UI
-    // while being present on disk.
-    expect(read('src/renderer/src/lib/types.ts')).toMatch(/category\?: string/)
+    // while being present on disk. This is now enforced by the compile-time
+    // identity assertion at the top of this file, which `bunx tsc --noEmit`
+    // fails on if the two names ever stop resolving to the same declaration.
+    // A grep for the field would pass again the day someone re-forks the type.
+    expect(rendererMirrorsMain).toBe(true)
   })
 
   test('bin/terminal-cli accepts --category and puts it on the item', () => {

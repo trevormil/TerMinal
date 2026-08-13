@@ -1,4 +1,6 @@
 import { execFileSync } from 'node:child_process'
+import type { GitBranch, GitBranchesResult, GitCommit, GitCommitDetail, GitCommitFile, GitLogResult, GitOpResult, GitPatchResult, GitStash, GitStashesResult, GitTag, GitTagsResult } from '../shared/types/git'
+export type { GitBranch, GitBranchesResult, GitCommit, GitCommitDetail, GitCommitFile, GitLogResult, GitOpResult, GitPatchResult, GitStash, GitStashesResult, GitTag, GitTagsResult } from '../shared/types/git'
 
 // Read-mostly git views for the Files tab (history / branches / stashes /
 // tags) — thin typed parsers over git plumbing, VS Code-style. The only
@@ -12,68 +14,6 @@ const RS = '\x1e' // record separator
 // Patches can be arbitrarily large (a vendored dep bump); cap what we ship to
 // the renderer so one commit can't wedge the IPC channel.
 const PATCH_CAP = 2 * 1024 * 1024
-
-export type GitCommit = {
-  sha: string
-  shortSha: string
-  parents: string[]
-  author: string
-  /** Unix ms. */
-  date: number
-  subject: string
-  /** Ref decorations pointing at this commit (HEAD -> main, origin/main, tag: v1). */
-  refs: string[]
-}
-
-export type GitLogResult = { ok: true; commits: GitCommit[] } | { ok: false; error: string }
-
-export type GitCommitFile = {
-  path: string
-  insertions: number
-  deletions: number
-  /** True for binary files (numstat reports "-"). */
-  binary: boolean
-}
-
-export type GitCommitDetail =
-  | {
-      ok: true
-      sha: string
-      shortSha: string
-      author: string
-      email: string
-      date: number
-      subject: string
-      body: string
-      refs: string[]
-      files: GitCommitFile[]
-      patch: string
-      patchTruncated: boolean
-    }
-  | { ok: false; error: string }
-
-export type GitBranch = {
-  name: string
-  current: boolean
-  remote: boolean
-  sha: string
-  subject: string
-  /** Unix ms of the tip commit. */
-  date: number
-  upstream: string
-  ahead: number
-  behind: number
-}
-
-export type GitBranchesResult = { ok: true; branches: GitBranch[] } | { ok: false; error: string }
-
-export type GitStash = { ref: string; branch: string; subject: string; date: number }
-export type GitStashesResult = { ok: true; stashes: GitStash[] } | { ok: false; error: string }
-
-export type GitTag = { name: string; sha: string; subject: string; date: number }
-export type GitTagsResult = { ok: true; tags: GitTag[] } | { ok: false; error: string }
-
-export type GitOpResult = { ok: true } | { ok: false; error: string }
 
 function run(root: string, args: string[]): string {
   return execFileSync('git', ['-C', root, ...args], {
@@ -241,8 +181,6 @@ export function gitCreateBranch(root: string, name: string, from?: string): GitO
     return { ok: false, error: errMessage(e) }
   }
 }
-
-export type GitPatchResult = { ok: true; patch: string } | { ok: false; error: string }
 
 // `git diff` exits 1 when files differ — the NORMAL case — so capture stdout
 // off the thrown error instead of treating it as failure.

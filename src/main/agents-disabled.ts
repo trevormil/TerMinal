@@ -1,6 +1,8 @@
 import { readFileSync, existsSync } from 'node:fs'
 import { configPath } from './config-dir'
 import { withFileLock, writeJsonAtomic } from './atomic-write'
+import type { DisabledEntry } from '../shared/types/agents'
+export type { DisabledEntry } from '../shared/types/agents'
 
 // Kill-switch / circuit-breaker registry. A scheduleId in this list is
 // skipped by bin/terminal-cron at run time. Headless runner writes here when
@@ -15,13 +17,6 @@ import { withFileLock, writeJsonAtomic } from './atomic-write'
 // Resolved per call (not at module load) through the one config-dir seam, so a
 // test can point this at a temp dir. See src/main/config-dir.ts.
 export const disabledFile = (): string => configPath('agents', 'disabled.json')
-
-export type DisabledEntry = {
-  id: string
-  reason?: string
-  /** epoch ms; 0 when read from a legacy record that predates reasons. */
-  disabledAt: number
-}
 
 type Stored = { ids: string[]; reasons: Record<string, { reason?: string; at: number }> }
 

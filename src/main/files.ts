@@ -10,6 +10,8 @@ import {
 } from 'node:fs'
 import { join, resolve, sep, dirname } from 'node:path'
 import { execFile, execFileSync } from 'node:child_process'
+import type { SearchHit } from '../shared/types/workspace'
+export type { SearchHit } from '../shared/types/workspace'
 
 // Scoped file access for the Files tab. Every path is validated to stay within
 // the root (the attached session's repo/cwd) — no traversal out.
@@ -291,7 +293,6 @@ export async function formatFile(
   return { ok: true, content: run.stdout }
 }
 
-export type SearchHit = { file: string; line: number; text: string }
 export type SearchOptions = {
   regex?: boolean
   caseSensitive?: boolean

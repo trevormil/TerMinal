@@ -28,6 +28,10 @@ import {
 import { sendUrl } from './telegram-api'
 import { queueRunOutcomeSummary, readRunLogTail } from './run-summarizer'
 import { terminalConfigDir } from './config-dir'
+import type { BgTask } from '../shared/types/runs'
+export type { BgTask } from '../shared/types/runs'
+import type { BgTaskStatus } from '../shared/types/runs'
+export type { BgTaskStatus } from '../shared/types/runs'
 
 const CFG = (): string => terminalConfigDir()
 const TASKS_FILE = (): string => join(CFG(), 'bg-tasks.json')
@@ -41,32 +45,6 @@ function displayArg(arg: string, prompt: string): string {
 
 function displayCommand(command: { bin: string; args: string[] }, prompt: string): string {
   return [command.bin, ...command.args.map((arg) => displayArg(arg, prompt))].join(' ')
-}
-
-export type BgTaskStatus = 'queued' | 'running' | 'done' | 'failed' | 'canceled'
-
-export type BgTask = {
-  id: string
-  repo: string // basename for display
-  repoRoot: string // absolute path
-  prompt: string
-  engine: EngineId
-  model?: string
-  worktree: string
-  branch: string
-  pid?: number
-  status: BgTaskStatus
-  startedAt: number
-  endedAt?: number
-  exitCode?: number
-  logFile: string
-  mrUrl?: string
-  /** Set when the task was spawned to work a backlog ticket (`/feature`). The
-   *  watcher links the resulting PR back onto the ticket. */
-  ticketSlug?: string
-  ticketId?: number
-  /** First few lines of the prompt for tab badges + listings */
-  label: string
 }
 
 function ensure(): void {

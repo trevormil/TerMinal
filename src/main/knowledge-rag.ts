@@ -4,26 +4,8 @@ import { join } from 'node:path'
 import type { KnowledgeItem, KnowledgeScope } from './knowledge'
 import { terminalConfigDir } from './config-dir'
 import { repoStatePathForRead } from './repo-state'
-
-export type KnowledgeRagStatus = {
-  ok: boolean
-  rootDir: string
-  documentsDir: string
-  dataDir: string
-  command: string
-  args: string[]
-  stats?: unknown
-  error?: string
-}
-
-export type KnowledgeRagSearchResult = {
-  ok: boolean
-  query: string
-  rootDir: string
-  results: unknown[]
-  raw?: unknown
-  error?: string
-}
+import type { KnowledgeRagSearchResult, KnowledgeRagStatus } from '../shared/types/knowledge'
+export type { KnowledgeRagSearchResult, KnowledgeRagStatus } from '../shared/types/knowledge'
 
 type RagRequest = {
   scope: KnowledgeScope

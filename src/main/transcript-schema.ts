@@ -18,6 +18,8 @@
 // Primitives
 // ---------------------------------------------------------------------------
 
+import type { UserPrompt } from '../shared/types/app'
+export type { UserPrompt } from '../shared/types/app'
 export const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
 
@@ -153,8 +155,6 @@ export function toolFailed(block: unknown, toolUseResult: unknown): boolean {
 // ---------------------------------------------------------------------------
 // User prompts
 // ---------------------------------------------------------------------------
-
-export type UserPrompt = { text: string; ts: number }
 
 /** Reminders are injected INTO a real prompt, so they're stripped, not filtered. */
 const SYSTEM_REMINDER = /<system-reminder>[\s\S]*?<\/system-reminder>/g

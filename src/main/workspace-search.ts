@@ -8,26 +8,8 @@ import { listAllRuns } from './cron-runs'
 import { listPromptSnippets } from './snippets'
 import { listPersistentAgentArtifacts, listPersistentAgents } from './persistent-agents'
 import { listRepoTickets, repoTicketProvider } from './ticket-provider'
-
-export type WorkspaceSearchKind =
-  'file' | 'ticket' | 'mr' | 'activity' | 'doc' | 'run' | 'snippet' | 'agent-artifact'
-
-export type WorkspaceSearchResult = {
-  id: string
-  kind: WorkspaceSearchKind
-  title: string
-  subtitle?: string
-  detail?: string
-  path?: string
-  line?: number
-  ts?: number
-  payload?: Record<string, unknown>
-}
-
-export type WorkspaceSearchResponse = {
-  results: WorkspaceSearchResult[]
-  error?: string
-}
+import type { WorkspaceSearchKind, WorkspaceSearchResponse, WorkspaceSearchResult } from '../shared/types/workspace'
+export type { WorkspaceSearchKind, WorkspaceSearchResponse, WorkspaceSearchResult } from '../shared/types/workspace'
 
 const ALL_KINDS: WorkspaceSearchKind[] = [
   'file',

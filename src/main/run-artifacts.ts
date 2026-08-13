@@ -1,22 +1,14 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { legacyStatePath, repoStatePathForWrite } from './repo-state'
+import type { RunArtifact } from '../shared/types/runs'
+export type { RunArtifact } from '../shared/types/runs'
 
 // Surfaces the artifacts a run produced (#8 GH-parity — the "Artifacts" tab).
 // Agent-request artifacts are written under <repoRoot>/.TerMinal/agent-requests/
 // <slug>/ (report.md + artifact.json) by the request_agent_artifact tool. We list
 // them per-repo, newest first, so the Runs detail pane can link straight to a
 // report. (Remote/host artifacts live on the host — local runs only for now.)
-
-export type RunArtifact = {
-  slug: string
-  title: string
-  agent?: string
-  ok?: boolean
-  createdAt?: string
-  reportPath: string
-  summary?: string
-}
 
 // Parse one artifact.json into a RunArtifact. Pure (no fs) → unit-testable.
 // Falls back to the conventional report.md path when `primaryPath` is absent.

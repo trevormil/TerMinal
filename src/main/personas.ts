@@ -1,19 +1,7 @@
 import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
-
-// Personas flavor an agent/ticket run — a role framing prepended to the task
-// prompt. Default is none. Built-ins ship on every repo; a repo's
-// .agents/personas.json overrides/extends by id.
-export type Persona = {
-  id: string
-  title: string
-  description: string
-  icon?: string
-  prompt: string
-  agentId?: string
-  agentScope?: 'repo' | 'global'
-  agentKind?: 'classic' | 'persistent'
-}
+import type { Persona } from '../shared/types/agents'
+export type { Persona } from '../shared/types/agents'
 
 const DEFAULT_PERSONAS: Persona[] = [
   {

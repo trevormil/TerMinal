@@ -33,70 +33,9 @@ import {
 // one surfaces a `blocked` activity event → macOS + Telegram notification.
 export const hitlFile = (): string => configPath('hitl.json')
 
-export type HitlSource =
-  | 'manual'
-  | 'cron-fail'
-  | 'agent'
-  | 'factory'
-  | 'skill'
-  | 'listener'
-  | 'completion-hook'
-  | 'review-pattern'
-  | 'monitor'
 export { itemSeverity, type HitlSeverity } from './hitl-severity'
-
-export type HitlItem = {
-  id: string
-  title: string
-  detail?: string
-  action?: string // what the human needs to do
-  repo?: string
-  repoRoot?: string
-  source: HitlSource
-  status: 'open' | 'resolved'
-  /** Alert loudness — see HitlSeverity. Absent on legacy items ⇒ treated as
-   *  'push' so nothing that used to notify goes silent after the upgrade. */
-  severity?: HitlSeverity
-  /** Free-form grouping for the Inbox sidebar (ticket 120). Deliberately NOT a
-   *  union: a caller names a category by passing one, and nothing else changes.
-   *  Absent ⇒ 'Uncategorized'. Normalized on write, never validated against a
-   *  list — membership checks are how a free string becomes an enum by the back
-   *  door. */
-  category?: string
-  /** When you first saw it. Absent ⇒ unread. Independent of resolve: an item
-   *  can be read-but-open (you saw it, haven't acted) or unread-and-resolved
-   *  (auto-resolved before you looked). */
-  readAt?: number
-  createdAt: number
-  resolvedAt?: number
-  // Optional pointer back to the run that produced this HITL. Lets the HITL
-  // tab show a "View run" button that jumps to the Runs tab + selects the
-  // source run so the operator can read the log that prompted the block.
-  runId?: string
-  runSource?: 'cron' | 'agent' | 'bg' | 'session'
-  // Path to the auto-filed backlog ticket that pairs with this HITL (cron
-  // failures file both — HITL is the "look at me" channel, the ticket is
-  // the durable triage record). Lets the HITL tab link straight to the
-  // ticket in the Tickets tab.
-  ticketPath?: string
-  // Pointer back to the AI session that produced this HITL.
-  sessionId?: string
-  // Pointer back to the live TerMinal pty instance that produced this HITL.
-  terminalKey?: string
-  terminalCwd?: string
-  // Stable bucket id for review-pattern HITLs so re-mining doesn't dup.
-  patternKey?: string
-  occurrenceCount?: number
-  lastOccurredAt?: number
-  // Stamped by the remote fan-out (hitl:remote-all) for HITLs filed by a run on a
-  // host, so the Inbox can show + badge them alongside local ones (ADR-0002 #14).
-  hostId?: string
-  hostLabel?: string
-  // Slack mirror (inbox.destination 'both'|'slack'): where the original message
-  // landed, so recurrences thread under it and a resolve stamps ✅ on it.
-  slackChannel?: string
-  slackTs?: string
-}
+import type { HitlItem } from '../shared/types/activity'
+export type { HitlItem, HitlSource } from '../shared/types/activity'
 
 export function readHitl(): HitlItem[] {
   return readJsonState<HitlItem[]>(hitlFile(), () => [], { accept: Array.isArray }).value

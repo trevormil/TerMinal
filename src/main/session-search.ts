@@ -16,6 +16,10 @@
 import { createReadStream, statSync } from 'node:fs'
 import { createInterface } from 'node:readline'
 import type { EngineId } from '../shared/engines'
+import type { SessionSearchResult, TranscriptHit } from '../shared/types/observability'
+export type { SessionSearchResult, TranscriptHit } from '../shared/types/observability'
+import type { SearchHitRole } from '../shared/types/observability'
+export type { SearchHitRole } from '../shared/types/observability'
 
 export type SessionRef = {
   id: string
@@ -25,25 +29,6 @@ export type SessionRef = {
   file: string
   firstUserText?: string
   gitBranch?: string
-}
-
-export type SearchHitRole = 'user' | 'assistant' | 'tool' | 'other'
-
-export type TranscriptHit = {
-  /** 1-based line number in the .jsonl — the jump-to-context anchor. */
-  line: number
-  role: SearchHitRole
-  timestamp?: number
-  preview: string
-}
-
-export type SessionSearchResult = {
-  sessionId: string
-  engine: string
-  cwd: string
-  mtime: number
-  firstUserText?: string
-  hits: TranscriptHit[]
 }
 
 export type SearchOptions = {

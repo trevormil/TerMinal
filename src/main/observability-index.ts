@@ -9,6 +9,8 @@ import {
   readObservabilitySnapshot,
 } from './data'
 import { configPath } from './config-dir'
+import type { ObservabilityIndexBuildResult, ObservabilityIndexQueryId, ObservabilityIndexQueryResult, ObservabilityIndexStatus, ObservabilityQueryFilter } from '../shared/types/observability'
+export type { ObservabilityIndexBuildResult, ObservabilityIndexQueryId, ObservabilityIndexQueryResult, ObservabilityIndexStatus, ObservabilityQueryFilter } from '../shared/types/observability'
 
 const DB_PATH = (): string => configPath('observability.sqlite')
 
@@ -17,68 +19,6 @@ const DB_PATH = (): string => configPath('observability.sqlite')
 // IPC payload or the (windowed) table. Aggregations (rollups) are unbounded —
 // GROUP BY keeps them small. Raise if real histories exceed this.
 const ROW_QUERY_CAP = 50000
-
-export type ObservabilityIndexStatus = {
-  ok: boolean
-  dbPath: string
-  exists: boolean
-  sqliteAvailable: boolean
-  indexedAt: number | null
-  sessions: number
-  turns: number
-  toolCalls: number
-  tokenSnapshots: number
-  events: number
-  error?: string
-}
-
-export type ObservabilityIndexBuildResult = ObservabilityIndexStatus & {
-  durationMs: number
-  indexedSessions: number
-}
-
-export type ObservabilityIndexQueryId =
-  | 'sessions_by_tokens'
-  | 'low_yield_sessions'
-  | 'tool_calls'
-  | 'tool_payloads'
-  | 'tool_errors'
-  | 'tool_call_bloat'
-  | 'turn_hotspots'
-  | 'costliest_turns'
-  | 'model_rollup'
-  | 'repo_rollup'
-  | 'session_events'
-  | 'audit'
-
-/**
- * Shared scope narrowing for the canned queries. Before this, every question was
- * "all history" or "one session"; these are the four axes the toolbar exposes.
- * Applied against the `sessions` row a result joins to — so a repo/model/engine
- * filter means "sessions matching this", and since/until bound `sessions.mtime`.
- */
-export type ObservabilityQueryFilter = {
-  /** Inclusive lower bound, ms epoch. */
-  since?: number
-  /** Inclusive upper bound, ms epoch. */
-  until?: number
-  repo?: string
-  engine?: string
-  model?: string
-}
-
-export type ObservabilityIndexQueryResult = {
-  query: ObservabilityIndexQueryId
-  title: string
-  description: string
-  columns: string[]
-  rows: Record<string, unknown>[]
-  indexedAt: number | null
-  dbPath: string
-  /** When set, the query needs a scope argument (e.g. a session_id) it didn't get. */
-  needsArg?: 'session_id'
-  error?: string
-}
 
 const QUERY_META: Record<
   ObservabilityIndexQueryId,

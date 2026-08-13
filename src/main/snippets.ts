@@ -3,15 +3,8 @@ import { dirname, join } from 'node:path'
 import { hiddenPresetIds } from './presets'
 import { terminalConfigDir } from './config-dir'
 import { repoStatePathForWrite } from './repo-state'
-
-export type PromptSnippet = {
-  id: string
-  title: string
-  prompt: string
-  description?: string
-  group?: string
-  source?: 'preset' | 'global' | 'repo'
-}
+import type { PromptSnippet } from '../shared/types/app'
+export type { PromptSnippet } from '../shared/types/app'
 
 type SnippetFile = {
   version?: number
