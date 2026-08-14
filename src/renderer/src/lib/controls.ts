@@ -63,7 +63,7 @@ export function buttonClasses(
   size: ControlSize = 'sm',
   className = '',
 ): string {
-  return join(BUTTON_BASE, BUTTON_VARIANT[variant], BUTTON_SIZE[size], className)
+  return mergeClasses(BUTTON_BASE, BUTTON_VARIANT[variant], BUTTON_SIZE[size], className)
 }
 
 export function iconButtonClasses(
@@ -71,7 +71,7 @@ export function iconButtonClasses(
   size: ControlSize = 'sm',
   className = '',
 ): string {
-  return join(BUTTON_BASE, BUTTON_VARIANT[variant], ICON_SIZE[size], className)
+  return mergeClasses(BUTTON_BASE, BUTTON_VARIANT[variant], ICON_SIZE[size], className)
 }
 
 const FIELD_BASE =
@@ -85,20 +85,103 @@ const FIELD_SIZE: Record<ControlSize, string> = {
 }
 
 export function inputClasses(size: ControlSize = 'sm', className = ''): string {
-  return join(FIELD_BASE, FIELD_SIZE[size], className)
+  return mergeClasses(FIELD_BASE, FIELD_SIZE[size], className)
 }
 
 /** A select is a field that also has to hide the platform chevron affordance. */
 export function selectClasses(size: ControlSize = 'sm', className = ''): string {
-  return join(FIELD_BASE, FIELD_SIZE[size], 'cursor-pointer', className)
+  return mergeClasses(FIELD_BASE, FIELD_SIZE[size], 'cursor-pointer', className)
 }
 
 export function join(...parts: (string | false | null | undefined)[]): string {
-  return parts
-    .filter(Boolean)
-    .join(' ')
-    .replace(/\s+/g, ' ')
-    .trim()
+  return parts.filter(Boolean).join(' ').replace(/\s+/g, ' ').trim()
+}
+
+// ---------------------------------------------------------------------------
+// Conflict-aware class merge
+// ---------------------------------------------------------------------------
+
+/**
+ * Which CSS property a utility sets. Two classes in the same group on the same
+ * element are a conflict, and Tailwind resolves conflicts by STYLESHEET order,
+ * not by the order they appear in `class` — so `join(base, override)` silently
+ * loses whenever the override redefines something the base already set. Every
+ * call site that passes `className` to a primitive depends on the opposite.
+ *
+ * Deliberately partial: it covers the groups the migrated call sites actually
+ * override. An unrecognised utility is its own group, which degrades to plain
+ * concatenation — the previous behaviour — rather than to a wrong guess.
+ */
+const SIZE_WORDS = new Set(['xs', 'sm', 'base', 'lg', 'xl', '2xl', '3xl', '4xl', '5xl'])
+const FONT_FAMILIES = new Set(['sans', 'serif', 'mono'])
+const FONT_WEIGHTS = new Set([
+  'thin',
+  'extralight',
+  'light',
+  'normal',
+  'medium',
+  'semibold',
+  'bold',
+  'extrabold',
+  'black',
+])
+/** A bare length: `[11px]`, `[1.5rem]`, `12`, `2.5` — as opposed to a colour. */
+const isLength = (v: string) => /^\[[\d.]+(px|rem|em|%|vh|vw)\]$/.test(v) || /^[\d.]+$/.test(v)
+
+function group(token: string): string {
+  // Variants scope the conflict: `hover:bg-x` never fights `bg-y`.
+  const at = token.lastIndexOf(':')
+  const variant = at === -1 ? '' : token.slice(0, at + 1)
+  const util = at === -1 ? token : token.slice(at + 1)
+  const dash = util.indexOf('-')
+  const head = dash === -1 ? util : util.slice(0, dash)
+  const tail = dash === -1 ? '' : util.slice(dash + 1)
+
+  switch (head) {
+    case 'text':
+      // `text-[11px]`/`text-sm` set a size; `text-zinc-300` sets a colour.
+      return variant + (isLength(tail) || SIZE_WORDS.has(tail) ? 'font-size' : 'text-color')
+    case 'font':
+      if (FONT_FAMILIES.has(tail)) return variant + 'font-family'
+      if (FONT_WEIGHTS.has(tail)) return variant + 'font-weight'
+      return variant + util
+    case 'bg':
+      return variant + 'bg'
+    case 'border':
+      // `border`, `border-2`, `border-t` are widths/sides; the rest is colour.
+      if (util === 'border' || isLength(tail) || /^[trblxy]($|-)/.test(tail))
+        return variant + 'border-width'
+      return variant + 'border-color'
+    case 'rounded':
+      return variant + 'rounded'
+    case 'p':
+    case 'px':
+    case 'py':
+    case 'pt':
+    case 'pr':
+    case 'pb':
+    case 'pl':
+    case 'w':
+    case 'h':
+      return variant + head
+    default:
+      // Includes `placeholder:text-…`, handled by the variant prefix above.
+      return variant + util
+  }
+}
+
+/**
+ * `join`, except a later class wins its group outright — the base class it
+ * conflicts with is REMOVED rather than left to lose a stylesheet-order
+ * coin-flip. This is what makes `<Input className="text-[11px]" />` mean what
+ * it reads like.
+ */
+export function mergeClasses(...parts: (string | false | null | undefined)[]): string {
+  const out = new Map<string, string>()
+  for (const token of join(...parts).split(' ')) {
+    if (token) out.set(group(token), token)
+  }
+  return [...out.values()].join(' ')
 }
 
 // ---------------------------------------------------------------------------

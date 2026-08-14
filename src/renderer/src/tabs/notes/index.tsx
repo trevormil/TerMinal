@@ -19,6 +19,7 @@ import {
   Upload,
   Video,
 } from 'lucide-react'
+import { Button, IconButton, Input, Select } from '../../components/ui'
 import { CodeEditor } from '../../components/CodeEditor'
 import { langExtensionFor, useLangsReady } from '../../lib/lazyLang'
 import { Markdown } from '../../components/Markdown'
@@ -570,41 +571,44 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
   const editorPane = (item: KnowledgeItem) => (
     <div className="flex h-full min-h-0 flex-col">
       <div className="grid shrink-0 gap-2 border-b border-[var(--gt-border)] p-3 lg:grid-cols-[minmax(0,1fr)_150px_160px]">
-        <input
+        <Input
           value={item.title}
           onChange={(e) => updateItem({ title: e.target.value })}
           onBlur={() => updateItem({}, true)}
-          className="rounded-md border border-[var(--gt-border)] bg-black/30 px-2.5 py-1.5 text-[13px] font-semibold text-zinc-100 outline-none focus:border-[var(--gt-accent)]/60"
+          size="md"
+          className="text-[13px] font-semibold text-zinc-100"
         />
-        <select
+        <Select
           value={item.kind}
           onChange={(e) => updateItem({ kind: e.target.value as KnowledgeItemKind }, true)}
-          className="rounded-md border border-[var(--gt-border)] bg-black/30 px-2 text-[12px] text-zinc-200 outline-none"
+          size="md"
+          className="py-0"
         >
           {(Object.keys(kindMeta) as KnowledgeItemKind[]).map((kind) => (
             <option key={kind} value={kind} className="bg-[var(--gt-panel)]">
               {kindMeta[kind].label}
             </option>
           ))}
-        </select>
-        <select
+        </Select>
+        <Select
           value={item.categoryId}
           onChange={(e) => updateItem({ categoryId: e.target.value }, true)}
-          className="rounded-md border border-[var(--gt-border)] bg-black/30 px-2 text-[12px] text-zinc-200 outline-none"
+          size="md"
+          className="py-0"
         >
           {kb.categories.map((category) => (
             <option key={category.id} value={category.id} className="bg-[var(--gt-panel)]">
               {category.title}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
       <div className="grid shrink-0 gap-2 border-b border-[var(--gt-border)] p-3 lg:grid-cols-[minmax(0,1fr)_240px]">
-        <input
+        <Input
           value={item.description || ''}
           onChange={(e) => updateItem({ description: e.target.value })}
           placeholder="Short description"
-          className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 py-1.5 text-[12px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
+          size="md"
         />
         <div className="flex items-center gap-1 rounded-md border border-[var(--gt-border)] bg-black/25 px-2">
           <Tags size={12} strokeWidth={2} className="text-zinc-600" />
@@ -626,33 +630,34 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
       {item.kind === 'rag' && (
         <div className="shrink-0 space-y-3 border-b border-[var(--gt-border)] p-3">
           <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_120px_90px_90px]">
-            <input
+            <Input
               value={item.rag?.rootDir || ''}
               onChange={(e) => updateRagConfig({ rootDir: e.target.value })}
               onBlur={() => updateItem({}, true)}
               placeholder="Auto workspace path"
-              className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 py-1.5 font-mono text-[12px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
+              size="md"
+              className="font-mono"
             />
-            <input
+            <Input
               value={item.rag?.category || ''}
               onChange={(e) => updateRagConfig({ category: e.target.value })}
               onBlur={() => updateItem({}, true)}
               placeholder="Category"
-              className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 py-1.5 text-[12px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
+              size="md"
             />
-            <input
+            <Input
               value={String(item.rag?.hybridAlpha ?? 0.3)}
               onChange={(e) => updateRagConfig({ hybridAlpha: Number(e.target.value) })}
               onBlur={() => updateItem({}, true)}
               placeholder="Alpha"
-              className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 py-1.5 text-[12px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
+              size="md"
             />
-            <input
+            <Input
               value={String(item.rag?.maxResults ?? 5)}
               onChange={(e) => updateRagConfig({ maxResults: Number(e.target.value) })}
               onBlur={() => updateItem({}, true)}
               placeholder="Results"
-              className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 py-1.5 text-[12px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
+              size="md"
             />
           </div>
           <details>
@@ -660,89 +665,104 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
               Advanced MCP command
             </summary>
             <div className="mt-2 grid gap-2 lg:grid-cols-[160px_minmax(0,1fr)]">
-              <input
+              <Input
                 value={item.rag?.command || 'uvx'}
                 onChange={(e) => updateRagConfig({ command: e.target.value })}
                 onBlur={() => updateItem({}, true)}
-                className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 py-1.5 font-mono text-[12px] text-zinc-300 outline-none focus:border-[var(--gt-accent)]/60"
+                size="md"
+                className="font-mono"
               />
-              <input
+              <Input
                 value={(item.rag?.args || ['--python', '3.11', 'knowledge-rag==3.9.0']).join(' ')}
                 onChange={(e) =>
                   updateRagConfig({ args: e.target.value.split(/\s+/).filter(Boolean) })
                 }
                 onBlur={() => updateItem({}, true)}
-                className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 py-1.5 font-mono text-[12px] text-zinc-300 outline-none focus:border-[var(--gt-accent)]/60"
+                size="md"
+                className="font-mono"
               />
             </div>
           </details>
           <div className="flex flex-wrap gap-2">
-            <button
+            <Button
               onClick={() => refreshRagStatus(item)}
               disabled={ragBusy}
-              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-black/25 px-3 text-[11.5px] text-zinc-300 hover:border-[var(--gt-accent)]/60 disabled:opacity-40"
+              variant="subtle"
+              size="md"
+              className="h-8 gap-1.5 px-3 text-[11.5px]"
             >
               <Database size={12} strokeWidth={2} />
               Status
-            </button>
-            <button
+            </Button>
+            <Button
               onClick={() => reindexRag(item)}
               disabled={ragBusy}
-              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-black/25 px-3 text-[11.5px] text-zinc-300 hover:border-[var(--gt-accent)]/60 disabled:opacity-40"
+              variant="subtle"
+              size="md"
+              className="h-8 gap-1.5 px-3 text-[11.5px]"
             >
               <RefreshCw size={12} strokeWidth={2} className={ragBusy ? 'animate-spin' : ''} />
               Reindex
-            </button>
-            <button
+            </Button>
+            <Button
               onClick={() => reindexRag(item, true)}
               disabled={ragBusy}
-              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-black/25 px-3 text-[11.5px] text-zinc-300 hover:border-[var(--gt-accent)]/60 disabled:opacity-40"
+              variant="subtle"
+              size="md"
+              className="h-8 gap-1.5 px-3 text-[11.5px]"
             >
               Full rebuild
-            </button>
-            <button
+            </Button>
+            <Button
               onClick={() => ragStatus?.rootDir && window.gt.openInEditor(ragStatus.rootDir)}
               disabled={!ragStatus?.rootDir}
-              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-black/25 px-3 text-[11.5px] text-zinc-300 hover:border-[var(--gt-accent)]/60 disabled:opacity-40"
+              variant="subtle"
+              size="md"
+              className="h-8 gap-1.5 px-3 text-[11.5px]"
             >
               <ExternalLink size={12} strokeWidth={2} />
               Open
-            </button>
+            </Button>
           </div>
           <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto]">
-            <input
+            <Input
               value={ragQuery}
               onChange={(e) => setRagQuery(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') searchRag(item)
               }}
               placeholder="Search this RAG..."
-              className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 py-1.5 text-[12px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
+              size="md"
             />
-            <button
+            <Button
               onClick={() => searchRag(item)}
               disabled={ragBusy || !ragQuery.trim()}
-              className="inline-flex h-[33px] items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-black/25 px-3 text-[11.5px] text-zinc-300 hover:border-[var(--gt-accent)]/60 disabled:opacity-40"
+              variant="subtle"
+              size="md"
+              className="h-[33px] gap-1.5 px-3 text-[11.5px]"
             >
               <Search size={12} strokeWidth={2} />
               Search
-            </button>
+            </Button>
           </div>
           <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto]">
-            <input
+            <Input
               value={ragUrl}
               onChange={(e) => setRagUrl(e.target.value)}
               placeholder="https://docs.example.com/page"
-              className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 py-1.5 font-mono text-[12px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
+              size="md"
+              className="font-mono"
             />
-            <button
+            <Button
               onClick={() => addRagUrl(item)}
               disabled={ragBusy || !ragUrl.trim()}
-              className="inline-flex h-[33px] items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-black/25 px-3 text-[11.5px] text-zinc-300 hover:border-[var(--gt-accent)]/60 disabled:opacity-40"
+              variant="subtle"
+              size="md"
+              className="h-[33px] gap-1.5 px-3 text-[11.5px]"
             >
               <Upload size={12} strokeWidth={2} />
               Add URL
-            </button>
+            </Button>
           </div>
           <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_160px_auto]">
             <textarea
@@ -751,66 +771,76 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
               placeholder="Paste markdown or text to index..."
               className="min-h-20 resize-y rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 py-2 font-mono text-[12px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
             />
-            <input
+            <Input
               value={ragDocPath}
               onChange={(e) => setRagDocPath(e.target.value)}
               placeholder="category/file.md"
-              className="h-[33px] rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 py-1.5 font-mono text-[12px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
+              size="md"
+              className="h-[33px] font-mono"
             />
-            <button
+            <Button
               onClick={() => addRagDocument(item)}
               disabled={ragBusy || !ragDocContent.trim()}
-              className="inline-flex h-[33px] items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-black/25 px-3 text-[11.5px] text-zinc-300 hover:border-[var(--gt-accent)]/60 disabled:opacity-40"
+              variant="subtle"
+              size="md"
+              className="h-[33px] gap-1.5 px-3 text-[11.5px]"
             >
               <Upload size={12} strokeWidth={2} />
               Add text
-            </button>
+            </Button>
           </div>
         </div>
       )}
       {item.kind !== 'markdown' && item.kind !== 'rag' && (
         <div className="shrink-0 border-b border-[var(--gt-border)] p-3">
           <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
-            <input
+            <Input
               value={item.url || ''}
               onChange={(e) => updateItem({ url: e.target.value })}
               onBlur={() => item.url && enrichItem(item)}
               placeholder="https://..."
-              className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 py-1.5 font-mono text-[12px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
+              size="md"
+              className="font-mono"
             />
-            <input
+            <Input
               value={item.path || ''}
               onChange={(e) => updateItem({ path: e.target.value })}
               placeholder="/local/path.ext"
-              className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 py-1.5 font-mono text-[12px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
+              size="md"
+              className="font-mono"
             />
-            <button
+            <Button
               onClick={() => enrichItem(item)}
               disabled={!item.url || previewBusy}
-              className="inline-flex h-[33px] items-center justify-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-black/25 px-3 text-[11.5px] text-zinc-300 hover:border-[var(--gt-accent)]/60 disabled:opacity-40"
+              variant="subtle"
+              size="md"
+              className="h-[33px] gap-1.5 px-3 text-[11.5px]"
             >
               <Sparkles size={12} strokeWidth={2} className={previewBusy ? 'animate-pulse' : ''} />
               Preview
-            </button>
+            </Button>
           </div>
           <div className="mt-2 grid gap-2 lg:grid-cols-[minmax(0,1fr)_180px_180px]">
-            <input
+            <Input
               value={item.thumbnailUrl || ''}
               onChange={(e) => updateItem({ thumbnailUrl: e.target.value })}
               placeholder="Thumbnail URL"
-              className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2.5 py-1.5 font-mono text-[11px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
+              size="md"
+              className="font-mono text-[11px]"
             />
-            <input
+            <Input
               value={item.siteName || ''}
               onChange={(e) => updateItem({ siteName: e.target.value })}
               placeholder="Site name"
-              className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2.5 py-1.5 text-[11px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
+              size="md"
+              className="text-[11px]"
             />
-            <input
+            <Input
               value={item.faviconUrl || ''}
               onChange={(e) => updateItem({ faviconUrl: e.target.value })}
               placeholder="Favicon URL"
-              className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2.5 py-1.5 font-mono text-[11px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
+              size="md"
+              className="font-mono text-[11px]"
             />
           </div>
           {previewErr && <div className="mt-1 text-[10.5px] text-amber-400">{previewErr}</div>}
@@ -948,21 +978,23 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
                 Categories
               </div>
               <div className="flex gap-1">
-                <input
+                <Input
                   value={newCategory}
                   onChange={(e) => setNewCategory(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') addCategory()
                   }}
                   placeholder="New category"
-                  className="min-w-0 flex-1 rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[11px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
+                  className="min-w-0 flex-1"
                 />
-                <button
+                <IconButton
                   onClick={addCategory}
-                  className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-[var(--gt-border)] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
+                  label="Add category"
+                  variant="subtle"
+                  className="h-7 w-7 hover:text-zinc-100"
                 >
                   <Plus size={13} strokeWidth={2.5} />
-                </button>
+                </IconButton>
               </div>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto p-2">
@@ -1016,24 +1048,21 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
                 </div>
               </div>
               <div className="flex gap-1">
-                <select
+                <Select
                   value={newKind}
                   onChange={(e) => setNewKind(e.target.value as KnowledgeItemKind)}
-                  className="min-w-0 flex-1 rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[11px] text-zinc-300 outline-none"
+                  className="min-w-0 flex-1"
                 >
                   {(Object.keys(kindMeta) as KnowledgeItemKind[]).map((kind) => (
                     <option key={kind} value={kind} className="bg-[var(--gt-panel)]">
                       {kindMeta[kind].label}
                     </option>
                   ))}
-                </select>
-                <button
-                  onClick={addItem}
-                  className="inline-flex h-7 items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 text-[11px] text-zinc-300 hover:border-[var(--gt-accent)]/60"
-                >
+                </Select>
+                <Button onClick={addItem} variant="subtle" className="h-7 px-2">
                   <Plus size={12} strokeWidth={2.5} />
                   Add
-                </button>
+                </Button>
               </div>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto p-2">
@@ -1104,13 +1133,15 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
                   <span className="min-w-0 flex-1 truncate text-[11px] text-zinc-300">
                     {activeItem.title}
                   </span>
-                  <button
+                  <Button
                     onClick={() => deleteItem(activeItem.id)}
-                    className="inline-flex h-6 items-center gap-1 rounded-md border border-[var(--gt-border)] px-1.5 text-[10.5px] text-zinc-500 hover:border-[var(--gt-red)]/60 hover:text-[var(--gt-red)]"
+                    variant="subtle"
+                    size="xs"
+                    className="h-6 px-1.5 text-zinc-500 hover:border-[var(--gt-red)]/60 hover:text-[var(--gt-red)]"
                   >
                     <Trash2 size={11} strokeWidth={2} />
                     Delete
-                  </button>
+                  </Button>
                 </div>
                 <div className="min-h-0 flex-1">{editorPane(activeItem)}</div>
               </div>

@@ -5,6 +5,7 @@ import {
   iconButtonClasses,
   inputClasses,
   join,
+  mergeClasses,
   nextFocusIndex,
   selectClasses,
   type ButtonVariant,
@@ -46,9 +47,11 @@ describe('button variants', () => {
       selectClasses(),
     ].join(' ')
     const steps = new Set(
-      [...all.matchAll(/(?:bg|text)-\[var\(--gt-(?:accent|red|green|yellow|blue)[a-z-]*\)\]\/(\d+)/g)].map(
-        (m) => m[1],
-      ),
+      [
+        ...all.matchAll(
+          /(?:bg|text)-\[var\(--gt-(?:accent|red|green|yellow|blue)[a-z-]*\)\]\/(\d+)/g,
+        ),
+      ].map((m) => m[1]),
     )
     expect([...steps].sort()).toEqual(['10', '20'])
   })
@@ -127,5 +130,92 @@ describe('focus trap arithmetic', () => {
   test('the selector skips disabled controls and tabindex=-1', () => {
     expect(FOCUSABLE_SELECTOR).toContain('button:not([disabled])')
     expect(FOCUSABLE_SELECTOR).toContain('[tabindex]:not([tabindex="-1"])')
+  })
+})
+
+describe('mergeClasses', () => {
+  // Why this exists: Tailwind resolves two classes that set the same property
+  // by STYLESHEET order, not class-list order. Plain concatenation therefore
+  // makes `className` a coin-flip whenever it overrides a base utility, which
+  // is exactly what every migrated call site does.
+  const has = (out: string, cls: string) => out.split(' ').includes(cls)
+
+  test('a later class evicts the base class it conflicts with', () => {
+    const out = mergeClasses('px-2 py-1 text-[11px]', 'text-[13px]')
+    expect(has(out, 'text-[13px]')).toBe(true)
+    expect(has(out, 'text-[11px]')).toBe(false)
+    // Untouched groups survive.
+    expect(has(out, 'px-2')).toBe(true)
+    expect(has(out, 'py-1')).toBe(true)
+  })
+
+  test('a font size does not evict a text colour, or vice versa', () => {
+    // Both are `text-*`, but they set different properties. Collapsing them
+    // would silently strip the colour off every sized control.
+    const out = mergeClasses('text-zinc-200 text-[11px]', 'text-[13px]')
+    expect(has(out, 'text-zinc-200')).toBe(true)
+    expect(has(out, 'text-[13px]')).toBe(true)
+
+    const colour = mergeClasses('text-zinc-200 text-[11px]', 'text-zinc-500')
+    expect(has(colour, 'text-[11px]')).toBe(true)
+    expect(has(colour, 'text-zinc-500')).toBe(true)
+    expect(has(colour, 'text-zinc-200')).toBe(false)
+  })
+
+  test('named sizes and lengths are the same group', () => {
+    expect(has(mergeClasses('text-[11px]', 'text-sm'), 'text-[11px]')).toBe(false)
+  })
+
+  test('a variant only conflicts with the same variant', () => {
+    const out = mergeClasses('bg-black/30 hover:bg-white/5', 'bg-black/20')
+    expect(has(out, 'bg-black/20')).toBe(true)
+    expect(has(out, 'bg-black/30')).toBe(false)
+    // The hover state is a different rule and must survive.
+    expect(has(out, 'hover:bg-white/5')).toBe(true)
+  })
+
+  test('placeholder and focus variants are scoped, not global', () => {
+    const out = mergeClasses(
+      'text-zinc-200 placeholder:text-zinc-600 focus:border-[var(--gt-accent)]/60',
+      'placeholder:text-zinc-700',
+    )
+    expect(has(out, 'text-zinc-200')).toBe(true)
+    expect(has(out, 'placeholder:text-zinc-700')).toBe(true)
+    expect(has(out, 'placeholder:text-zinc-600')).toBe(false)
+    expect(has(out, 'focus:border-[var(--gt-accent)]/60')).toBe(true)
+  })
+
+  test('border width and border colour are separate groups', () => {
+    // Dropping the bare `border` when a colour is set would remove the border.
+    const out = mergeClasses('border border-[var(--gt-border)]', 'border-[var(--gt-red)]/50')
+    expect(has(out, 'border')).toBe(true)
+    expect(has(out, 'border-[var(--gt-red)]/50')).toBe(true)
+    expect(has(out, 'border-[var(--gt-border)]')).toBe(false)
+  })
+
+  test('padding axes do not evict each other', () => {
+    const out = mergeClasses('px-2 py-1', 'px-3')
+    expect(has(out, 'py-1')).toBe(true)
+    expect(has(out, 'px-3')).toBe(true)
+    expect(has(out, 'px-2')).toBe(false)
+  })
+
+  test('font family and weight are independent', () => {
+    const out = mergeClasses('font-semibold', 'font-mono')
+    expect(has(out, 'font-semibold')).toBe(true)
+    expect(has(out, 'font-mono')).toBe(true)
+  })
+
+  test('an unrecognised utility degrades to concatenation, not to a wrong guess', () => {
+    const out = mergeClasses('animate-spin shrink-0', 'tabular-nums')
+    expect(out.split(' ').sort()).toEqual(['animate-spin', 'shrink-0', 'tabular-nums'])
+  })
+
+  test('an exact duplicate is emitted once', () => {
+    expect(mergeClasses('shrink-0', 'shrink-0')).toBe('shrink-0')
+  })
+
+  test('empty and falsy parts are dropped without leaving blanks', () => {
+    expect(mergeClasses('px-2', false, null, undefined, '')).toBe('px-2')
   })
 })
