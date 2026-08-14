@@ -148,6 +148,11 @@ export function makeSandbox(): Sandbox {
     JSON.stringify(
       {
         onboarded: true,
+        // The Plugins-drawer flow tests the repo-widget APPROVAL path, which
+        // only exists when repo extensions are globally enabled (the kill
+        // switch defaults off — e68a4101). The fixture widget stays inert
+        // either way: it is never approved.
+        allowRepoExtensions: true,
         projectsDir: join(home, 'projects'),
         worktreesDir: join(home, 'worktrees'),
         defaultEngine: 'claude',
