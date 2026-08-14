@@ -836,17 +836,6 @@ export type GtApi = {
     ) => Promise<{ moved: number; skipped: string[]; sweptCopies: number; error?: string }>
   }
   observability: {
-    summary: (range?: 'today' | 'week' | 'month' | 'all') => Promise<{
-      totalUsd: number
-      totalRuns: number
-      byModel: Record<
-        string,
-        { runs: number; usd: number; inputTokens: number; outputTokens: number }
-      >
-      bySource: Record<string, { runs: number; usd: number }>
-      byAgent: Record<string, { runs: number; usd: number }>
-      byRepo: Record<string, { runs: number; usd: number }>
-    }>
     byAgent: (range?: 'today' | 'week' | 'month' | 'all') => Promise<
       {
         agentId: string
@@ -855,9 +844,6 @@ export type GtApi = {
         outcomes: { prOpened: number; ticketFiled: number; merged: number; none: number }
       }[]
     >
-    daily: (
-      days?: number,
-    ) => Promise<{ date: string; usd: number; runs: number; byModel: Record<string, number> }[]>
     runs: (limit?: number) => Promise<
       {
         id: string
@@ -877,7 +863,6 @@ export type GtApi = {
         exitCode?: number
       }[]
     >
-    models: () => Promise<string[]>
     indexStatus: () => Promise<ObservabilityIndexStatus>
     rebuildIndex: (limit?: number) => Promise<ObservabilityIndexBuildResult>
     indexQuery: (

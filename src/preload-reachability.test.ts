@@ -76,7 +76,10 @@ function preloadKeyPaths(source: string): string[] {
   for (const raw of source.split('\n')) {
     const line = decommented(raw)
     if (!started) {
-      if (/\bconst gt = \{/.test(line)) {
+      // `gt` carries a type annotation (`const gt: GtApi = {`), so the opener is
+      // matched loosely — pinning the exact spelling is what silently emptied
+      // KEYS the last time the declaration grew one.
+      if (/\bconst gt\b[^=]*= \{/.test(line)) {
         started = true
         depth = 1
       }

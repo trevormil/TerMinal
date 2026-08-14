@@ -1,43 +1,23 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-
-type FilesSearchOptions = {
-  regex?: boolean
-  caseSensitive?: boolean
-  wholeWord?: boolean
-  include?: string
-  exclude?: string
-}
-
-type StartOpts = {
-  mode: 'new' | 'resume'
-  engine?: 'claude' | 'codex' | 'cursor' | 'openrouter' | 'hermes' | 'local'
-  model?: string
-  effort?: string
-  sessionId?: string
-  cwd?: string
-  name?: string
-  initialInput?: string
-  ticketSlug?: string
-  remote?: {
-    hostId: string
-    label: string
-    sshTarget: string
-    cwd?: string
-    platform?: 'auto' | 'linux' | 'macos'
-    daemon?: unknown
-  }
-  loopId?: string
-  loopRole?: 'driver' | 'worker'
-  openrouterHarness?: 'codex' | 'hermes'
-  cols: number
-  rows: number
-}
+// `gt` is annotated `GtApi`, so the bridge is now checked against the surface
+// the renderer declares — a preload key that drifts from its declaration (a
+// narrowed engine union, a renamed argument, a method the renderer expects and
+// the bridge never grew) fails the build here instead of at runtime.
+import type {
+  ActivityEvent,
+  AgentRun,
+  DigestRunState,
+  Engine,
+  FilesSearchOptions,
+  GtApi,
+  StartOpts,
+  UpdateCheckResult,
+} from '../renderer/src/lib/types'
 
 // The single bridge the renderer (and every plugin) talks to.
-const gt = {
+const gt: GtApi = {
   // session lifecycle (each session keyed by a renderer-generated id)
-  listSessions: (engine?: 'claude' | 'codex' | 'cursor') =>
-    ipcRenderer.invoke('sessions:list', engine),
+  listSessions: (engine?: Engine) => ipcRenderer.invoke('sessions:list', engine),
   startSession: (key: string, opts: StartOpts) => ipcRenderer.invoke('session:start', key, opts),
   setActiveSession: (key: string) => ipcRenderer.invoke('session:setActive', key),
   stopSession: (key: string) => ipcRenderer.invoke('session:stop', key),
@@ -93,7 +73,7 @@ const gt = {
   cheapLlm: (opts: {
     messages: { role: string; content: string }[]
     model?: string
-    engine?: 'codex' | 'claude' | 'cursor'
+    engine?: Engine
     route?: 'auto' | 'claude-p'
     cwd?: string
     maxTokens?: number
@@ -197,13 +177,13 @@ const gt = {
     rerun: (runId: string) => ipcRenderer.invoke('agents:rerun', runId),
     cancel: (runId: string) => ipcRenderer.invoke('agents:cancel', runId),
     removeWorktree: (runId: string) => ipcRenderer.invoke('agents:remove-worktree', runId),
-    onStatus: (cb: (run: unknown) => void) => {
-      const h = (_e: unknown, run: unknown) => cb(run)
+    onStatus: (cb: (run: AgentRun) => void) => {
+      const h = (_e: unknown, run: AgentRun) => cb(run)
       ipcRenderer.on('agent:status', h)
       return () => ipcRenderer.removeListener('agent:status', h)
     },
-    onOutput: (cb: (p: unknown) => void) => {
-      const h = (_e: unknown, p: unknown) => cb(p)
+    onOutput: (cb: (p: { runId: string; chunk: string }) => void) => {
+      const h = (_e: unknown, p: { runId: string; chunk: string }) => cb(p)
       ipcRenderer.on('agent:output', h)
       return () => ipcRenderer.removeListener('agent:output', h)
     },
@@ -312,8 +292,8 @@ const gt = {
     unseenCount: (since: number, kinds: string[]) =>
       ipcRenderer.invoke('activity:unseen-count', since, kinds),
     clear: () => ipcRenderer.invoke('activity:clear'),
-    onEvent: (cb: (ev: unknown) => void) => {
-      const h = (_e: unknown, ev: unknown) => cb(ev)
+    onEvent: (cb: (ev: ActivityEvent) => void) => {
+      const h = (_e: unknown, ev: ActivityEvent) => cb(ev)
       ipcRenderer.on('activity:event', h)
       return () => ipcRenderer.removeListener('activity:event', h)
     },
@@ -436,8 +416,8 @@ const gt = {
   getDigest: (iid: number, short?: string) => ipcRenderer.invoke('digest:get', iid, short),
   runDigest: (iid: number) => ipcRenderer.invoke('digest:run', iid),
   digestStatus: (iid: number) => ipcRenderer.invoke('digest:status', iid),
-  onDigestStatus: (cb: (s: unknown) => void) => {
-    const h = (_e: unknown, s: unknown) => cb(s)
+  onDigestStatus: (cb: (s: DigestRunState) => void) => {
+    const h = (_e: unknown, s: DigestRunState) => cb(s)
     ipcRenderer.on('digest:status', h)
     return () => ipcRenderer.removeListener('digest:status', h)
   },
@@ -468,8 +448,8 @@ const gt = {
   },
   update: {
     check: () => ipcRenderer.invoke('update:check'),
-    onStatus: (cb: (r: unknown) => void) => {
-      const h = (_e: unknown, r: unknown) => cb(r)
+    onStatus: (cb: (r: UpdateCheckResult) => void) => {
+      const h = (_e: unknown, r: UpdateCheckResult) => cb(r)
       ipcRenderer.on('update:status', h)
       return () => ipcRenderer.removeListener('update:status', h)
     },
@@ -482,7 +462,7 @@ const gt = {
     spawn: (input: {
       repoRoot: string
       prompt: string
-      engine?: 'claude' | 'codex' | 'cursor'
+      engine?: Engine
       model?: string
     }) => ipcRenderer.invoke('bg:spawn', input),
     cancel: (id: string) => ipcRenderer.invoke('bg:cancel', id),
@@ -492,10 +472,10 @@ const gt = {
     get: (id: string) => ipcRenderer.invoke('loops:get', id),
     state: (id: string) => ipcRenderer.invoke('loops:state', id),
     create: (input: {
-      repoRoot: string
+      repoRoot?: string
       goal: string
       mode?: 'headless' | 'paired' | 'single'
-      engine?: 'claude' | 'codex' | 'cursor' | 'hermes'
+      engine?: Engine
       model?: string
       maxIterations?: number
     }) => ipcRenderer.invoke('loops:create', input),
