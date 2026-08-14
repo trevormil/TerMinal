@@ -4,7 +4,7 @@
 // snooze gate (so a snoozed item is silent on every channel) and the delivery
 // recorder (so a channel that keeps failing stops failing silently).
 
-import { ipcMain } from 'electron'
+import { handle } from '../typed-ipc'
 import { emitActivity } from '../events'
 import { clearSnooze, isSnoozedAt, readSnoozes, setSnooze } from '../hitl-snooze'
 import {
@@ -44,17 +44,17 @@ export function registerInboxIpc(): void {
       })
   })
 
-  ipcMain.handle('inbox:snoozes', () => snoozes())
-  ipcMain.handle('inbox:snooze', (_e, id: string, until: number) => {
+  handle('inbox:snoozes', () => snoozes())
+  handle('inbox:snooze', (_e, id: string, until: number) => {
     snoozeCache = setSnooze(SNOOZE_FILE(), id, until)
     return snoozeCache
   })
-  ipcMain.handle('inbox:unsnooze', (_e, id: string) => {
+  handle('inbox:unsnooze', (_e, id: string) => {
     snoozeCache = clearSnooze(SNOOZE_FILE(), id)
     return snoozeCache
   })
 
-  ipcMain.handle('inbox:delivery-log', (_e, channel?: string, limit?: number) =>
+  handle('inbox:delivery-log', (_e, channel?: string, limit?: number) =>
     recentDeliveries(deliveryLog ?? (deliveryLog = readDeliveryLog(DELIVERY_FILE())), {
       channel,
       limit,

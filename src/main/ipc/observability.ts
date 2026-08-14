@@ -3,7 +3,7 @@
 // session — remote observability indexing is not wired yet, and an empty
 // result must not read as "nothing was spent".
 
-import { ipcMain } from 'electron'
+import { handle } from '../typed-ipc'
 import { agentROI, listAIRuns, type Range } from '../ai-runs'
 import {
   observabilityFilterOptions,
@@ -15,13 +15,13 @@ import {
 } from '../observability-index'
 
 export function registerObservabilityIpc(deps: { isRemote(): boolean }): void {
-  ipcMain.handle('observability:byAgent', (_e, range: Range = 'week') =>
+  handle('observability:byAgent', (_e, range: Range = 'week') =>
     deps.isRemote() ? [] : agentROI(range),
   )
-  ipcMain.handle('observability:runs', (_e, limit: number = 100) =>
+  handle('observability:runs', (_e, limit: number = 100) =>
     deps.isRemote() ? [] : listAIRuns(limit),
   )
-  ipcMain.handle('observability:index-status', () =>
+  handle('observability:index-status', () =>
     deps.isRemote()
       ? {
           ...observabilityIndexStatus(),
@@ -30,7 +30,7 @@ export function registerObservabilityIpc(deps: { isRemote(): boolean }): void {
         }
       : observabilityIndexStatus(),
   )
-  ipcMain.handle('observability:index-rebuild', (_e, limit: number = 240) =>
+  handle('observability:index-rebuild', (_e, limit: number = 240) =>
     deps.isRemote()
       ? {
           ...observabilityIndexStatus(),
@@ -41,7 +41,7 @@ export function registerObservabilityIpc(deps: { isRemote(): boolean }): void {
         }
       : rebuildObservabilityIndex(limit),
   )
-  ipcMain.handle(
+  handle(
     'observability:index-query',
     (_e, query: ObservabilityIndexQueryId, arg?: string, filter?: ObservabilityQueryFilter) =>
       deps.isRemote()
@@ -52,7 +52,7 @@ export function registerObservabilityIpc(deps: { isRemote(): boolean }): void {
           }
         : queryObservabilityIndex(query, arg, filter),
   )
-  ipcMain.handle('observability:filter-options', () =>
+  handle('observability:filter-options', () =>
     deps.isRemote() ? { repos: [], engines: [], models: [] } : observabilityFilterOptions(),
   )
 }
