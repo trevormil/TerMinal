@@ -14,7 +14,13 @@ import { handle } from '../typed-ipc'
 import { emitActivity } from '../events'
 import { configPath, terminalConfigDir } from '../config-dir'
 import { installTmPlugin, tmPluginStatus } from '../plugin-install'
-import { migrateRepoState, pendingMigration, sidecarGitStatus } from '../repo-state-migrate'
+import {
+  migrateRepoState,
+  pendingMigration,
+  sidecarGitStatus,
+  warnIfLegacyStateStranded,
+} from '../repo-state-migrate'
+import { migrationWindowOpen } from '../../shared/migration-sunset'
 import {
   legacyPluginCopies,
   legacySeedCandidates,
@@ -52,11 +58,27 @@ export function registerMaintenanceIpc(deps: MaintenanceIpcDeps): void {
     // real global ~/.claude/skills as repo-local plugin copies (they share
     // names by construction) and offer to bank them — breaking every project.
     const root = repoRootOf(repoRoot || deps.cur().cwd)
-    if (!root) return { isRepo: false, commits: 0, path: '', pending: 0, legacyCopies: 0 }
+    if (!root)
+      return {
+        isRepo: false,
+        commits: 0,
+        path: '',
+        pending: 0,
+        migrationOpen: migrationWindowOpen(),
+        legacyCopies: 0,
+      }
     const pluginDir = join(terminalConfigDir(), 'plugin')
+    // `migrationOpen` is the ambient half's on/off switch: it drives the banner
+    // the renderer shows unprompted, which retires on MIGRATION_SUNSET. The
+    // manual migrate below stays callable forever, so this probe keeps reporting
+    // `pending` either way — and past the sunset it also files the one-per-repo
+    // warning, since a repo that never migrated has just gone quiet.
+    const pending = pendingMigration(root)
+    warnIfLegacyStateStranded(root, pending, { emit: emitActivity })
     return {
       ...sidecarGitStatus(root),
-      pending: pendingMigration(root),
+      pending,
+      migrationOpen: migrationWindowOpen(),
       legacyCopies:
         legacyPluginCopies(root, pluginDir).length + legacySeedCandidates(root, pluginDir).length,
     }

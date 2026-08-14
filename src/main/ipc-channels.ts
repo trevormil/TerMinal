@@ -140,6 +140,7 @@ export type ChannelMap = {
   'loops:step': Of<GtApi['loops']['step']>
   'loops:stop': Of<GtApi['loops']['stop']>
   'mcp:install': Of<GtApi['mcpInstall']>
+  'monitors:connectivity': Of<GtApi['monitors']['connectivity']>
   'monitors:list': Of<GtApi['monitors']['list']>
   'monitors:run': Of<GtApi['monitors']['run']>
   'monitors:save': Of<GtApi['monitors']['save']>
