@@ -3,7 +3,7 @@
 // Session context (active repo/session, attached remote, host lookup) is
 // injected via deps so this module stays free of index.ts's pty state.
 
-import { ipcMain } from 'electron'
+import { handle } from '../typed-ipc'
 import { randomUUID } from 'node:crypto'
 import { basename } from 'node:path'
 import { emitActivity } from '../events'
@@ -63,13 +63,13 @@ export type SchedulesIpcDeps = {
 }
 
 export function registerSchedulesIpc(deps: SchedulesIpcDeps): void {
-  ipcMain.handle('schedules:design', (_e, text: string, engine: Engine) =>
+  handle('schedules:design', (_e, text: string, engine: Engine) =>
     deps.curRemote()
       ? { error: 'remote schedule design needs the remote daemon writer' }
       : runScheduleDesignerSpawn(repoRootOf(deps.cur().cwd), text, engine),
   )
 
-  ipcMain.handle('schedules:list', () => {
+  handle('schedules:list', () => {
     const now = Date.now()
     const remote = deps.curRemote()
     if (remote) {
@@ -109,7 +109,7 @@ export function registerSchedulesIpc(deps: SchedulesIpcDeps): void {
       loaded: scheduleLoadedState(s),
     }))
   })
-  ipcMain.handle(
+  handle(
     'schedules:save',
     async (
       _e,
@@ -245,7 +245,10 @@ export function registerSchedulesIpc(deps: SchedulesIpcDeps): void {
           )
       }
       const r = await routeSyncSchedule(sched)
-      if (!r.ok) return { error: r.error }
+      // `routeSyncSchedule` can fail without a message. `{ error: undefined }`
+      // reads as success to every `if (res.error)` in the UI, so the editor
+      // would close on a save that never reached launchd.
+      if (!r.ok) return { error: r.error || 'syncing the schedule failed' }
       emitActivity({
         kind: 'check',
         title: `Schedule ${input.id ? 'updated' : 'created'} · ${agent.title}`,
@@ -279,7 +282,7 @@ export function registerSchedulesIpc(deps: SchedulesIpcDeps): void {
     }
     return Object.keys(out).length ? out : undefined
   }
-  ipcMain.handle('schedules:remove', async (_e, id: string): Promise<MutationResult> => {
+  handle('schedules:remove', async (_e, id: string): Promise<MutationResult> => {
     const remote = deps.curRemote()
     // Was `.catch(() => false)`: an unreachable host looked exactly like the host
     // refusing, so a schedule the SSH failure left in place read as removed.
@@ -326,7 +329,7 @@ export function registerSchedulesIpc(deps: SchedulesIpcDeps): void {
     if (!ok) return { ok: false, reason: 'refused', error: `no such schedule: ${id}` }
     return warning ? { ok: true, warning } : { ok: true }
   })
-  ipcMain.handle(
+  handle(
     'schedules:toggle',
     async (_e, id: string, enabled: boolean): Promise<MutationResult> => {
       const remote = deps.curRemote()
@@ -387,7 +390,7 @@ export function registerSchedulesIpc(deps: SchedulesIpcDeps): void {
     })
     return { ok: true }
   }
-  ipcMain.handle('schedules:run-now', (_e, id: string, hostId?: string) => {
+  handle('schedules:run-now', (_e, id: string, hostId?: string) => {
     // Routed by routeRunNow (#43): an explicit hostId (the Runs-tab re-run path)
     // or the schedule's own `host` binding triggers the host-side runner over
     // SSH; only unbound schedules fall through to the attached-session remote or
@@ -418,7 +421,7 @@ export function registerSchedulesIpc(deps: SchedulesIpcDeps): void {
       },
     })
   })
-  ipcMain.handle('schedules:runs', (_e, id?: string) => {
+  handle('schedules:runs', (_e, id?: string) => {
     const remote = deps.curRemote()
     return remote ? remoteSchedules.runs(remote, id).catch(() => []) : readCronRuns(id)
   })
@@ -426,7 +429,7 @@ export function registerSchedulesIpc(deps: SchedulesIpcDeps): void {
   // Breaker state INCLUDING each host's own disabled.json. The host's runner
   // trips the breaker there, so a Mac that reads only its local file renders a
   // dead schedule as enabled/healthy (host-disabled.ts).
-  ipcMain.handle('schedules:disabled-detail', async (): Promise<DisabledDetailResult> => {
+  handle('schedules:disabled-detail', async (): Promise<DisabledDetailResult> => {
     const attached = deps.curRemote()
     if (attached) {
       const snap = await hostBreakerState([attached])
@@ -442,7 +445,7 @@ export function registerSchedulesIpc(deps: SchedulesIpcDeps): void {
     const snap = await hostBreakerState(refs)
     return { entries: [...local, ...snap.entries], errors: snap.errors }
   })
-  ipcMain.handle(
+  handle(
     'schedules:disabled-toggle',
     async (_e, id: string, disabled: boolean): Promise<MutationResult> => {
       // Route to whichever disabled.json actually gates this schedule: the
@@ -474,8 +477,11 @@ export function registerSchedulesIpc(deps: SchedulesIpcDeps): void {
     const host = getSchedule(id)?.host
     return host ? deps.remoteFromHostId(host) : null
   }
-  ipcMain.handle('schedules:disabled-all', (_e, disabled: boolean) => {
-    if (deps.curRemote()) return false
+  handle('schedules:disabled-all', (_e, disabled: boolean) => {
+    // Pause-all is local-only. The answer is the list of schedule ids that
+    // changed, so "none" is `[]` — `false` was a sentinel the declared return
+    // type had no room for and no caller ever checked.
+    if (deps.curRemote()) return []
     const ids = readSchedules(Date.now()).map((s) => s.id)
     const ok = setAllSchedulesDisabled(ids, disabled)
     emitActivity({
@@ -486,11 +492,11 @@ export function registerSchedulesIpc(deps: SchedulesIpcDeps): void {
     })
     return ok
   })
-  ipcMain.handle('schedules:run-log', (_e, runId: string) => {
+  handle('schedules:run-log', (_e, runId: string) => {
     const remote = deps.curRemote()
     return remote ? remoteSchedules.runLog(remote, runId).catch(() => '') : readCronRunLog(runId)
   })
-  ipcMain.handle('schedules:reconcile', () =>
+  handle('schedules:reconcile', () =>
     deps.curRemote()
       ? { ok: false, error: 'remote schedule reconcile needs the remote daemon runner' }
       : routeReconcile(readSchedules()),
