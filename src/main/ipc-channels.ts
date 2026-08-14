@@ -56,7 +56,7 @@ export type ChannelMap = {
   'ci:jobs': Of<GtApi['ci']['jobs']>
   'ci:list': Of<GtApi['ci']['list']>
   'ci:log': Of<GtApi['ci']['log']>
-  'clipboard:imageToFile': Of<GtApi['pathForFile']>
+  'clipboard:imageToFile': Of<GtApi['clipboardImageToFile']>
   'clipboard:read': Of<GtApi['clipboardRead']>
   'clipboard:write': Of<GtApi['clipboardWrite']>
   'cursor:models': Of<GtApi['cursorModels']>
@@ -137,7 +137,7 @@ export type ChannelMap = {
   'monitors:list': Of<GtApi['monitors']['list']>
   'monitors:run': Of<GtApi['monitors']['run']>
   'monitors:save': Of<GtApi['monitors']['save']>
-  'mrs:ci': Of<GtApi['onDigestStatus']>
+  'mrs:ci': Of<GtApi['getMrCi']>
   'mrs:diff': Of<GtApi['getMrDiff']>
   'mrs:get': Of<GtApi['getMr']>
   'mrs:list': Of<GtApi['listMrs']>

@@ -72,8 +72,10 @@ export function parseBindings(preloadSource: string): ChannelBinding[] {
       continue
     }
 
-    if (pending) pending.text += `\n${raw}`
-
+    // The current line joins the OPEN leaf only after we know it does not start
+    // a new one. Appending first lets a body-less leaf swallow the next key's
+    // line and claim its channel: `onDigestStatus` (a subscription, no invoke
+    // of its own) took `mrs:ci` off the `getMrCi` declared right below it.
     if (depth === 1 + stack.length) {
       const ns = line.match(/^\s*(\w+): \{$/)
       if (ns) {
@@ -86,14 +88,16 @@ export function parseBindings(preloadSource: string): ChannelBinding[] {
       if (leaf) {
         flush()
         pending = { path: [...stack.map((s) => s.name), leaf[1]], text: raw, depth }
-      }
-    }
+      } else if (pending) pending.text += `\n${raw}`
+    } else if (pending) pending.text += `\n${raw}`
 
     const opens = (line.match(/[{(]/g) || []).length
     const closes = (line.match(/[})]/g) || []).length
     depth += opens - closes
-    if (pending && depth <= pending.depth - 1) flush()
-    while (stack.length && depth <= stack[stack.length - 1].depth) stack.pop()
+    while (stack.length && depth <= stack[stack.length - 1].depth) {
+      flush()
+      stack.pop()
+    }
     if (depth <= 0) break
   }
   flush()

@@ -26,6 +26,24 @@ describe('generated channel map', () => {
     })
   })
 
+  test('no two preload keys claim the same channel', () => {
+    // The failure this catches is silent and worse than a missing entry: a leaf
+    // that swallows the next line claims a channel it never invokes, and the
+    // map then types that channel against the WRONG key's signature. `mrs:ci`
+    // was bound to `onDigestStatus`, whose signature is a subscription.
+    const byChannel = new Map<string, string[]>()
+    for (const b of parseBindings(PRELOAD_SRC)) {
+      byChannel.set(b.channel, [...(byChannel.get(b.channel) ?? []), b.path.join('.')])
+    }
+    expect([...byChannel].filter(([, keys]) => keys.length > 1)).toEqual([])
+  })
+
+  test('a subscription key claims no channel — it invokes nothing', () => {
+    const paths = parseBindings(PRELOAD_SRC).map((b) => b.path.join('.'))
+    expect(paths).not.toContain('onDigestStatus')
+    expect(paths).toContain('getMrCi')
+  })
+
   test('every channel the preload invokes is in the map', () => {
     // The parser walks structure; this cross-checks it against a dumb scan of
     // the same file, so a leaf the depth tracker mis-nested cannot go missing.

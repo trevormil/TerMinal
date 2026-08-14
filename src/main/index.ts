@@ -1240,7 +1240,7 @@ ipcMain.handle('listeners:toggle', (_e, enabled: boolean) => {
   return readListenerStatus()
 })
 // Global HITL inbox (cross-repo). Filing fires a blocked notification (TG + macOS).
-ipcMain.handle('hitl:list', () => readHitl())
+handle('hitl:list', () => readHitl())
 // Monitoring: read-only list for the tab; writes go through monitors.json (the
 // tab edits it directly via these handlers), and a check triggers the daemon.
 ipcMain.handle('monitors:list', () => listMonitorsWithStatus())
@@ -1263,11 +1263,11 @@ ipcMain.handle('monitors:save', (_e, list: unknown) => {
 // Native CI: forge-agnostic run/job/log views for the repo (gh run / glab api).
 // repoRoot comes from the tab's context. The webview view is the default; this
 // backs the "Runs" toggle.
-ipcMain.handle('ci:list', (_e, repoRoot: string, limit?: number) =>
+handle('ci:list', (_e, repoRoot: string, limit?: number) =>
   listCiRuns(repoRoot, limit ?? 40),
 )
-ipcMain.handle('ci:jobs', (_e, repoRoot: string, runId: string) => listCiJobs(repoRoot, runId))
-ipcMain.handle('ci:log', (_e, repoRoot: string, jobId: string) => fetchCiLog(repoRoot, jobId))
+handle('ci:jobs', (_e, repoRoot: string, runId: string) => listCiJobs(repoRoot, runId))
+handle('ci:log', (_e, repoRoot: string, jobId: string) => fetchCiLog(repoRoot, jobId))
 // Async execFile, NOT execFileSync: this ran a 40-second-timeout probe inside an
 // IPC handler, so one "Run check" click on a hung endpoint froze the entire main
 // process — every window, every session, every timer — for up to 40s. The worst
@@ -1279,7 +1279,7 @@ ipcMain.handle('monitors:run', async (_e, id: string) => {
 // Fan out open HITL items from every configured host (ADR-0002 #14), stamped with
 // hostId so the Inbox shows a host run's block alongside local ones. Best-effort:
 // an unreachable host contributes an error, not a failed view.
-ipcMain.handle('hitl:remote-all', () => {
+handle('hitl:remote-all', () => {
   const hosts = readSettings().remoteHosts.map((h) => ({ id: h.id, label: h.label }))
   return collectRemoteHitl(hosts, async (h) => {
     const ref = remoteFromHostId(h.id)
@@ -1289,14 +1289,14 @@ ipcMain.handle('hitl:remote-all', () => {
 // Resolve/remove route to the item's host when it came from the remote fan-out
 // (#14) — resolving a host block on the Mac must write on the host that owns it,
 // not locally. No hostId → local, as before.
-ipcMain.handle('hitl:resolve', (_e, id: string, resolved?: boolean, hostId?: string) => {
+handle('hitl:resolve', (_e, id: string, resolved?: boolean, hostId?: string) => {
   if (hostId) {
     const ref = remoteFromHostId(hostId)
     if (ref) return remoteHitl.resolve(ref, id, resolved ?? true).catch(() => false)
   }
   return resolveHitl(id, resolved ?? true)
 })
-ipcMain.handle('hitl:remove', (_e, id: string, hostId?: string) => {
+handle('hitl:remove', (_e, id: string, hostId?: string) => {
   if (hostId) {
     const ref = remoteFromHostId(hostId)
     if (ref) return remoteHitl.remove(ref, id).catch(() => false)
@@ -1306,14 +1306,14 @@ ipcMain.handle('hitl:remove', (_e, id: string, hostId?: string) => {
 // Mark-read routes to the owning host like resolve/remove (#14) — a remote
 // item's readAt must persist where the item lives, or the 15s remote fan-in
 // flips it back to unread. No hostId → local, as before.
-ipcMain.handle('hitl:mark-read', (_e, ids: string[], hostId?: string, read = true) => {
+handle('hitl:mark-read', (_e, ids: string[], hostId?: string, read = true) => {
   if (hostId) {
     const ref = remoteFromHostId(hostId)
     if (ref) return remoteHitl.markRead(ref, ids, read).catch(() => 0)
   }
   return markHitlRead(ids, read)
 })
-ipcMain.handle('hitl:mark-all-read', () => markAllHitlRead())
+handle('hitl:mark-all-read', () => markAllHitlRead())
 // ---- PTY IPC (routed by session key) ----
 ipcMain.on('pty:input', (_e, key: string, data: string) => {
   sessions.get(key)?.pty.write(data)
@@ -1473,12 +1473,17 @@ ipcMain.handle('sessions:project-list', () => {
   return activeDaemon().sessionsList()
 })
 ipcMain.handle('sessions:project-get', (_e, slug: string) => activeDaemon().sessionGet(slug))
-ipcMain.handle('tickets:list', () => {
+handle('tickets:list', () => {
   return activeDaemon().ticketsList()
 })
-ipcMain.handle('tickets:get', (_e, slug: string) => {
+handle('tickets:get', (_e, slug: string) => {
   return activeDaemon().ticketGet(slug)
 })
+// NOT on the map: main's `RepoTicketsConfig` and the renderer's
+// `TicketProviderConfig` are the same config forked in two, and they have
+// drifted (`linear.tools.comment` exists only on main's half). Unforking them
+// also means unforking `SavedTicketView`, which is declared twice with main's
+// copy commenting that the renderer's is the original. Follow-up ticket.
 ipcMain.handle('tickets:provider-get', () => {
   const daemon = activeDaemon()
   if (daemon.kind !== 'local') return { error: 'Ticket provider setup is local-only for now.' }
@@ -1500,20 +1505,20 @@ ipcMain.handle('tickets:provider-save', (_e, cfg: RepoTicketsConfig) => {
   })
   return saved
 })
-ipcMain.handle('tickets:provider-test', (_e, cfg: RepoTicketsConfig, smoke?: boolean) => {
+handle('tickets:provider-test', (_e, cfg: RepoTicketsConfig, smoke?: boolean) => {
   const daemon = activeDaemon()
   if (daemon.kind !== 'local')
     return { ok: false, provider: 'local', message: 'Ticket provider setup is local-only for now.' }
   return testRepoTicketProvider(daemon.repoRoot(), cfg, { smoke: !!smoke })
 })
-ipcMain.handle('tickets:linear-teams', (_e, cfg?: RepoTicketsConfig) => {
+handle('tickets:linear-teams', (_e, cfg?: RepoTicketsConfig) => {
   const daemon = activeDaemon()
   if (daemon.kind !== 'local') return []
   return listLinearTeams(daemon.repoRoot(), cfg)
 })
 // Open a ticket in Obsidian via its obsidian:// deep link. No-op (returns false)
 // when the repo isn't on the obsidian provider or the vault isn't configured.
-ipcMain.handle('tickets:open-in-obsidian', (_e, slug: string) => {
+handle('tickets:open-in-obsidian', (_e, slug: string) => {
   const daemon = activeDaemon()
   if (daemon.kind !== 'local') return false
   const link = obsidianRepoDeepLink(daemon.repoRoot(), slug)
@@ -1528,7 +1533,7 @@ ipcMain.handle('tickets:open-in-obsidian', (_e, slug: string) => {
   void shell.openExternal(link)
   return true
 })
-ipcMain.handle('tickets:create', async (_e, input: NewTicket) => {
+handle('tickets:create', async (_e, input: NewTicket) => {
   const daemon = activeDaemon()
   const t = await daemon.ticketCreate(input)
   emitActivity({
@@ -1542,10 +1547,10 @@ ipcMain.handle('tickets:create', async (_e, input: NewTicket) => {
   })
   return t
 })
-ipcMain.handle('tickets:recommend-agent', (_e, input: TicketAgentRecommendationInput) =>
+handle('tickets:recommend-agent', (_e, input: TicketAgentRecommendationInput) =>
   recommendTicketAgent(input),
 )
-ipcMain.handle(
+handle(
   'tickets:spawn',
   (_e, text: string, engine: Engine, model?: string, requested?: unknown) => {
     const daemon = daemonForRequest(requested)
@@ -1563,7 +1568,7 @@ ipcMain.handle(
     })
   },
 )
-ipcMain.handle('tickets:update', async (_e, slug: string, patch: TicketPatch) => {
+handle('tickets:update', async (_e, slug: string, patch: TicketPatch) => {
   const daemon = activeDaemon()
   const before = await daemon.ticketGet(slug)
   const ok = await daemon.ticketUpdate(slug, patch)
@@ -1595,7 +1600,7 @@ ipcMain.handle('tickets:update', async (_e, slug: string, patch: TicketPatch) =>
   }
   return ok
 })
-ipcMain.handle(
+handle(
   'tickets:comment',
   async (_e, slug: string, input: Partial<NewTicketComment> & { body: string }) => {
     const daemon = activeDaemon()
@@ -1627,13 +1632,13 @@ ipcMain.handle(
   },
 )
 ipcMain.handle('skills:list', () => activeDaemon().skillsList())
-ipcMain.handle('mrs:list', () => {
+handle('mrs:list', () => {
   return activeDaemon().mrsList()
 })
-ipcMain.handle('mrs:get', (_e, iid: number) => {
+handle('mrs:get', (_e, iid: number) => {
   return activeDaemon().mrGet(iid)
 })
-ipcMain.handle('mrs:diff', (_e, iid: number) => {
+handle('mrs:diff', (_e, iid: number) => {
   return activeDaemon().mrDiff(iid)
 })
 ipcMain.handle('git:working-diff', () => {
@@ -1692,7 +1697,7 @@ ipcMain.handle('checkpoints:review-base', (_e, rel: string, buffer: string) =>
 ipcMain.handle('git:working-structural-diff', (_e, path: string, width?: number) => {
   return activeDaemon().workingStructuralDiff(path, width)
 })
-ipcMain.handle('mrs:structural-diff', (_e, iid: number, path: string, width?: number) => {
+handle('mrs:structural-diff', (_e, iid: number, path: string, width?: number) => {
   return activeDaemon().mrStructuralDiff(iid, path, width)
 })
 ipcMain.handle('difft:available', () => difftOnPath())
@@ -1709,10 +1714,10 @@ ipcMain.handle('digest:run', (_e, iid: number) => {
 ipcMain.handle('digest:status', (_e, iid: number) => {
   return activeDaemon().digestRunStatus(iid)
 })
-ipcMain.handle('mrs:ci', (_e, iid: number) => {
+handle('mrs:ci', (_e, iid: number) => {
   return activeDaemon().mrCi(iid)
 })
-ipcMain.handle('mrs:merge', (_e, iid: number) => {
+handle('mrs:merge', (_e, iid: number) => {
   return activeDaemon().mrMerge(iid)
 })
 ipcMain.handle('open:external', (_e, url: string) => openExternalSafe(url))
