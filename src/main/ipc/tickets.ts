@@ -5,7 +5,7 @@
 // to dispatch a remote run, and the focused session id the activity events are
 // stamped with.
 
-import { ipcMain, shell } from 'electron'
+import { shell } from 'electron'
 import { handle } from '../typed-ipc'
 import { emitActivity } from '../events'
 import { recommendTicketAgent } from '../backlog'
@@ -41,17 +41,12 @@ export function registerTicketsIpc(deps: TicketsIpcDeps): void {
   handle('tickets:get', (_e, slug: string) => {
     return deps.activeDaemon().ticketGet(slug)
   })
-  // NOT on the map: main's `RepoTicketsConfig` and the renderer's
-  // `TicketProviderConfig` are the same config forked in two, and they have
-  // drifted (`linear.tools.comment` exists only on main's half). Unforking them
-  // also means unforking `SavedTicketView`, which is declared twice with main's
-  // copy commenting that the renderer's is the original. Follow-up ticket.
-  ipcMain.handle('tickets:provider-get', () => {
+  handle('tickets:provider-get', () => {
     const daemon = deps.activeDaemon()
     if (daemon.kind !== 'local') return { error: 'Ticket provider setup is local-only for now.' }
     return readRepoTicketConfig(daemon.repoRoot())
   })
-  ipcMain.handle('tickets:provider-save', (_e, cfg: RepoTicketsConfig) => {
+  handle('tickets:provider-save', (_e, cfg: RepoTicketsConfig) => {
     const daemon = deps.activeDaemon()
     if (daemon.kind !== 'local') return { error: 'Ticket provider setup is local-only for now.' }
     const saved = saveRepoTicketConfig(daemon.repoRoot(), cfg)

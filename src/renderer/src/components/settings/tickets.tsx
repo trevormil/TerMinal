@@ -12,13 +12,13 @@ import {
 } from 'lucide-react'
 import type {
   TabContext,
-  TicketProviderConfig,
+  RepoTicketsConfig,
   TicketProviderKind,
   TicketProviderTestResult,
 } from '../../lib/types'
 import { Section, inp, type SettingsSectionSpec } from './shared'
 
-const defaultLinearConfig = (team = ''): NonNullable<TicketProviderConfig['linear']> => ({
+const defaultLinearConfig = (team = ''): NonNullable<RepoTicketsConfig['linear']> => ({
   mcp: {
     command: 'bunx',
     args: ['mcp-remote@0.1.38', 'https://mcp.linear.app/mcp'],
@@ -33,8 +33,8 @@ const defaultLinearConfig = (team = ''): NonNullable<TicketProviderConfig['linea
 })
 
 function normalizeTicketConfig(
-  cfg: TicketProviderConfig | { error: string } | null,
-): TicketProviderConfig {
+  cfg: RepoTicketsConfig | { error: string } | null,
+): RepoTicketsConfig {
   if (!cfg || 'error' in cfg) return { provider: 'local' }
   // Views are provider-independent, so they ride along on every branch — dropping
   // them here would silently wipe the repo's configured views on the next save.
@@ -55,8 +55,8 @@ function normalizeTicketConfig(
 
 function TicketProviderPanel() {
   const [ctx, setCtx] = useState<TabContext | null>(null)
-  const [draft, setDraft] = useState<TicketProviderConfig>({ provider: 'local' })
-  const [saved, setSaved] = useState<TicketProviderConfig>({ provider: 'local' })
+  const [draft, setDraft] = useState<RepoTicketsConfig>({ provider: 'local' })
+  const [saved, setSaved] = useState<RepoTicketsConfig>({ provider: 'local' })
   const [teams, setTeams] = useState<{ id: string; name: string; key?: string }[]>([])
   const [busy, setBusy] = useState<'load' | 'save' | 'test' | 'smoke' | 'teams' | null>('load')
   const [result, setResult] = useState<TicketProviderTestResult | null>(null)

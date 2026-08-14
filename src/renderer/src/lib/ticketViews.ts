@@ -1,28 +1,13 @@
-import type { Ticket } from './types'
+import type { SavedTicketView, Ticket, TicketGroupBy, TicketSortBy, TicketViewSpec } from './types'
 
 // Filtering, grouping, and sorting for the Tickets tab. Pure and separate from
 // the component so a saved view is just data — the same spec drives the live
 // toolbar and anything persisted in `.TerMinal/tickets.json`.
-
-export type TicketGroupBy = 'status' | 'priority' | 'type' | 'horizon' | 'agent' | 'none'
-export type TicketSortBy = 'id-desc' | 'id-asc' | 'updated-desc' | 'priority'
-
-export type TicketViewSpec = {
-  /** 'all' means no constraint on that axis. */
-  type: string
-  horizon: string
-  priority: string
-  status: string
-  hitl: boolean
-  /** Free text over title, id, and body. */
-  q: string
-  groupBy: TicketGroupBy
-  sortBy: TicketSortBy
-}
-
-/** A named TicketViewSpec, persisted per repo. Distinct from `TicketView`,
- *  which is an embedded webview of an external platform. */
-export type SavedTicketView = TicketViewSpec & { name: string }
+//
+// The shapes themselves live in `src/shared/types/tickets.ts`, because main
+// persists and sanitizes them too; they are re-exported here so the existing
+// `from './ticketViews'` import sites keep working.
+export type { SavedTicketView, TicketGroupBy, TicketSortBy, TicketViewSpec }
 
 export const DEFAULT_TICKET_VIEW: TicketViewSpec = {
   type: 'all',
