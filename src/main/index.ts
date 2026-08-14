@@ -92,6 +92,10 @@ import { registerDocsIpc } from './ipc/docs'
 import { registerTicketsIpc } from './ipc/tickets'
 import { registerActivityIpc } from './ipc/activity'
 import { registerSettingsIpc } from './ipc/settings'
+import { registerRunsIpc } from './ipc/runs'
+import { registerHostsIpc } from './ipc/hosts'
+import { registerHitlIpc } from './ipc/hitl'
+import { registerMonitorsIpc } from './ipc/monitors'
 import { createBridgeDeps } from './bridge-deps'
 import {
   bindSessionSender,
@@ -171,14 +175,7 @@ import {
   enginePath,
   resolveEngineModel,
 } from './settings'
-import {
-  listMonitorsWithStatus,
-  writeMonitors,
-  validateMonitors,
-  runMonitorProbe,
-} from './monitors'
 import { startMonitorLivenessWatch } from './monitor-liveness-runtime'
-import { listCiRuns, listCiJobs, fetchCiLog } from './ci'
 import { classifyBootstrapStatus } from './bootstrap'
 import { bakedTemplateSha, resolveTemplateSha, writeBootstrapStamp } from './bootstrap-stamp'
 import {
@@ -192,8 +189,6 @@ import {
   DEFAULT_AGENTS,
   readAgentRunContexts,
   listRuns,
-  readAgentRunLog,
-  agentRunLogPath,
   onAgentEvent,
   loadPersistedRuns,
   type Agent,
@@ -220,18 +215,10 @@ import {
   reconcileSchedules,
 } from './launchd'
 import { reconcileHosts } from './schedule-router'
-import { provisionHost } from './host-provision'
-import { checkHostHealth } from './host-health'
 import { registerMcpEverywhere } from './mcp-register'
 import {
   flushAllSessionRunLogs,
   readCronRuns,
-  getCronRun,
-  readCronRunLog,
-  cronRunLogPath,
-  readSessionRunLog,
-  sessionRunLogPath,
-  listAllRuns,
   sweepStaleCronRuns,
   sweepStaleSessionRuns,
 } from './cron-runs'
@@ -239,8 +226,6 @@ import { bridgeStatus, startBridge, stopBridge } from './bridge/server'
 import { bridgeHosts, ensureIdentity, pairingPayload, rotateToken } from './bridge/identity'
 import { tailscaleSelf } from './bridge/tailscale'
 import { apnsPaths, pushStatus } from './bridge/push'
-import { collectRemoteRuns, collectRemoteHitl } from './remote-runs'
-import { listRepoArtifacts } from './run-artifacts'
 import { isExternallyOpenableUrl } from '../shared/url-safety'
 import { appCsp, isAppUrl, navigationDecision } from './window-guard'
 
@@ -259,7 +244,6 @@ import {
   getBgTask,
   cancelBgTask,
   readBgTaskLog,
-  bgTaskLogPath,
   startBgWatcher,
 } from './bg-tasks'
 import {
@@ -274,11 +258,9 @@ import {
   type CreateLoopInput,
 } from './loops'
 import { startLoopListener, noteLoopTurnComplete, noteSingleLoopTurn } from './loop-listener'
-import { readHitl, resolveHitl, removeHitl, markHitlRead, markAllHitlRead } from './hitl'
 import { composeSteps, pipelineLabel } from './pipelines'
-import { remoteAgents, remoteDirs, remoteProject, remoteRuns, remoteHitl } from './remote'
+import { remoteAgents, remoteDirs, remoteProject, remoteRuns } from './remote'
 import { listCursorModels } from './cursor-models'
-import { readFileTail } from './fs-tail'
 import { createCheckpoint } from './checkpoints'
 import { resolveWithinAny } from './path-guard'
 import { configPath, terminalConfigDir } from './config-dir'
@@ -876,207 +858,6 @@ registerSchedulesIpc({
   remoteFromHostId,
 })
 
-// Local runs only — always fast, safe to poll. Remote runs come from the
-// separate `runs:remote-all` fan-out so the Runs tab can show BOTH in one view
-// without switching the session's daemon profile.
-handle('runs:all', () => listAllRuns())
-handle(
-  'runs:running-count',
-  () => listAllRuns().filter((r) => r.source !== 'session' && r.status === 'running').length,
-)
-// Fan out to every configured remote host in parallel, stamped with hostId so
-// the tab can merge them with local runs and badge/filter by host. Best-effort:
-// an unreachable host contributes an error entry, not a failed view.
-handle('runs:remote-all', () => {
-  const hosts = readSettings().remoteHosts.map((h) => ({ id: h.id, label: h.label }))
-  return collectRemoteRuns(hosts, async (h) => {
-    const ref = remoteFromHostId(h.id)
-    if (!ref) return []
-    return remoteRuns.all(ref)
-  })
-})
-handle(
-  'runs:log',
-  (_e, source: 'cron' | 'agent' | 'bg' | 'session', runId: string, hostId?: string) => {
-    // A run row carries its host; route the log fetch to that host. Fall back to
-    // the focused session's remote (or local) when no hostId is supplied.
-    const remote = hostId ? remoteFromHostId(hostId) : curRemote()
-    if (remote) return remoteRuns.log(remote, runId).catch(() => '')
-    if (source === 'cron') return readCronRunLog(runId)
-    if (source === 'session') return readSessionRunLog(runId)
-    if (source === 'bg') return readBgTaskLog(runId)
-    // In-process agent run output lives in memory via listRuns(); fall back to the
-    // on-disk log for a run that aged out of the in-memory working set (runs are
-    // never deleted, so an archived run is still viewable).
-    return listRuns().find((r) => r.id === runId)?.output || readAgentRunLog(runId)
-  },
-)
-// Bounded log fetch for the live run pane: only the last `maxBytes` of the log
-// are read and shipped over IPC. The pane polls every 1.5s while a run streams
-// — full-file reads of multi-MB agent logs froze both processes. runs:log stays
-// the full-fidelity path (export buttons, "load full log").
-handle(
-  'runs:log-tail',
-  async (
-    _e,
-    source: 'cron' | 'agent' | 'bg' | 'session',
-    runId: string,
-    hostId?: string,
-    maxBytes = 512 * 1024,
-  ) => {
-    const tail = (path: string) => {
-      try {
-        const { text, size } = readFileTail(path, maxBytes)
-        return { text, size, truncated: size > maxBytes }
-      } catch {
-        return { text: '', size: 0, truncated: false }
-      }
-    }
-    const remote = hostId ? remoteFromHostId(hostId) : curRemote()
-    if (remote) {
-      const text = await remoteRuns.log(remote, runId).catch(() => '')
-      return { text: text.slice(-maxBytes), size: text.length, truncated: text.length > maxBytes }
-    }
-    if (source === 'cron') return tail(cronRunLogPath(runId))
-    if (source === 'session') return tail(sessionRunLogPath(runId))
-    if (source === 'bg') return tail(bgTaskLogPath(runId))
-    const mem = listRuns().find((r) => r.id === runId)?.output
-    if (mem != null && mem !== '')
-      return { text: mem.slice(-maxBytes), size: mem.length, truncated: mem.length > maxBytes }
-    return tail(agentRunLogPath(runId))
-  },
-)
-// Artifacts a run produced — agent-request reports under the repo's
-// .TerMinal/agent-requests/ (#8). Local runs only; a remote run's artifacts live
-// on its host. The renderer opens a report via openExternal(file://…).
-handle('runs:artifacts', (_e, repoRoot: string) => listRepoArtifacts(repoRoot))
-// Cancel a running CRON run (#9). Local: SIGTERM the runner's own pid — its
-// cooperative handler kills the current attempt and stops retrying, recording the
-// run as canceled. Remote: route to the host's runs.cancel op.
-handle('runs:cancel-cron', async (_e, id: string, hostId?: string) => {
-  if (hostId) {
-    const remote = remoteFromHostId(hostId)
-    if (!remote) return { ok: false, error: `unknown host: ${hostId}` }
-    return remoteRuns
-      .cancel(remote, id)
-      .then((ok) => (ok ? { ok: true } : { ok: false, error: 'host could not cancel the run' }))
-      .catch((e) => ({ ok: false, error: String((e as Error).message || e) }))
-  }
-  const rec = getCronRun(id)
-  if (!rec) return { ok: false, error: 'run not found' }
-  if (rec.status !== 'running') return { ok: false, error: 'run is not running' }
-  if (!rec.runnerPid)
-    return { ok: false, error: 'no runner pid recorded (older run — cannot cancel)' }
-  try {
-    process.kill(rec.runnerPid, 'SIGTERM')
-    return { ok: true }
-  } catch (e) {
-    return { ok: false, error: (e as Error).message }
-  }
-})
-// Baked at build time from git origin (electron.vite.config.ts define). '' when
-// origin is unknown → hosts skip self-update rather than track a guessed repo.
-declare const __BUILD_REPO_SLUG__: string
-// Prepare a Linux host to run scheduled agents via systemd: install Bun, enable
-// linger (headless firing), install the runner, report readiness (ADR-0002 #12).
-handle('hosts:provision', async (_e, hostId: string) => {
-  const host = readSettings().remoteHosts.find((h) => h.id === hostId)
-  if (!host) return { ok: false, error: `unknown host: ${hostId}` }
-  const engines = Object.keys(host.daemon?.engines || {})
-  const r = await provisionHost(
-    { sshTarget: host.sshTarget },
-    runnerSrcPath(),
-    engines.length ? engines : ['claude', 'codex'],
-    {
-      cliSrcPath: cliSrcPath(),
-      // Hosts self-update from the repo THIS build was made from (baked at build
-      // time from git origin), so a fork's hosts track the fork, not upstream.
-      // '' → provisionHost skips self-update rather than guessing a repo.
-      repoSlug: __BUILD_REPO_SLUG__,
-    },
-  )
-  return { ok: r.ready, ...r }
-})
-// Reachability probe for a host (tailscale reauth / asleep / VPN down) → classified
-// reason + actionable hint, so the UI degrades gracefully instead of hanging (#20).
-handle('hosts:health', async (_e, hostId: string) => {
-  const host = readSettings().remoteHosts.find((h) => h.id === hostId)
-  if (!host) return { reachable: false, hint: `unknown host: ${hostId}` }
-  return checkHostHealth(host.sshTarget)
-})
-// Global HITL inbox (cross-repo). Filing fires a blocked notification (TG + macOS).
-handle('hitl:list', () => readHitl())
-// Monitoring: read-only list for the tab; writes go through monitors.json (the
-// tab edits it directly via these handlers), and a check triggers the daemon.
-handle('monitors:list', () => listMonitorsWithStatus())
-handle('monitors:save', (_e, list: unknown) => {
-  // monitors.json is executed by bin/terminal-monitor on a launchd timer, so
-  // the write path validates rather than trusting the renderer's JSON.
-  if (!Array.isArray(list)) return { ok: false, saved: 0, rejected: 0, error: 'expected an array' }
-  const { monitors, rejected } = validateMonitors(list)
-  if (rejected) console.error(`[gt] monitors:save dropped ${rejected} invalid monitor(s)`)
-  try {
-    writeMonitors(monitors)
-    syncMonitorDaemon()
-  } catch (e) {
-    // Was `return true` unconditionally — a failed write reported success and
-    // the user's edit silently vanished on the next read.
-    return { ok: false, saved: 0, rejected, error: (e as Error).message }
-  }
-  return { ok: true, saved: monitors.length, rejected }
-})
-// Native CI: forge-agnostic run/job/log views for the repo (gh run / glab api).
-// repoRoot comes from the tab's context. The webview view is the default; this
-// backs the "Runs" toggle.
-handle('ci:list', (_e, repoRoot: string, limit?: number) => listCiRuns(repoRoot, limit ?? 40))
-handle('ci:jobs', (_e, repoRoot: string, runId: string) => listCiJobs(repoRoot, runId))
-handle('ci:log', (_e, repoRoot: string, jobId: string) => fetchCiLog(repoRoot, jobId))
-// Async execFile, NOT execFileSync: this ran a 40-second-timeout probe inside an
-// IPC handler, so one "Run check" click on a hung endpoint froze the entire main
-// process — every window, every session, every timer — for up to 40s. The worst
-// remaining blocker in the app.
-handle('monitors:run', async (_e, id: string) => {
-  await runMonitorProbe(id) // never rejects; failures surface via the state file
-  return listMonitorsWithStatus()
-})
-// Fan out open HITL items from every configured host (ADR-0002 #14), stamped with
-// hostId so the Inbox shows a host run's block alongside local ones. Best-effort:
-// an unreachable host contributes an error, not a failed view.
-handle('hitl:remote-all', () => {
-  const hosts = readSettings().remoteHosts.map((h) => ({ id: h.id, label: h.label }))
-  return collectRemoteHitl(hosts, async (h) => {
-    const ref = remoteFromHostId(h.id)
-    return ref ? remoteHitl.list(ref) : []
-  })
-})
-// Resolve/remove route to the item's host when it came from the remote fan-out
-// (#14) — resolving a host block on the Mac must write on the host that owns it,
-// not locally. No hostId → local, as before.
-handle('hitl:resolve', (_e, id: string, resolved?: boolean, hostId?: string) => {
-  if (hostId) {
-    const ref = remoteFromHostId(hostId)
-    if (ref) return remoteHitl.resolve(ref, id, resolved ?? true).catch(() => false)
-  }
-  return resolveHitl(id, resolved ?? true)
-})
-handle('hitl:remove', (_e, id: string, hostId?: string) => {
-  if (hostId) {
-    const ref = remoteFromHostId(hostId)
-    if (ref) return remoteHitl.remove(ref, id).catch(() => false)
-  }
-  return removeHitl(id)
-})
-// Mark-read routes to the owning host like resolve/remove (#14) — a remote
-// item's readAt must persist where the item lives, or the 15s remote fan-in
-// flips it back to unread. No hostId → local, as before.
-handle('hitl:mark-read', (_e, ids: string[], hostId?: string, read = true) => {
-  if (hostId) {
-    const ref = remoteFromHostId(hostId)
-    if (ref) return remoteHitl.markRead(ref, ids, read).catch(() => 0)
-  }
-  return markHitlRead(ids, read)
-})
-handle('hitl:mark-all-read', () => markAllHitlRead())
 // ---- PTY IPC (routed by session key) ----
 ipcMain.on('pty:input', (_e, key: string, data: string) => {
   sessions.get(key)?.pty.write(data)
@@ -1356,6 +1137,7 @@ handle('workspace:bootstrap', async (_e, repoRoot: string) => {
 // the GitHub compare API. On demand from the renderer + once after startup.
 declare const __BUILD_SHA__: string
 declare const __BUILD_REPO_PATH__: string
+declare const __BUILD_REPO_SLUG__: string
 function runUpdateCheck() {
   // Same discovery as release:start, plus the checkout path baked at build time
   // (the packaged app's cwd/appPath never point at the source tree).
@@ -1760,6 +1542,12 @@ registerActivityIpc()
 // Settings, prompt snippets and presets. `applyBridgeSetting` stays owned here
 // because startup calls it too.
 registerSettingsIpc({ cur, remoteFromHostId, repoLabelFor, applyBridgeSetting })
+// The Runs tab (local + per-host fan-out), host provisioning/health, the
+// cross-repo HITL inbox, and Monitoring/CI.
+registerRunsIpc({ curRemote, remoteFromHostId })
+registerHostsIpc({ runnerSrcPath, cliSrcPath })
+registerHitlIpc({ remoteFromHostId })
+registerMonitorsIpc()
 
 // ---- my workflow (local Claude/Codex configuration) ----
 handle('workflow:list', (_e, rel: string) => listWorkflowFiles(rel || ''))
