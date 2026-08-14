@@ -21,6 +21,7 @@ import { MrDetailView } from '../../components/MrDetail'
 import { PrAgentActions } from '../../components/PrAgentActions'
 import { MrMergeButton } from '../../components/MrMergeButton'
 import { stateTone } from '../../lib/badges'
+import { ChecksChip, ChecksRepoProvider } from './ChecksChip'
 import {
   applyRiskFilters,
   countByTier,
@@ -157,6 +158,7 @@ function MrRow({
               <GitBranch size={11} strokeWidth={2} />
               {m.sourceBranch}
             </span>
+            <ChecksChip iid={m.iid} />
             {m.author && <span>@{m.author}</span>}
             {m.workedBy.length > 0 && (
               <span
@@ -567,21 +569,23 @@ function MrsTab({ ctx }: { ctx: TabContext }) {
             <span className="font-mono">origin</span>. Local-only repos (like this one) have none.
           </div>
         ) : (
-          <GroupedMrList
-            mrs={mrs}
-            error={error}
-            label={label}
-            sym={sym}
-            cli={cli}
-            stacks={stacks}
-            sort={sort}
-            tiers={tiers}
-            readyOnly={readyOnly}
-            collapsed={collapsed}
-            onToggle={toggleGroup}
-            onOpen={setSelectedMrIid}
-            onMerged={refresh}
-          />
+          <ChecksRepoProvider repoRoot={ctx.repoRoot}>
+            <GroupedMrList
+              mrs={mrs}
+              error={error}
+              label={label}
+              sym={sym}
+              cli={cli}
+              stacks={stacks}
+              sort={sort}
+              tiers={tiers}
+              readyOnly={readyOnly}
+              collapsed={collapsed}
+              onToggle={toggleGroup}
+              onOpen={setSelectedMrIid}
+              onMerged={refresh}
+            />
+          </ChecksRepoProvider>
         )}
       </div>
     </div>

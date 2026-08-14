@@ -13,6 +13,8 @@ import {
   Folder,
   File,
   Rows3,
+  CircleCheckBig,
+  MessagesSquare,
   Image as ImageIcon,
 } from 'lucide-react'
 import parseDiff from 'parse-diff'
@@ -26,6 +28,10 @@ import { MrMergeButton } from './MrMergeButton'
 import { StackMap } from './StackMap'
 import { StackMergeButton } from './StackMergeButton'
 import { DigestView } from './DigestView'
+// GitHub-native review surface. Both panels answer "GitHub-only for now" on a
+// GitLab repo, so the tabs are always offered and nothing branches on the forge.
+import { ChecksPanel } from '../tabs/mrs/ChecksPanel'
+import { ConversationPanel } from '../tabs/mrs/ConversationPanel'
 import { xtermThemeFromCss } from './Terminal'
 import { groupJobsByStage } from '../lib/ci'
 import { shouldRerun, RESIZE_DEBOUNCE_MS, COL_THRESHOLD } from '../lib/structuralReflow'
@@ -930,7 +936,15 @@ export function MrDetailView({
   const [mr, setMr] = useState<MrDetail | null | undefined>(undefined)
   const [ci, setCi] = useState<CiInfo | null | undefined>(undefined)
   const [view, setView] = useState<
-    'overview' | 'review' | 'findings' | 'suggestions' | 'diff' | 'digest' | 'screenshots'
+    | 'overview'
+    | 'checks'
+    | 'conversation'
+    | 'review'
+    | 'findings'
+    | 'suggestions'
+    | 'diff'
+    | 'digest'
+    | 'screenshots'
   >('overview')
   const [diff, setDiff] = useState<string | null>(null)
 
@@ -1031,6 +1045,20 @@ export function MrDetailView({
           </>,
         )}
         {sub(
+          'checks',
+          <>
+            <CircleCheckBig size={13} strokeWidth={2} />
+            Checks
+          </>,
+        )}
+        {sub(
+          'conversation',
+          <>
+            <MessagesSquare size={13} strokeWidth={2} />
+            Conversation
+          </>,
+        )}
+        {sub(
           'diff',
           <>
             <GitCompare size={13} strokeWidth={2} />
@@ -1101,6 +1129,8 @@ export function MrDetailView({
       )}
       <div className="min-h-0 flex-1 overflow-hidden">
         {view === 'overview' && <Overview mr={mr} ci={ci} />}
+        {view === 'checks' && <ChecksPanel repoRoot={repoRoot} iid={iid} />}
+        {view === 'conversation' && <ConversationPanel repoRoot={repoRoot} iid={iid} />}
         {view === 'review' && <ReviewBody mr={mr} />}
         {view === 'findings' && (
           <FindingCards items={mr.findings} empty="No findings for this MR." />

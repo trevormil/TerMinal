@@ -123,6 +123,11 @@ import type {
   PersistentArtifactRead,
   Persona,
   PipelineId,
+  PrActionResult,
+  PrChecks,
+  PrChecksSummaries,
+  PrConversation,
+  PrReviewEvent,
   PresetKind,
   PresetPrefs,
   ProjectSession,
@@ -866,6 +871,26 @@ export type GtApi = {
       filter?: ObservabilityQueryFilter,
     ) => Promise<ObservabilityIndexQueryResult>
     filterOptions: () => Promise<{ repos: string[]; engines: string[]; models: string[] }>
+  }
+  /** GitHub-native PR review. Every method answers `supported: false` (or an
+   *  error result) off GitHub — see src/main/github-review.ts. */
+  githubReview: {
+    checks: (repoRoot: string, iid: number) => Promise<PrChecks>
+    checksSummaries: (repoRoot: string) => Promise<PrChecksSummaries>
+    conversation: (repoRoot: string, iid: number) => Promise<PrConversation>
+    submit: (
+      repoRoot: string,
+      iid: number,
+      event: PrReviewEvent,
+      body: string,
+    ) => Promise<PrActionResult>
+    comment: (repoRoot: string, iid: number, body: string) => Promise<PrActionResult>
+    reply: (
+      repoRoot: string,
+      iid: number,
+      replyToId: number,
+      body: string,
+    ) => Promise<PrActionResult>
   }
   stacks: {
     list: (repoRoot: string, repoPath: string) => Promise<{ stacks: PrStack[]; error?: string }>

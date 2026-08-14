@@ -107,6 +107,7 @@ import { registerInboxIpc } from './ipc/inbox'
 import { registerRepoTrustDenialIpc } from './ipc/repo-trust-denials'
 import { registerSessionSearchIpc } from './ipc/session-search'
 import { registerStacksIpc } from './ipc/stacks'
+import { registerGithubReviewIpc } from './ipc/github-review'
 import { fixPath } from './env'
 import { emitActivity, onActivity, startActivityTail } from './events'
 import { installStatuslineShim } from './statusline'
@@ -603,6 +604,10 @@ registerInboxIpc()
 // GitHub native stacked PRs. Reads only; degrades to no stacks everywhere the
 // preview has not rolled out.
 registerStacksIpc()
+// GitHub-native PR review: checks, conversation, approvals, and the three
+// user-initiated write actions. Every channel answers "GitHub-only for now"
+// off GitHub, so wiring it costs a GitLab workspace nothing.
+registerGithubReviewIpc()
 // Agent scorecards, the disabled roster with WHY/WHEN, and manual memory
 // compaction. Unregistered, the Agents tab's reliability column is empty and
 // a circuit-broken agent can never be re-enabled from the UI.
