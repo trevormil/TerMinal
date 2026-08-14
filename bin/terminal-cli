@@ -9,9 +9,11 @@
 //
 // Subcommands:
 //   terminal-cli ticket "<title>" "<body>"              file a ticket on TERMINAL_REPO's configured provider
-//   terminal-cli hitl "<title>" "<action>"              file a global HITL item + Telegram ping
+//   terminal-cli inbox-item "<title>" "<action>"        file a global Inbox item + Telegram ping
 //                    [--severity=urgent|normal|low] [--category=<Name>]
 //                    --category is free-form: any name groups the Inbox sidebar.
+//                    `terminal-cli hitl …` is a permanent alias of this verb —
+//                    a human-in-the-loop request is one category of Inbox item.
 //   terminal-cli activity <kind> "<title>" "<detail>"   emit one activity-feed event
 //   terminal-cli deploy "<env>" "[sha]" "[detail]"      emit a deploy activity event
 //   terminal-cli notify "<message>"                     send a Telegram message (raw)
@@ -2057,9 +2059,13 @@ switch (cmd) {
     if (args[0] === 'comment') commentOnTicket(args[1], args[2])
     else fileTicket(args[0], args[1], args[2])
     break
+  // `inbox-item` is the documented verb; `hitl` falls through to the same arm
+  // and stays supported forever (ticket 0123). It is `inbox-item` rather than
+  // `inbox` because that verb already means the automation listener queue.
+  case 'inbox-item':
   case 'hitl': {
     // Both flags are parsed here and stripped before the positionals are read,
-    // so `hitl "title" "action" --category=X` works in any order.
+    // so `inbox-item "title" "action" --category=X` works in any order.
     const flag = (name) => {
       const hit = args.find((a) => a.startsWith(`--${name}=`))
       return hit ? hit.slice(name.length + 3) : undefined
@@ -2102,11 +2108,13 @@ switch (cmd) {
     break
   default:
     console.error(
-      'usage: terminal-cli <ticket|hitl|activity|deploy|notify|inbox|state|mcp|classify|remote> [args...]\n' +
+      'usage: terminal-cli <ticket|inbox-item|activity|deploy|notify|inbox|state|mcp|classify|remote> [args...]\n' +
         '  ticket "<title>" "<body>" [tier]         file a backlog ticket on TERMINAL_REPO\n' +
         '                                           tier: auto|top|cheap-agentic|cheap-raw (default auto)\n' +
         '  ticket comment <slug> "<body>"           append to a ticket\'s log (read by later runs)\n' +
-        '  hitl "<title>" "<action>"                file a global HITL item + Telegram ping\n' +
+        '  inbox-item "<title>" "<action>"          file a global Inbox item + Telegram ping\n' +
+        '                                           [--severity=urgent|normal|low] [--category=<Name>]\n' +
+        '  hitl "<title>" "<action>"                alias of inbox-item (human-in-the-loop category)\n' +
         '  completion-hitl <engine>                 read hook JSON on stdin and file default-on Inbox item\n' +
         '  activity <kind> "<title>" "<detail>"     emit one activity-feed event\n' +
         '  deploy "<env>" "[sha]" "[detail]"        emit one deploy activity event\n' +
