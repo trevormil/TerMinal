@@ -29,6 +29,8 @@ import { navigateTo } from '../../lib/nav'
 import { InlineMd, Markdown } from '../../components/Markdown'
 import type { Tab, TabContext, ActivityEvent, ActivityKind } from '../../lib/types'
 import { relativeTime } from '../../lib/time'
+import { usePolled } from '../../lib/usePolled'
+import { getPref, setPref } from '../../lib/prefs'
 
 // Decide where clicking an activity row should take you. Priority:
 //   runId  → Runs tab + pre-select that run
@@ -186,7 +188,6 @@ export function ActivityTab({
   const [scope, setScope] = useState<Scope>('all')
   const [kindFilter, setKindFilter] = useState<string>('all')
   const [query, setQuery] = useState('')
-  const [, force] = useState(0) // re-tick relative times
   // Which row is expanded (title/detail unclamped). JS-driven rather than a
   // CSS group-hover toggle — line-clamp's -webkit-box display type combined
   // with a hover-only class swap was unreliable in practice (rows stayed
@@ -203,7 +204,7 @@ export function ActivityTab({
 
   useEffect(() => {
     // viewing the feed clears the unseen-high-signal tab badge
-    localStorage.setItem('gt.activity.lastSeen', String(Date.now()))
+    setPref('activityLastSeen', Date.now())
     window.gt.activity.list().then((e) => {
       setEvents(e)
       newest.current = e[0]?.id || ''
@@ -212,12 +213,11 @@ export function ActivityTab({
       newest.current = ev.id
       setEvents((prev) => [ev, ...prev].slice(0, 1000))
     })
-    const t = setInterval(() => force((n) => n + 1), 30_000) // refresh "Nm ago"
-    return () => {
-      off()
-      clearInterval(t)
-    }
+    return () => off()
   }, [])
+  // Re-tick the relative "Nm ago" labels. Nothing is fetched — the poll just
+  // re-renders, and gets the hidden-window pause for free.
+  usePolled(async () => Date.now(), { intervalMs: 30_000 })
 
   // The feed holds up to 1000 events — memoize the filter chain (it used to
   // re-run inline on every keystroke and every 30s time-tick) and let typing
@@ -554,7 +554,7 @@ const tab: Tab = {
   appliesTo: () => true, // global feed, always available
   // badge = unseen high-signal events (errors, blockers, test fails) since last view
   badge: async (gt) => {
-    const seen = Number(localStorage.getItem('gt.activity.lastSeen') || 0)
+    const seen = getPref('activityLastSeen')
     // Count-only endpoint — the 500-event list was fetched just to count 3 kinds.
     return gt.activity.unseenCount(seen, ['error', 'blocked', 'tests-fail'])
   },

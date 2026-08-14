@@ -15,6 +15,7 @@ import { sanitizeLog as stripAnsi } from '../../lib/sanitizeLog'
 import { formatRunLog, type LogHighlight, type LogLineKind } from '../../lib/runLogFormat'
 import { parseRunLog } from '../../../../shared/run-log'
 import { StructuredRunLog } from '../../components/StructuredRunLog'
+import { usePolled } from '../../lib/usePolled'
 
 type RunSource = 'cron' | 'agent' | 'bg' | 'session'
 
@@ -65,18 +66,21 @@ export function RunLogPane({
     setRawLineCap(RAW_LINE_CAP)
   }, [runId])
 
-  useEffect(() => {
-    let alive = true
-    const fetch = async () => {
+  // Tail the log while the run is going; once it finishes the file is final, so
+  // a single fetch (intervalMs 0) is all a finished run ever needs. A failure is
+  // rendered *as* the log body rather than surfaced as a poll error, so the pane
+  // always has something to show.
+  usePolled(
+    async (signal) => {
       try {
         if (full) {
           const text = await window.gt.agents.runLog(source, runId, hostId)
-          if (alive) setLog({ runId, text, size: text.length, truncated: false })
+          if (!signal.aborted) setLog({ runId, text, size: text.length, truncated: false })
           return
         }
         const t = await window.gt.agents.runLogTail(source, runId, hostId, TAIL_BYTES)
         // Unchanged tail → keep the same state object so nothing re-parses.
-        if (alive)
+        if (!signal.aborted)
           setLog((cur) =>
             cur && cur.runId === runId && cur.text === t.text && cur.truncated === t.truncated
               ? cur
@@ -84,22 +88,15 @@ export function RunLogPane({
           )
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
-        if (alive)
+        if (!signal.aborted)
           setLog({ runId, text: `Unable to load run log: ${message}`, size: 0, truncated: false })
       }
-    }
-    fetch()
-    if (status !== 'running') {
-      return () => {
-        alive = false
-      }
-    }
-    const t = setInterval(fetch, 1500)
-    return () => {
-      alive = false
-      clearInterval(t)
-    }
-  }, [runId, source, status, hostId, full])
+    },
+    {
+      intervalMs: status === 'running' ? 1500 : 0,
+      deps: [runId, source, status, hostId, full],
+    },
+  )
 
   // Export buttons always deliver the FULL log, even while the pane shows a tail.
   const fetchFullText = async (): Promise<string> => {
