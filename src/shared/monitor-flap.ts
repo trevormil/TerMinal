@@ -84,6 +84,31 @@ export function categorizeError(err: unknown): FailureCategory {
   return 'unknown'
 }
 
+/**
+ * Bun's `fetch` reports BOTH "the name did not resolve" and "the port refused
+ * us" as one opaque `ConnectionRefused` / "Unable to connect", with no cause to
+ * unwrap — so the two cannot be told apart from the error alone. That
+ * distinction is the whole basis of the local-outage gate (a refused port
+ * proves our uplink is fine; an unresolvable name does not), so the daemon has
+ * to disambiguate with a name lookup instead of guessing.
+ *
+ * `categorizeError` deliberately leaves these as `unknown`: guessing
+ * "unreachable" would let a refused port vote for "our wifi is down" and mute a
+ * real outage, which is the one failure mode this subsystem must not have.
+ */
+export function isOpaqueConnectFailure(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false
+  const e = err as { code?: unknown; message?: unknown }
+  // Bun emits `ConnectionRefused` on the first attempt and `FailedToOpenSocket`
+  // on the retry, for the same unresolvable name — both are the same "we never
+  // got a connection and won't say why".
+  if (e.code === 'ConnectionRefused' || e.code === 'FailedToOpenSocket') return true
+  return (
+    typeof e.message === 'string' &&
+    /unable to connect|typo in the url|failed to open socket/i.test(e.message)
+  )
+}
+
 const LABELS: Record<FailureCategory, string> = {
   dns: 'DNS lookup failed — the name did not resolve',
   refused: 'connection refused — their end answered but nothing is listening',
@@ -215,6 +240,36 @@ export function applyThreshold(input: ThresholdInput): ThresholdDecision {
     alert: true,
     suppressed: false,
     paused: false,
+  }
+}
+
+/**
+ * What the UI says about a monitor whose probe failed but whose threshold has
+ * not been met. Without this the tab renders a flat green while the daemon is
+ * two-thirds of the way to declaring an outage — the suppression would be
+ * invisible, which is how a threshold turns into "the monitor is broken".
+ *
+ * Null for every state that is already telling the truth on its own: a healthy
+ * check, and a monitor that has actually been published as down.
+ */
+export function blipNote(
+  state: {
+    status: MonitorHealth
+    observed?: MonitorHealth
+    consecutiveFailures?: number
+  } | null,
+  minConsecutiveFailures: number,
+): { badge: string; detail: string } | null {
+  if (!state || state.status !== 'ok') return null
+  if (!state.observed || state.observed === 'ok') return null
+  const n = Number(state.consecutiveFailures)
+  if (!Number.isFinite(n) || n < 1) return null
+  const threshold = normalizeMinConsecutiveFailures(minConsecutiveFailures)
+  return {
+    badge: `blip ${n}/${threshold}`,
+    detail:
+      `${n} failed check${n === 1 ? '' : 's'} in a row — this monitor is published as down, ` +
+      `and alerts, at ${threshold}. The last probe reported ${state.observed}.`,
   }
 }
 

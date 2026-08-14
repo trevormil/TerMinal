@@ -2,10 +2,12 @@ import { describe, expect, test } from 'bun:test'
 import {
   DEFAULT_MIN_CONSECUTIVE_FAILURES,
   applyThreshold,
+  blipNote,
   categorizeError,
   categoryLabel,
   confirmsLocalOutage,
   isNetworkLayer,
+  isOpaqueConnectFailure,
   normalizeMinConsecutiveFailures,
   suspectsLocalOutage,
   type ThresholdInput,
@@ -81,6 +83,68 @@ describe('categorizeError', () => {
     expect(new Set(phrases).size).toBe(cats.length)
     expect(categoryLabel('http-status')).toMatch(/their end/i)
     expect(categoryLabel('unreachable')).toMatch(/network/i)
+  })
+})
+
+describe('isOpaqueConnectFailure — the Bun fetch ambiguity', () => {
+  test('Bun reports an unresolvable name and a refused port identically', () => {
+    // Verified against the runtime the daemon actually uses: both a `.invalid`
+    // host and 127.0.0.1:1 come back as this exact error, with no cause.
+    const bunErr = Object.assign(
+      new Error('Unable to connect. Is the computer able to access the url?'),
+      {
+        code: 'ConnectionRefused',
+      },
+    )
+    expect(isOpaqueConnectFailure(bunErr)).toBe(true)
+    // The retry inside the same probe reports it differently again.
+    expect(
+      isOpaqueConnectFailure(
+        Object.assign(new Error('Was there a typo in the url or port?'), {
+          code: 'FailedToOpenSocket',
+        }),
+      ),
+    ).toBe(true)
+    // It must stay `unknown`: a guess of "unreachable" would let a refused port
+    // vote for a local outage and mute a genuine one.
+    expect(categorizeError(bunErr)).toBe('unknown')
+    expect(isNetworkLayer(categorizeError(bunErr))).toBe(false)
+  })
+
+  test('an error that already says which layer failed is not opaque', () => {
+    expect(isOpaqueConnectFailure(Object.assign(new Error('x'), { code: 'ENOTFOUND' }))).toBe(false)
+    expect(isOpaqueConnectFailure(Object.assign(new Error('x'), { code: 'ECONNREFUSED' }))).toBe(
+      false,
+    )
+    expect(isOpaqueConnectFailure(new Error('timed out'))).toBe(false)
+    expect(isOpaqueConnectFailure(null)).toBe(false)
+  })
+})
+
+describe('blipNote — the suppressed failure stays visible', () => {
+  test('a held-back failure is reported as a blip against its threshold', () => {
+    const note = blipNote({ status: 'ok', observed: 'fail', consecutiveFailures: 1 }, 2)
+    expect(note?.badge).toBe('blip 1/2')
+    expect(note?.detail).toContain('1 failed check in a row')
+    expect(note?.detail).toContain('at 2')
+  })
+
+  test('a genuinely clean check says nothing', () => {
+    expect(blipNote({ status: 'ok', observed: 'ok', consecutiveFailures: 0 }, 2)).toBeNull()
+    expect(blipNote({ status: 'ok' }, 2)).toBeNull()
+    expect(blipNote(null, 2)).toBeNull()
+  })
+
+  test('a published outage is not a blip — the status already says it', () => {
+    expect(blipNote({ status: 'fail', observed: 'fail', consecutiveFailures: 3 }, 2)).toBeNull()
+    expect(blipNote({ status: 'warn', observed: 'warn', consecutiveFailures: 3 }, 2)).toBeNull()
+  })
+
+  test('a missing threshold on an old monitor renders the default, not NaN', () => {
+    expect(
+      blipNote({ status: 'ok', observed: 'fail', consecutiveFailures: 1 }, undefined as never)
+        ?.badge,
+    ).toBe('blip 1/2')
   })
 })
 
@@ -225,12 +289,9 @@ describe('suspectsLocalOutage', () => {
   })
 
   test('one reachable endpoint disproves it outright', () => {
-    expect(
-      suspectsLocalOutage([
-        { failed: true, category: 'timeout' },
-        { failed: false },
-      ]),
-    ).toBe(false)
+    expect(suspectsLocalOutage([{ failed: true, category: 'timeout' }, { failed: false }])).toBe(
+      false,
+    )
   })
 
   test('a failure that proves connectivity disproves it', () => {
