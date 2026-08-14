@@ -113,17 +113,6 @@ export function readListenerSettings(): ListenerSettings {
   return { enabled: raw.enabled === true }
 }
 
-export function setListenerEnabled(enabled: boolean): ListenerSettings {
-  const s = { ...readListenerSettings(), enabled }
-  writeJson(SETTINGS(), s)
-  emitActivity({
-    kind: 'check',
-    title: `Listener inbox ${enabled ? 'enabled' : 'paused'}`,
-    detail: ROOT(),
-  })
-  return s
-}
-
 function processedKeys(): string[] {
   const raw = readJson<{ keys?: unknown[] } | unknown[]>(PROCESSED(), [])
   const arr = Array.isArray(raw) ? raw : Array.isArray(raw.keys) ? raw.keys : []

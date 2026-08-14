@@ -39,16 +39,11 @@ export type ChannelMap = {
   'agentview:transcript-window': Of<GtApi['agentview']['transcriptWindow']>
   'alerts:test': Of<GtApi['alerts']['test']>
   'bg:cancel': Of<GtApi['bg']['cancel']>
-  'bg:get': Of<GtApi['bg']['get']>
-  'bg:list': Of<GtApi['bg']['list']>
-  'bg:log': Of<GtApi['bg']['log']>
-  'bg:spawn': Of<GtApi['bg']['spawn']>
   'bridge:pairing': Of<GtApi['bridge']['pairing']>
   'bridge:push-status': Of<GtApi['bridge']['pushStatus']>
   'bridge:rotate-token': Of<GtApi['bridge']['rotateToken']>
   'bridge:status': Of<GtApi['bridge']['status']>
   'bridge:tailscale': Of<GtApi['bridge']['tailscale']>
-  'checkpoints:create': Of<GtApi['checkpoints']['create']>
   'checkpoints:list': Of<GtApi['checkpoints']['list']>
   'checkpoints:ranges': Of<GtApi['checkpoints']['ranges']>
   'checkpoints:restore': Of<GtApi['checkpoints']['restore']>
@@ -130,7 +125,6 @@ export type ChannelMap = {
   'knowledge:read': Of<GtApi['knowledge']['read']>
   'knowledge:write': Of<GtApi['knowledge']['write']>
   'listeners:status': Of<GtApi['listeners']['status']>
-  'listeners:toggle': Of<GtApi['listeners']['toggle']>
   'llm:cheap': Of<GtApi['cheapLlm']>
   'loops:create': Of<GtApi['loops']['create']>
   'loops:get': Of<GtApi['loops']['get']>
@@ -244,7 +238,6 @@ export type ChannelMap = {
   'tabs:run': Of<GtApi['runTabView']>
   'telegram:test': Of<GtApi['telegram']['test']>
   'tickets:comment': Of<GtApi['tickets']['comment']>
-  'tickets:create': Of<GtApi['tickets']['create']>
   'tickets:get': Of<GtApi['tickets']['get']>
   'tickets:linear-teams': Of<GtApi['tickets']['linearTeams']>
   'tickets:list': Of<GtApi['tickets']['list']>

@@ -9,7 +9,7 @@ import { ipcMain, shell } from 'electron'
 import { handle } from '../typed-ipc'
 import { emitActivity } from '../events'
 import { recommendTicketAgent } from '../backlog'
-import type { NewTicket, TicketAgentRecommendationInput, TicketPatch } from '../backlog'
+import type { TicketAgentRecommendationInput, TicketPatch } from '../backlog'
 import {
   listLinearTeams,
   type NewTicketComment,
@@ -98,20 +98,6 @@ export function registerTicketsIpc(deps: TicketsIpcDeps): void {
     }
     void shell.openExternal(link)
     return true
-  })
-  handle('tickets:create', async (_e, input: NewTicket) => {
-    const daemon = deps.activeDaemon()
-    const t = await daemon.ticketCreate(input)
-    emitActivity({
-      kind: 'ticket-filed',
-      title: `Ticket filed · #${t.id}`,
-      detail: t.title,
-      repo: daemon.repoLabel(),
-      repoRoot: daemon.kind === 'local' ? daemon.repoRoot() : '',
-      sessionId: deps.sessionId(),
-      ref: { ticket: t.id },
-    })
-    return t
   })
   handle('tickets:recommend-agent', (_e, input: TicketAgentRecommendationInput) =>
     recommendTicketAgent(input),

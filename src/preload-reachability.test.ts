@@ -33,26 +33,16 @@ const ALLOWED = new Set([
   'loops.restart',
   'loops.list',
   'loops.get',
-  // FOUND BY THIS GUARD, not yet swept. These have no renderer call site either,
-  // but they were outside the audited scope of the sweep that added this test, so
-  // deleting them here would ship an unreviewed removal. They are a follow-up
-  // ticket, not an exemption — burn this block down, do not grow it.
-  //   `bg.cancel` is wired but the rest of the background-task surface is not.
-  'bg.list',
-  'bg.get',
-  'bg.log',
-  'bg.spawn',
-  //   Checkpoints are created by the agent-turn hook in main, never from the UI.
-  'checkpoints.create',
-  //   The Runs tab reads listener status; nothing toggles the listener from the UI.
-  'listeners.toggle',
-  //   Tickets are filed through `tickets.spawn` and bin/terminal-cli, not this.
-  'tickets.create',
+  // The follow-up block this guard first surfaced is GONE. `bg.list/get/log/spawn`,
+  // `checkpoints.create`, `listeners.toggle` and `tickets.create` were all deleted
+  // by ticket 0124 — every one of them had a live non-UI path doing the same work
+  // (main's own callers, the agent-turn hook, `tickets.spawn`/terminal-cli). Do not
+  // re-grow that block: a key this guard newly flags gets deleted, not excused.
   // Pre-rename alias of `gt.inbox`'s item methods (ticket 0123). The app itself
   // calls `gt.inbox.*`, so these have no in-tree call site BY DESIGN — they exist
   // for plugin widgets and older bundles written against the HITL spelling, and
   // src/main/ipc/inbox-alias.test.ts pins them to the same implementations.
-  // Unlike the block above, this is a supported surface, not an unswept leftover.
+  // This is a supported surface, not an unswept leftover.
   'hitl.list',
   'hitl.remoteAll',
   'hitl.resolve',

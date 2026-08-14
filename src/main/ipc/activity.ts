@@ -10,7 +10,7 @@ import { testTelegram } from '../telegram'
 import { testSlack } from '../slack-mirror'
 import { testWebhook } from '../notify-channels'
 import { readSettings } from '../settings'
-import { readListenerStatus, setListenerEnabled } from '../listeners'
+import { readListenerStatus } from '../listeners'
 
 export function registerActivityIpc(): void {
   handle('activity:list', () => readActivity())
@@ -39,9 +39,8 @@ export function registerActivityIpc(): void {
     }
     return { ok: false, error: `unknown alert channel: ${channel}` }
   })
+  // Read-only: the Runs tab shows listener status. Nothing in the UI toggles the
+  // inbox — it is enabled by editing the listener settings file — so ticket 0124
+  // removed the `listeners:toggle` channel and its writer.
   handle('listeners:status', () => readListenerStatus())
-  handle('listeners:toggle', (_e, enabled: boolean) => {
-    setListenerEnabled(enabled)
-    return readListenerStatus()
-  })
 }
