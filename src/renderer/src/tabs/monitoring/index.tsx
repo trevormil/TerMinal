@@ -20,6 +20,7 @@ import { daemonHealth, stalenessOf } from '../../../../shared/monitor-liveness'
 import {
   DEFAULT_MIN_CONSECUTIVE_FAILURES,
   MAX_MIN_CONSECUTIVE_FAILURES,
+  blipNote,
   categoryLabel,
   normalizeMinConsecutiveFailures,
 } from '../../../../shared/monitor-flap'
@@ -30,6 +31,7 @@ import type {
   MonitorType,
   MonitorState,
   MonitorNotify,
+  MonitorConnectivity,
   MonitorWithState,
 } from '../../lib/types'
 
@@ -357,13 +359,11 @@ function MonitorForm({
               max={MAX_MIN_CONSECUTIVE_FAILURES}
               className={inputCls}
               value={f.minConsecutiveFailures}
-              onChange={(e) =>
-                set('minConsecutiveFailures', Number(e.target.value) || 0)
-              }
+              onChange={(e) => set('minConsecutiveFailures', Number(e.target.value) || 0)}
             />
             <p className="mt-1 text-[10.5px] leading-snug text-zinc-600">
-              A one-off blip stays quiet: the monitor only goes down, and only alerts, after
-              this many checks fail in a row. 1 alerts on the first failure.
+              A one-off blip stays quiet: the monitor only goes down, and only alerts, after this
+              many checks fail in a row. 1 alerts on the first failure.
             </p>
           </div>
 
@@ -598,6 +598,7 @@ function MonitorDetail({ m }: { m: MonitorWithState }) {
   const metrics = st?.metrics ? Object.entries(st.metrics) : []
   const history = st?.history ?? []
   const recent = history.slice(-30)
+  const blip = blipNote(st, m.minConsecutiveFailures)
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
@@ -615,6 +616,25 @@ function MonitorDetail({ m }: { m: MonitorWithState }) {
             <div className="mt-0.5 font-mono text-[11px] text-zinc-500">{m.target}</div>
             {st?.summary && (
               <div className="mt-1.5 text-[12.5px] leading-relaxed text-zinc-300">{st.summary}</div>
+            )}
+            {/* WHICH layer failed. "their end returned an error status" and "no
+                network path to the host" call for completely different
+                reactions; the old pane rendered both as a red dot. */}
+            {st?.category && st.status !== 'ok' && (
+              <div className="mt-1 text-[11.5px] leading-relaxed text-zinc-500">
+                Failure kind — {categoryLabel(st.category)}.
+              </div>
+            )}
+            {blip && !st?.paused && (
+              <div className="mt-1 text-[11.5px] leading-relaxed text-[var(--gt-yellow)]">
+                {blip.detail}
+              </div>
+            )}
+            {st?.paused && (
+              <div className="mt-1 text-[11.5px] leading-relaxed text-zinc-500">
+                Checks are paused — this machine has no connectivity, so the last cycle was
+                discarded rather than counted against this monitor.
+              </div>
             )}
           </div>
         </div>
@@ -807,6 +827,9 @@ function MonitorRow({
 }) {
   const st = m.state
   const stale = isStale(m)
+  // A monitor whose failures are being held below its threshold renders green,
+  // which is a lie of omission — the badge is how the suppression stays visible.
+  const blip = blipNote(st, m.minConsecutiveFailures)
   return (
     <div
       onClick={onSelect}
@@ -826,6 +849,12 @@ function MonitorRow({
             <Badge tone={expiryTone(certDays(m)!)}>{expiryLabel(certDays(m)!)}</Badge>
           )}
           {stale && <Badge tone="yellow">stale</Badge>}
+          {st?.paused && <Badge tone="mute">paused</Badge>}
+          {blip && !st?.paused && (
+            <span title={blip.detail}>
+              <Badge tone="yellow">{blip.badge}</Badge>
+            </span>
+          )}
           <span className="shrink-0 text-[9.5px] tabular-nums text-zinc-700">
             {reltime(st?.lastCheckedAt)}
           </span>
@@ -893,10 +922,16 @@ function MonitoringTab(_: { ctx: TabContext }) {
   const [busyId, setBusyId] = useState<string | null>(null)
   const railW = useResizableWidth('gt.monitoringRailWidth', 384, { min: 280, max: 640 })
 
+  const [connectivity, setConnectivity] = useState<MonitorConnectivity>({ offline: false })
+
   const load = () => {
     window.gt.monitors
       .list()
       .then((list) => setMonitors(list))
+      .catch(() => {})
+    window.gt.monitors
+      .connectivity()
+      .then(setConnectivity)
       .catch(() => {})
   }
   useEffect(() => {
@@ -995,6 +1030,30 @@ function MonitoringTab(_: { ctx: TabContext }) {
             Add monitor
           </button>
         </div>
+        {/* Local outage: OUR uplink is gone, so every monitor would otherwise
+            read as a red outage nobody should act on. Checks are not counting
+            and nothing is being filed until connectivity returns — say so
+            plainly rather than leaving the operator to infer it. */}
+        {connectivity.offline && (
+          <div className="shrink-0 border-b border-[var(--gt-border)] bg-[var(--gt-yellow)]/10 px-3 py-2">
+            <div className="flex items-start gap-1.5">
+              <Pause
+                size={13}
+                strokeWidth={2}
+                className="mt-[1px] shrink-0 text-[var(--gt-yellow)]"
+              />
+              <div className="text-[11px] leading-relaxed text-zinc-300">
+                <span className="font-semibold text-zinc-100">
+                  Checks paused — this machine is offline
+                  {connectivity.since ? ` (since ${relativeTime(connectivity.since)})` : ''}.
+                </span>{' '}
+                Every check failed at the network layer and the reference hosts were unreachable
+                too, so the fault is here, not out there. Nothing is counting and no alerts are
+                being filed; monitoring resumes on its own when connectivity returns.
+              </div>
+            </div>
+          </div>
+        )}
         {daemon.stale && (
           <div className="shrink-0 border-b border-[var(--gt-border)] bg-[var(--gt-red)]/10 px-3 py-2">
             <div className="flex items-start gap-1.5">
