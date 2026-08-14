@@ -371,7 +371,7 @@ export type GtApi = {
   startSession: (
     key: string,
     opts: StartOpts,
-  ) => Promise<{ sessionId: string; cwd: string; remote?: boolean; seeded?: boolean }>
+  ) => Promise<{ sessionId: string; cwd: string; remote?: RemoteSession; seeded?: boolean }>
   setActiveSession: (key: string) => Promise<void>
   stopSession: (key: string) => Promise<void>
   fleet: () => Promise<FleetSession[]>

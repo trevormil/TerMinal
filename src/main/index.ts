@@ -690,10 +690,10 @@ function createWindow() {
 }
 
 // ---- session IPC ----
-ipcMain.handle('sessions:list', (_e, engine?: Engine) => listSessions(engine))
-ipcMain.handle('session:start', (_e, key: string, opts: StartOpts) => startSession(key, opts))
-ipcMain.handle('session:setActive', (_e, key: string) => setActiveSession(key))
-ipcMain.handle('session:stop', (_e, key: string) => stopSession(key))
+handle('sessions:list', (_e, engine?: Engine) => listSessions(engine))
+handle('session:start', (_e, key: string, opts: StartOpts) => startSession(key, opts))
+handle('session:setActive', (_e, key: string) => setActiveSession(key))
+handle('session:stop', (_e, key: string) => stopSession(key))
 // Fleet snapshot: a summary of every live session (for the cross-session
 // overview + the live status dots on the session tabs).
 function fleetSnapshot() {
@@ -867,7 +867,7 @@ handle('activity:clear', () => clearActivity())
 handle('env:detect', () => detectEnv())
 handle('env:install-gt-notify', () => installGtNotify())
 ipcMain.handle('telegram:test', () => testTelegram())
-ipcMain.handle('slack:test', () => testSlack())
+handle('slack:test', () => testSlack())
 // One "send test alert" entry point per outbound channel (Settings → Alerts).
 // `webhookId` picks one destination out of the list; the renderer only holds a
 // mask of the URL, so it names the entry instead of sending the value back.
@@ -1449,7 +1449,7 @@ handle('repoTrust:revoke', () => {
 // (unlike /tmp), out of the way (unlike ~), and not a git repo so repo-scoped
 // tabs/widgets stay off. All scratch sessions share it → one "scratch"
 // workspace grouping.
-ipcMain.handle('scratch:dir', () => {
+handle('scratch:dir', () => {
   const dir = configPath('scratch')
   try {
     mkdirSync(dir, { recursive: true })
@@ -1469,10 +1469,10 @@ handle('docs:list', () => {
 handle('docs:get', (_e, relPath: string) => {
   return activeDaemon().docsGet(relPath)
 })
-ipcMain.handle('sessions:project-list', () => {
+handle('sessions:project-list', () => {
   return activeDaemon().sessionsList()
 })
-ipcMain.handle('sessions:project-get', (_e, slug: string) => activeDaemon().sessionGet(slug))
+handle('sessions:project-get', (_e, slug: string) => activeDaemon().sessionGet(slug))
 handle('tickets:list', () => {
   return activeDaemon().ticketsList()
 })
@@ -1631,7 +1631,7 @@ handle(
     return true
   },
 )
-ipcMain.handle('skills:list', () => activeDaemon().skillsList())
+handle('skills:list', () => activeDaemon().skillsList())
 handle('mrs:list', () => {
   return activeDaemon().mrsList()
 })
