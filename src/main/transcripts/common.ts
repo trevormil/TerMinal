@@ -1,13 +1,107 @@
-// Shared file-picker utilities used by every engine's session lister
-// (claude.ts, codex.ts, cursor.ts). Picker metadata is cached per transcript
-// keyed by (size, mtime) — see session-meta-cache.ts. Without this every
-// picker open re-read a large window of every transcript (hundreds of MB of
-// I/O + parse per call).
-import { existsSync, readdirSync, statSync, openSync, readSync, closeSync, readFileSync } from 'node:fs'
+// Shared transcript utilities: the file-picker helpers every engine's session
+// lister uses (claude.ts, codex.ts, cursor.ts, hermes.ts) plus the line-level
+// text/preview helpers shared by the Claude parsers and the observability
+// readers. Picker metadata is cached per transcript keyed by (size, mtime) —
+// see session-meta-cache.ts. Without this every picker open re-read a large
+// window of every transcript (hundreds of MB of I/O + parse per call).
+import {
+  existsSync,
+  readdirSync,
+  statSync,
+  openSync,
+  readSync,
+  closeSync,
+  readFileSync,
+} from 'node:fs'
 import { join } from 'node:path'
 import { createMetaCache } from '../session-meta-cache'
 import { configPath } from '../config-dir'
-import type { SessionMeta } from '../../shared/types/observability'
+import { isRecord, isTextBlock, textOf as schemaTextOf } from '../transcript-schema'
+import type { ObservabilityEventKind, SessionMeta } from '../../shared/types/observability'
+
+export function summarizeToolInput(tool: string, input: Record<string, unknown>): string {
+  if (!input) return ''
+  const pick = (k: string) => (typeof input[k] === 'string' ? (input[k] as string) : '')
+  switch (tool) {
+    case 'Bash':
+      return pick('description') || pick('command').slice(0, 60)
+    case 'Edit':
+    case 'Write':
+    case 'Read':
+      return pick('file_path').split('/').slice(-2).join('/')
+    case 'Task':
+      return pick('description')
+    default:
+      return (pick('file_path') || pick('path') || pick('query') || pick('pattern')).slice(0, 60)
+  }
+}
+
+export function textOf(content: unknown): string {
+  // Delegates to the shared guards (ticket 91). The ' ' separator is
+  // load-bearing — this feeds session previews, where '' would run words
+  // together across blocks.
+  return schemaTextOf(content, ' ')
+}
+
+export function compactPreview(value: unknown, max = 900): string {
+  if (value === undefined || value === null) return ''
+  const text = typeof value === 'string' ? value : JSON.stringify(value)
+  const compacted = text.replace(/\s+/g, ' ').trim()
+  return compacted.length > max ? `${compacted.slice(0, max)}...` : compacted
+}
+
+export function resultText(content: unknown, toolUseResult?: unknown): string {
+  if (typeof content === 'string') return content
+  if (Array.isArray(content)) {
+    const parts: string[] = []
+    let nonText = 0
+    for (const block of content) {
+      if (isTextBlock(block)) parts.push(block.text)
+      else if (isRecord(block)) nonText++
+    }
+    if (nonText > 0) parts.push(`[${nonText} non-text block${nonText === 1 ? '' : 's'}]`)
+    return parts.join('\n')
+  }
+  if (isRecord(toolUseResult) && toolUseResult.success === false) return 'command failed'
+  return ''
+}
+
+export function timestampMs(obj: Record<string, unknown> | undefined, line: number): number {
+  if (typeof obj?.timestamp === 'string') {
+    const parsed = Date.parse(obj.timestamp)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return line
+}
+
+export function inputRecord(input: unknown): Record<string, unknown> {
+  return input && typeof input === 'object' && !Array.isArray(input)
+    ? (input as Record<string, unknown>)
+    : {}
+}
+
+export function stableJson(value: unknown): string {
+  if (value === undefined) return ''
+  try {
+    return JSON.stringify(value, null, 2)
+  } catch {
+    return String(value)
+  }
+}
+
+export function stringProp(obj: Record<string, unknown>, ...keys: string[]): string {
+  for (const key of keys) {
+    const value = obj[key]
+    if (typeof value === 'string' && value.trim()) return value
+  }
+  return ''
+}
+
+export function toolCallKind(toolName: string): ObservabilityEventKind {
+  if (toolName === 'Task' || toolName === 'Agent') return 'agent_launch'
+  if (toolName === 'Skill') return 'skill_invoke'
+  return 'tool_call'
+}
 
 export const SESSION_PICKER_LIMIT = 600
 const PICKER_HEAD_BYTES = 256 * 1024
