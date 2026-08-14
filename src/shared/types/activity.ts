@@ -107,6 +107,12 @@ export type HitlItem = {
   terminalCwd?: string
   // Stable bucket id for review-pattern HITLs so re-mining doesn't dup.
   patternKey?: string
+  /** Free-form bucket a filer can stamp ('review-pattern'). Read back by the
+   *  filer itself for dedupe, never validated against a list. */
+  kind?: string
+  /** Set by the cadence watchdog on a "schedule overdue" filing, so a stuck
+   *  schedule pings once rather than on every watchdog tick. */
+  overdueScheduleId?: string
   occurrenceCount?: number
   lastOccurredAt?: number
   // Stamped by the remote fan-out (hitl:remote-all) for HITLs filed by a run on a

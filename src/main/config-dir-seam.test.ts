@@ -18,6 +18,12 @@ import { join, relative, resolve } from 'node:path'
 
 const ROOT = resolve(import.meta.dir, '../..')
 const SEAM = 'src/main/config-dir.ts'
+// The headless runner (src/runner, built to bin/terminal-cron) is a separate
+// process that deliberately cannot import from the app bundle, so it carries
+// its OWN seam. Same contract — resolved per call, honouring the override —
+// which is what makes it a seam rather than a bypass.
+const RUNNER_SEAM = 'src/runner/config.ts'
+const SEAMS = [SEAM, RUNNER_SEAM]
 
 /** Every non-test TypeScript source under src/. */
 function sources(): string[] {
@@ -64,7 +70,7 @@ describe('every path to TerMinal state goes through the seam (ticket 108)', () =
   test('no source outside config-dir.ts builds the path by hand', () => {
     const offenders: string[] = []
     for (const rel of sources()) {
-      if (rel === SEAM) continue
+      if (SEAMS.includes(rel)) continue
       const src = readFileSync(join(ROOT, rel), 'utf8')
       src.split('\n').forEach((line, i) => {
         if (!isComment(line) && HANDBUILT.test(line))
@@ -72,6 +78,18 @@ describe('every path to TerMinal state goes through the seam (ticket 108)', () =
       })
     }
     expect(offenders).toEqual([])
+  })
+
+  test('the runner seam resolves per call and honours the override', () => {
+    // Exempting a file from the scan is only safe while it behaves like a seam.
+    // The runner is a short-lived process, but a module-level const would still
+    // resolve before a test could redirect it — the exact ticket-108 shape.
+    const src = readFileSync(join(ROOT, RUNNER_SEAM), 'utf8')
+    expect(src).toContain('export function CFG()')
+    expect(src.slice(src.indexOf('export function CFG()'))).toContain(
+      'process.env.TERMINAL_CONFIG_DIR',
+    )
+    expect(src).not.toMatch(/^const\s+\w+\s*=\s*(?:join\(homedir|CFG\(\))/m)
   })
 
   test('the scan actually looks at the tree — a guard matching nothing is not a guard', () => {

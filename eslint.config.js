@@ -6,7 +6,19 @@ import reactHooks from 'eslint-plugin-react-hooks'
 // (hook misuse, unawaited promises, dead bindings). See docs/decisions.
 export default tseslint.config(
   {
-    ignores: ['out/**', 'dist/**', 'vendor/**', 'node_modules/**', 'templates/**'],
+    ignores: [
+      'out/**',
+      'dist/**',
+      'vendor/**',
+      'node_modules/**',
+      'templates/**',
+      // GENERATED, and deliberately byte-identical to the copies in bin/ —
+      // which eslint DOES lint, so the block itself is still covered.
+      'src/runner/repo-state-block.js',
+      // BUILT from src/runner (which is linted). Linting a bundle reports on
+      // the bundler.
+      'bin/terminal-cron',
+    ],
   },
   {
     files: ['src/**/*.ts', 'src/**/*.tsx'],

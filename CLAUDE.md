@@ -68,8 +68,12 @@ bunx tsc --noEmit         # typecheck
   with `appliesTo` + `Component` + optional `badge`.
 - `src/renderer/src/lib/nav.ts` — cross-tab navigation bus
   (`navigateTo(tabId, payload?)`). Used for HITL → Runs, Activity → Tickets, etc.
-- `bin/terminal-cron` — the headless runner launchd fires. Self-contained Bun
-  script; reads `~/.config/TerMinal/schedules.json`.
+- `src/runner/` — the headless runner launchd fires, as typed modules. BUILT to
+  `bin/terminal-cron` (a single self-contained bundle) by `bun run build:runner`,
+  which `bun run build`/`dist` do for you. Edit the TS, never the artifact; the
+  artifact stays committed because host-provision, the agent image and the app
+  all copy it out of a checkout, and `src/runner/build-sync.test.ts` fails if it
+  is stale. Reads `~/.config/TerMinal/schedules.json`.
 - `bin/terminal-cli` — helper script exposed inside agent `.sh` bodies for
   ticket/hitl/activity/notify/state subcommands plus MCP passthroughs such as
   `terminal-cli mcp list_agents ...` and
@@ -116,7 +120,7 @@ CLAUDE.md §14). This is also where the persona/lanes machinery
 |---|---|
 | A new IPC | `src/main/ipc/<domain>.ts` (handler — index.ts registers zero of its own; it only calls the registrars) + `src/preload/index.ts` + `src/renderer/src/lib/types.ts` (Gt API surface) — all three must agree. Register via the typed `handle` from `src/main/typed-ipc.ts`; raw `ipcMain.handle` is a closed list enforced by `src/main/ipc-channels.test.ts` |
 | Agent runtime | `src/main/agents.ts` is the heart; `runSpec` is the spawn entry |
-| Schedules | `src/main/schedules.ts` + `bin/terminal-cron` — keep state shapes in sync |
+| Schedules | `src/main/schedules.ts` + `src/runner/` (built to `bin/terminal-cron`) — keep state shapes in sync, and rebuild the artifact |
 | Per-(repo, agent) state | `plugin/agents/scripts.md` — the canonical convention doc, shipped with the plugin like every other contract |
 | Where tickets/reviews/sessions live | `src/main/repo-state.ts` (sidecar resolution) + [ADR-0020](./docs/decisions/0020-workflow-state-in-a-per-project-sidecar.md). State is NOT in the repo. **Write** via `$TERMINAL_<AREA>_DIR` / `tm-state-dir <area>` — unconditionally, with no "legacy repo" branch. **Read** via `tm-state-dirs <area>`, which merges whatever has not migrated yet. Never a literal path in either spelling — `src/state-path-hygiene.test.ts` fails the build on those, and this row names none of them precisely because it would fail on itself |
 | An agent's contract (`.agents/<kind>.md`) | `plugin/bin/tm-agent-spec` + [ADR-0021](./docs/decisions/0021-agent-contracts-ship-with-the-plugin.md). Defaults ship in `plugin/agents/`; a repo carries one only when it overrides. Resolve with `tm-agent-spec <kind>` — never a hardcoded path, and never a second resolver in TS |

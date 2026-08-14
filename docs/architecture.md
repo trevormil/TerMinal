@@ -234,8 +234,8 @@ offline, survive a fresh clone):
 
 **Scheduling** (`schedules.ts` → `cron.ts`/`launchd.ts`): each enabled schedule
 is mirrored to a per-schedule **launchd** LaunchAgent that runs a headless runner
-(`bin/terminal-cron`, zero Electron imports, installed to
-`~/.config/TerMinal/bin`) so it fires even when the app is closed.
+(`bin/terminal-cron` — bundled from `src/runner/`, zero Electron imports,
+installed to `~/.config/TerMinal/bin`) so it fires even when the app is closed.
 `reconcileSchedules()` diffs launchd ↔ store to kill orphans and returns
 `{loaded, removed, failed[]}` — `loaded` only counts jobs launchd actually
 loaded (`isJobLoaded`, a plist-exists + `launchctl print` probe), so a schedule

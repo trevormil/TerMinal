@@ -18,9 +18,10 @@
   },
   "scripts": {
     "dev": "electron-vite dev",
-    "build": "electron-vite build",
+    "build": "bun run build:runner && electron-vite build",
+    "build:runner": "bun scripts/build-runner.ts",
     "start": "electron-vite preview",
-    "dist": "electron-vite build && electron-builder --mac --publish never",
+    "dist": "bun run build:runner && electron-vite build && electron-builder --mac --publish never",
     "release": "bin/release",
     "cut-release": "bun bin/cut-release",
     "test": "bun test",

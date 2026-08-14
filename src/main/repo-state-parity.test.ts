@@ -6,17 +6,26 @@ import { join } from 'node:path'
 import { REPO_STATE_BLOCK } from './repo-state-inline'
 import { clearRepoStateCache, repoStateAreaPath } from './repo-state'
 
-// bin/terminal-cli, bin/terminal-cron and bin/terminal-mcp-server cannot import
-// from the app bundle, so each carries a copy of the sidecar resolver. Three
-// separate bugs have already shipped from hand-copied logic drifting (the
+// bin/terminal-cli, bin/terminal-mcp-server and the headless runner cannot
+// import from the app bundle, so each carries a copy of the sidecar resolver.
+// Three separate bugs have already shipped from hand-copied logic drifting (the
 // remote-host bootstrap markers, the Obsidian gap, this resolver), so the
 // copies are generated from src/main/repo-state-inline.js and pinned here.
+//
+// The runner's copy is its SOURCE module, not bin/terminal-cron: that file is
+// now built from src/runner, and a bundler's output is not a place to pin
+// anything byte-for-byte.
 
 const ROOT = join(import.meta.dir, '..', '..')
-const COPIES = ['bin/terminal-cli', 'bin/terminal-cron', 'bin/terminal-mcp-server']
+const COPIES = [
+  // [file carrying the generated block, file wiring it to the area candidates]
+  ['bin/terminal-cli', 'bin/terminal-cli'],
+  ['src/runner/repo-state-block.js', 'src/runner/repo-state.ts'],
+  ['bin/terminal-mcp-server', 'bin/terminal-mcp-server'],
+]
 
 describe('sidecar resolver copies', () => {
-  for (const rel of COPIES) {
+  for (const [rel] of COPIES) {
     test(`${rel} carries the canonical block verbatim`, () => {
       const src = readFileSync(join(ROOT, rel), 'utf8')
       expect(src).toContain(REPO_STATE_BLOCK)
@@ -33,7 +42,7 @@ describe('sidecar resolver copies', () => {
   })
 
   test('the canonical block is actually wired in, not just present', () => {
-    for (const rel of COPIES) {
+    for (const [, rel] of COPIES) {
       const src = readFileSync(join(ROOT, rel), 'utf8')
       // areaPath must delegate to the block rather than resolve repo-relative.
       expect(src).toContain('areaWritePath(root, area, areaCandidates(area)')
