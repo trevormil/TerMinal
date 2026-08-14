@@ -198,9 +198,23 @@ export type SettingsPatch = Partial<
   experiments?: ExperimentsCfg
 }
 
+/**
+ * Result of `settings:validate-projects-dir`, for a LOCAL or a REMOTE dir.
+ *
+ * The remote half answers over SSH and cannot count repos or resolve a parent
+ * cheaply, so it omits `repoCount`/`suggestedParent` and can answer with a bare
+ * `'error'`. The local-only shape this type used to describe admitted none of
+ * that — while the UI guarded `typeof repoCount === 'number'` all along.
+ */
 export type ProjectsDirValidation =
-  | { ok: true; dir: string; repoCount: number }
-  | { ok: false; reason: 'is-repo'; dir: string; suggestedParent: string; message: string }
+  | { ok: true; dir: string; repoCount?: number }
+  | {
+      ok: false
+      reason: 'is-repo' | 'error'
+      dir: string
+      suggestedParent?: string
+      message: string
+    }
   | {
       ok: false
       reason: 'no-repos-found'

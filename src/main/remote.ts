@@ -13,6 +13,7 @@ import type { CiInfo } from './forge'
 import type { WorkspaceSearchKind, WorkspaceSearchResponse } from './workspace-search'
 import type { Agent, AgentRun } from './agents'
 import type { Schedule } from './schedules'
+import type { ProjectsDirValidation } from '../shared/types/settings'
 import type { HitlItem } from './hitl'
 import type { CronRun, UnifiedRun } from './cron-runs'
 import type { ProjectSession } from './sessions'
@@ -46,15 +47,13 @@ export type RemoteRunStartInput = {
   contextPreamble?: boolean
 }
 export type RemoteScaffoldResult = { ok: boolean; path?: string; error?: string }
-export type RemoteProjectsDirValidation =
-  | { ok: true; dir: string }
-  | {
-      ok: false
-      reason: 'is-repo' | 'error'
-      dir: string
-      suggestedParent?: string
-      message: string
-    }
+/**
+ * The remote host script answers the same question `settings:validate-projects-dir`
+ * answers locally, so it answers with the same type. It was forked once and the
+ * two drifted: this half grew a bare `'error'` reason and dropped `repoCount`,
+ * and the renderer — which reads the OTHER half — never heard about either.
+ */
+export type RemoteProjectsDirValidation = ProjectsDirValidation
 export type RemoteBootstrapStatus = {
   state: 'full' | 'partial' | 'none'
   bootstrapped: boolean

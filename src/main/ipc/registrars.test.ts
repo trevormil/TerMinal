@@ -21,8 +21,12 @@ const PRELOAD = join(DIR, '..', '..', 'preload', 'index.ts')
 const MODULES = readdirSync(DIR).filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts'))
 
 const source = (file: string): string => readFileSync(join(DIR, file), 'utf8')
+// Both spellings count: `ipcMain.handle` and the map-bound `handle` from
+// src/main/typed-ipc.ts. Matching only the former would report every migrated
+// channel as unhandled — a guard that fails as the code gets safer is a guard
+// people delete.
 const channelsIn = (text: string): string[] =>
-  [...text.matchAll(/ipcMain\.handle\(\s*'([^']+)'/g)].map((m) => m[1])
+  [...text.matchAll(/(?:ipcMain\.handle|(?<![.\w])handle)\(\s*'([^']+)'/g)].map((m) => m[1])
 const handlersIn = (file: string): string[] => channelsIn(source(file))
 
 // Every channel main registers, from BOTH halves: the registrar modules in this

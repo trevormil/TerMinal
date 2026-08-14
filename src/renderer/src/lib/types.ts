@@ -205,7 +205,12 @@ export type RemoteSettingsProbe = {
   error?: string
   cwd?: string
   repoRoot?: string
-  engines: Record<Engine, string>
+  /**
+   * Partial: the failure paths (unknown host, unreachable host) answer with no
+   * detections at all, and even a successful probe only reports the engines it
+   * found. `Record<Engine, string>` claimed all eight keys were always present.
+   */
+  engines: Partial<Record<Engine, string>>
   tools: Record<string, string>
 }
 export type ProjectsDirSuggestion = { dir: string; repoCount: number } | null

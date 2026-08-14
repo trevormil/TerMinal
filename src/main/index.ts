@@ -334,6 +334,10 @@ import {
 import { resolveWithinAny } from './path-guard'
 import { maskSettingsSecrets, stripMaskedSecrets } from './settings-mask'
 import { configPath, terminalConfigDir } from './config-dir'
+// `handle` is `ipcMain.handle` bound to the generated channel map, so a handler
+// is checked against the preload key that calls it. Channels migrate one domain
+// at a time; the rest still use `ipcMain.handle` directly.
+import { handle } from './typed-ipc'
 
 setSettingsSecretStorage({
   canEncrypt: () => safeStorage.isEncryptionAvailable(),
@@ -883,9 +887,9 @@ ipcMain.handle(
 // Secrets are sealed on disk; handing the renderer the decrypted values on
 // every read undoes that. It gets masks plus a `secretsSet` map instead — see
 // settings-mask.ts. Writes still work: only an actual edit is saved.
-ipcMain.handle('settings:get', () => maskSettingsSecrets(readSettings()))
-ipcMain.handle('settings:storage-report', () => sweepTerminalState(undefined, { dryRun: true }))
-ipcMain.handle('settings:storage-reclaim', async () => {
+handle('settings:get', () => maskSettingsSecrets(readSettings()))
+handle('settings:storage-report', () => sweepTerminalState(undefined, { dryRun: true }))
+handle('settings:storage-reclaim', async () => {
   const report = await sweepTerminalState(undefined, { dryRun: false })
   emitActivity(
     {
@@ -897,8 +901,8 @@ ipcMain.handle('settings:storage-reclaim', async () => {
   )
   return report
 })
-ipcMain.handle('settings:scratch-clear', () => clearTerminalScratch())
-ipcMain.handle('settings:patch', (_e, patch: SettingsPatch) => {
+handle('settings:scratch-clear', () => clearTerminalScratch())
+handle('settings:patch', (_e, patch: SettingsPatch) => {
   const before = readSettings()
   // The renderer now holds masks where secrets used to be. If one is echoed back
   // (a form that re-submits every field, say), persisting it would overwrite a
@@ -949,7 +953,7 @@ ipcMain.handle('settings:patch', (_e, patch: SettingsPatch) => {
   // and drop `secretsSet` — making all five secret fields render "not set".
   return maskSettingsSecrets(next)
 })
-ipcMain.handle('settings:remote-probe', async (_e, hostId: string) => {
+handle('settings:remote-probe', async (_e, hostId: string) => {
   const host = readSettings().remoteHosts.find((h) => h.id === hostId)
   if (!host) return { ok: false, error: 'remote host not found', engines: {}, tools: {} }
   try {
@@ -980,7 +984,7 @@ function projectsDirFs() {
     candidateRoots: () => CANDIDATE_ROOT_NAMES.map((n) => (n ? join(homedir(), n) : homedir())),
   }
 }
-ipcMain.handle(
+handle(
   'settings:validate-projects-dir',
   async (_e, input: { dir?: string; hostId?: string }) => {
     const dir = input?.dir || ''
@@ -997,15 +1001,15 @@ ipcMain.handle(
     return classifyProjectsDir(dir, projectsDirFs())
   },
 )
-ipcMain.handle('settings:suggest-projects-dir', () => {
+handle('settings:suggest-projects-dir', () => {
   const fs = projectsDirFs()
   const denser = pickDensestRoot(fs.candidateRoots(), (d) => countGitReposOneLevel(d, fs))
   return denser ? { dir: denser.root, repoCount: denser.count } : null
 })
-ipcMain.handle('snippets:list', (_e, root?: string) =>
+handle('snippets:list', (_e, root?: string) =>
   listPromptSnippets(repoRootOf(root || cur().cwd)),
 )
-ipcMain.handle('snippets:save', (_e, input: Parameters<typeof savePromptSnippet>[0]) => {
+handle('snippets:save', (_e, input: Parameters<typeof savePromptSnippet>[0]) => {
   const root = input.repoRoot ? repoRootOf(input.repoRoot) : repoRootOf(cur().cwd)
   const r = savePromptSnippet({ ...input, repoRoot: root })
   if ('ok' in r) {
@@ -1020,15 +1024,15 @@ ipcMain.handle('snippets:save', (_e, input: Parameters<typeof savePromptSnippet>
   }
   return r
 })
-ipcMain.handle('presets:get', () => ({
+handle('presets:get', () => ({
   prefs: readPresetPrefs(),
   catalog: {
     snippets: BUILT_IN_SNIPPETS.map((s) => ({ id: s.id, title: s.title, group: s.group })),
     agents: DEFAULT_AGENTS.map((a) => ({ id: a.id, title: a.title, group: 'Agents' })),
   },
 }))
-ipcMain.handle('presets:hide', (_e, kind: PresetKind, id: string) => hidePreset(kind, id))
-ipcMain.handle('presets:restore', (_e, kind: PresetKind, id?: string) => restorePreset(kind, id))
+handle('presets:hide', (_e, kind: PresetKind, id: string) => hidePreset(kind, id))
+handle('presets:restore', (_e, kind: PresetKind, id?: string) => restorePreset(kind, id))
 
 async function remoteAgentCatalog(
   remote: NonNullable<ReturnType<typeof curRemote>>,
