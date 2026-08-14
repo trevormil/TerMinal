@@ -11,6 +11,7 @@ import type {
   Engine,
   FilesSearchOptions,
   GtApi,
+  PrReviewEvent,
   StartOpts,
   UpdateCheckResult,
 } from '../renderer/src/lib/types'
@@ -485,6 +486,20 @@ const gt: GtApi = {
     indexQuery: (query: string, arg?: string, filter?: unknown) =>
       ipcRenderer.invoke('observability:index-query', query, arg, filter),
     filterOptions: () => ipcRenderer.invoke('observability:filter-options'),
+  },
+  githubReview: {
+    checks: (repoRoot: string, iid: number) =>
+      ipcRenderer.invoke('github-review:checks', repoRoot, iid),
+    checksSummaries: (repoRoot: string) =>
+      ipcRenderer.invoke('github-review:checks-summaries', repoRoot),
+    conversation: (repoRoot: string, iid: number) =>
+      ipcRenderer.invoke('github-review:conversation', repoRoot, iid),
+    submit: (repoRoot: string, iid: number, event: PrReviewEvent, body: string) =>
+      ipcRenderer.invoke('github-review:submit', repoRoot, iid, event, body),
+    comment: (repoRoot: string, iid: number, body: string) =>
+      ipcRenderer.invoke('github-review:comment', repoRoot, iid, body),
+    reply: (repoRoot: string, iid: number, replyToId: number, body: string) =>
+      ipcRenderer.invoke('github-review:reply', repoRoot, iid, replyToId, body),
   },
   stacks: {
     list: (repoRoot: string, repoPath: string) =>

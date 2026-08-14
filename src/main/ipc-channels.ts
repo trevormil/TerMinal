@@ -99,6 +99,12 @@ export type ChannelMap = {
   'git:working-diff': Of<GtApi['getWorkingDiff']>
   'git:working-file-patch': Of<GtApi['gitWorkingFilePatch']>
   'git:working-structural-diff': Of<GtApi['getWorkingStructuralDiff']>
+  'github-review:checks': Of<GtApi['githubReview']['checks']>
+  'github-review:checks-summaries': Of<GtApi['githubReview']['checksSummaries']>
+  'github-review:comment': Of<GtApi['githubReview']['comment']>
+  'github-review:conversation': Of<GtApi['githubReview']['conversation']>
+  'github-review:reply': Of<GtApi['githubReview']['reply']>
+  'github-review:submit': Of<GtApi['githubReview']['submit']>
   'harness:status': Of<GtApi['harnessStatus']>
   'hitl:list': Of<GtApi['hitl']['list']>
   'hitl:mark-all-read': Of<GtApi['hitl']['markAllRead']>

@@ -14,6 +14,8 @@ import {
   File,
   Rows3,
   LayoutGrid,
+  CircleCheckBig,
+  MessagesSquare,
   Image as ImageIcon,
 } from 'lucide-react'
 import parseDiff from 'parse-diff'
@@ -28,6 +30,10 @@ import { StackMap } from './StackMap'
 import { StackMergeButton } from './StackMergeButton'
 import { DigestView } from './DigestView'
 import { PrOverviewPanel } from './PrOverviewPanel'
+// GitHub-native review surface. Both panels answer "GitHub-only for now" on a
+// GitLab repo, so the tabs are always offered and nothing branches on the forge.
+import { ChecksPanel } from '../tabs/mrs/ChecksPanel'
+import { ConversationPanel } from '../tabs/mrs/ConversationPanel'
 import { xtermThemeFromCss } from './Terminal'
 import { groupJobsByStage } from '../lib/ci'
 import { shouldRerun, RESIZE_DEBOUNCE_MS, COL_THRESHOLD } from '../lib/structuralReflow'
@@ -759,6 +765,8 @@ function CiPanel({ ci }: { ci: CiInfo | null | undefined }) {
 const PANES = [
   'overview',
   'description',
+  'checks',
+  'conversation',
   'diff',
   'digest',
   'review',
@@ -1069,6 +1077,20 @@ export function MrDetailView({
           </>,
         )}
         {sub(
+          'checks',
+          <>
+            <CircleCheckBig size={13} strokeWidth={2} />
+            Checks
+          </>,
+        )}
+        {sub(
+          'conversation',
+          <>
+            <MessagesSquare size={13} strokeWidth={2} />
+            Conversation
+          </>,
+        )}
+        {sub(
           'diff',
           <>
             <GitCompare size={13} strokeWidth={2} />
@@ -1140,6 +1162,8 @@ export function MrDetailView({
       <div className="min-h-0 flex-1 overflow-hidden">
         {view === 'overview' && <PrOverviewPanel overview={overview} reviewMeta={mr.reviewMeta} />}
         {view === 'description' && <DescriptionPanel mr={mr} ci={ci} />}
+        {view === 'checks' && <ChecksPanel repoRoot={repoRoot} iid={iid} />}
+        {view === 'conversation' && <ConversationPanel repoRoot={repoRoot} iid={iid} />}
         {view === 'review' && <ReviewBody mr={mr} />}
         {view === 'findings' && (
           <FindingCards items={mr.findings} empty="No findings for this MR." />
