@@ -73,6 +73,7 @@ import { registerSystemIpc } from './ipc/system'
 import { registerMaintenanceIpc } from './ipc/maintenance'
 import { registerWorkspaceIpc } from './ipc/workspace'
 import { registerKnowledgeIpc } from './ipc/knowledge'
+import { registerFaviconsIpc } from './ipc/favicons'
 import { registerWorkflowIpc } from './ipc/workflow'
 import { openExternalSafe } from './open-external'
 import { registerSessionsIpc } from './ipc/sessions'
@@ -664,6 +665,7 @@ registerProjectsIpc({ remoteFromHostId })
 registerSystemIpc({ window: () => win, cur, activeDaemon })
 registerWorkspaceIpc({ curRemote, projectTemplateSource })
 registerKnowledgeIpc({ activeDaemon })
+registerFaviconsIpc()
 registerWorkflowIpc()
 registerMaintenanceIpc({
   cur,

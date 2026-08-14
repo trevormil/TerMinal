@@ -34,6 +34,7 @@ export type Webview = HTMLElement & {
 }
 
 type FoundInPageEvent = Event & { result?: { activeMatchOrdinal: number; matches: number } }
+type FaviconEvent = Event & { favicons?: string[] }
 // Keyboard/mouse events that happen INSIDE the guest page never bubble to the
 // host window — the <webview> is effectively a separate renderer process, not
 // an iframe. Electron surfaces them as these two DOM events on the <webview>
@@ -66,6 +67,9 @@ export type WebSurface = {
   addr: string
   setAddr: (v: string) => void
   pageTitle: string
+  /** The current page's favicon URL, as the guest page declares it. Remote —
+   *  never render it directly; hand it to `gt.favicons.cache` first. */
+  pageFavicon: string
   loading: boolean
   canBack: boolean
   canFwd: boolean
@@ -96,6 +100,7 @@ export function useWebSurface(opts: { initialUrl: string; partition: string }): 
   const wvRef = useRef<Webview | null>(null)
   const [addr, setAddr] = useState(opts.initialUrl)
   const [pageTitle, setPageTitle] = useState('')
+  const [pageFavicon, setPageFavicon] = useState('')
   const [loading, setLoading] = useState(false)
   const [canBack, setCanBack] = useState(false)
   const [canFwd, setCanFwd] = useState(false)
@@ -141,7 +146,12 @@ export function useWebSurface(opts: { initialUrl: string; partition: string }): 
         /* webview not ready */
       }
     }
-    const onStart = () => setLoading(true)
+    const onStart = () => {
+      setLoading(true)
+      // A new page owns no icon until it declares one; keeping the old page's
+      // would cache the wrong favicon against the new origin.
+      setPageFavicon('')
+    }
     const onStop = () => {
       setLoading(false)
       sync()
@@ -149,6 +159,10 @@ export function useWebSurface(opts: { initialUrl: string; partition: string }): 
     const onNav = () => sync()
     const onTitle = (e: Event & { title?: string }) =>
       setPageTitle(e.title || wv.getTitle?.() || '')
+    // Chromium resolves the page's icon for us and reports it here — this is
+    // the renderer-side event, so reading it costs no extra IPC. The list is
+    // ordered best-first; the bytes are fetched in main, never here.
+    const onFavicon = (e: Event) => setPageFavicon((e as FaviconEvent).favicons?.[0] || '')
     const onFound = (e: Event) => {
       const r = (e as FoundInPageEvent).result
       if (r) setFindMatch({ active: r.activeMatchOrdinal, total: r.matches })
@@ -188,6 +202,7 @@ export function useWebSurface(opts: { initialUrl: string; partition: string }): 
     wv.addEventListener('did-navigate', onNav)
     wv.addEventListener('did-navigate-in-page', onNav)
     wv.addEventListener('page-title-updated', onTitle as EventListener)
+    wv.addEventListener('page-favicon-updated', onFavicon as EventListener)
     wv.addEventListener('found-in-page', onFound)
     wv.addEventListener('before-input-event', onBeforeInput)
     wv.addEventListener('context-menu', onContextMenu)
@@ -197,6 +212,7 @@ export function useWebSurface(opts: { initialUrl: string; partition: string }): 
       wv.removeEventListener('did-navigate', onNav)
       wv.removeEventListener('did-navigate-in-page', onNav)
       wv.removeEventListener('page-title-updated', onTitle as EventListener)
+      wv.removeEventListener('page-favicon-updated', onFavicon as EventListener)
       wv.removeEventListener('found-in-page', onFound)
       wv.removeEventListener('before-input-event', onBeforeInput)
       wv.removeEventListener('context-menu', onContextMenu)
@@ -257,6 +273,7 @@ export function useWebSurface(opts: { initialUrl: string; partition: string }): 
     addr,
     setAddr,
     pageTitle,
+    pageFavicon,
     loading,
     canBack,
     canFwd,

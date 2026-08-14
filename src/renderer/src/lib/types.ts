@@ -1007,6 +1007,13 @@ export type GtApi = {
       query: string,
     ) => Promise<KnowledgeRagSearchResult>
   }
+  favicons: {
+    /** Download this page's favicon into the local cache; resolves to the cache
+     *  filename, or '' when anything failed (caller keeps the globe). */
+    cache: (pageUrl: string, iconUrl: string) => Promise<string>
+    /** Cached icon as a data URL, or '' when it is gone. */
+    read: (name: string) => Promise<string>
+  }
   files: {
     list: (rel: string) => Promise<FileEntry[]>
     read: (rel: string) => Promise<{ ok: boolean; content: string; reason?: string }>
