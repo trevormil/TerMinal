@@ -54,6 +54,13 @@ describe('settings categories', () => {
   })
 })
 
+describe('settings shell header', () => {
+  test('the SSH host header interpolates the host label, not the host object', () => {
+    const panelSrc = readFileSync(join(import.meta.dir, 'SettingsPanel.tsx'), 'utf8')
+    expect(panelSrc).toContain('SSH · ${selectedHost.label}')
+  })
+})
+
 describe('settings storage controls', () => {
   test('paths pane exposes explicit storage reclaim controls', () => {
     expect(src).toContain('storageReport')
