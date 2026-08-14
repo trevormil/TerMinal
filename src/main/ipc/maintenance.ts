@@ -22,6 +22,7 @@ import {
   sweepLegacySeeds,
 } from '../legacy-sweep'
 import { readCronRuns } from '../cron-runs'
+import { repoRootOf } from '../repo'
 import { listDisabled } from '../agents-disabled'
 import { listRuns } from '../agents'
 import { type UpdateCheckResult } from '../update-check'
@@ -46,7 +47,12 @@ export function registerMaintenanceIpc(deps: MaintenanceIpcDeps): void {
   // Per-project sidecar: where this repo's tickets/reviews/sessions live, how
   // many files are still sitting in the repo, and the one-time move.
   handle('repoState:status', (_e, repoRoot?: string) => {
-    const root = repoRoot || deps.cur().cwd
+    // Gate HARD on an actual git repo, and always operate on its toplevel. A
+    // plain-shell session cwd'd at $HOME would otherwise "detect" the user's
+    // real global ~/.claude/skills as repo-local plugin copies (they share
+    // names by construction) and offer to bank them — breaking every project.
+    const root = repoRootOf(repoRoot || deps.cur().cwd)
+    if (!root) return { isRepo: false, commits: 0, path: '', pending: 0, legacyCopies: 0 }
     const pluginDir = join(terminalConfigDir(), 'plugin')
     return {
       ...sidecarGitStatus(root),
@@ -61,13 +67,30 @@ export function registerMaintenanceIpc(deps: MaintenanceIpcDeps): void {
   // (preserved into the sidecar), and unmodified default script agents. All
   // banked in .claude/pre-tm-backup, never deleted.
   handle('repoState:migrate', (_e, repoRoot?: string) => {
-    const root = repoRoot || deps.cur().cwd
+    const root = repoRootOf(repoRoot || deps.cur().cwd)
+    if (!root) return { moved: 0, skipped: [], sweptCopies: 0, error: 'not inside a git repo' }
     const pluginDir = join(terminalConfigDir(), 'plugin')
     const r = migrateRepoState(root)
-    const swept = r.error
-      ? 0
-      : sweepLegacyPluginCopies(root, pluginDir).moved + sweepLegacySeeds(root, pluginDir).moved
-    return { ...r, sweptCopies: swept }
+    // A mid-sweep failure (odd permissions, .claude as a file) must not throw
+    // away the migrate result or wedge the caller — the sweep is resumable, so
+    // report what moved and surface the error.
+    let swept = 0
+    let sweepError: string | undefined
+    try {
+      if (!r.error)
+        swept =
+          sweepLegacyPluginCopies(root, pluginDir).moved + sweepLegacySeeds(root, pluginDir).moved
+    } catch (e) {
+      sweepError = e instanceof Error ? e.message : String(e)
+    }
+    // A sweep-only failure must not mask a successful state migration — say
+    // what moved AND what failed, since both surfaces render only `error`.
+    const error =
+      r.error ||
+      (sweepError
+        ? `moved ${r.moved} state file(s), but the seed sweep failed (re-run to resume): ${sweepError}`
+        : undefined)
+    return { ...r, sweptCopies: swept, error }
   })
   handle('plugin:sync', () => installTmPlugin(deps.tmPluginSrcDir()))
 
