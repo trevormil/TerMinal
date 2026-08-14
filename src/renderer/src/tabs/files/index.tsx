@@ -984,63 +984,73 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
           className="flex shrink-0 flex-col border-l border-[var(--gt-border)]"
           style={{ width: filesSidebar.width }}
         >
-          <div className="flex shrink-0 border-b border-[var(--gt-border)] p-1.5">
+          {/* @container + @max-sm (384px): the labelled pills measure 375px, so
+              below that the row drops to icons and scrolls instead of squashing */}
+          <div className="gt-scroll-x-bare @container flex shrink-0 overflow-x-auto border-b border-[var(--gt-border)] p-1.5">
             <button
               onClick={() => setSidebar('files')}
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium ${
+              title="Files"
+              aria-label="Files"
+              className={`flex shrink-0 grow items-center justify-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium whitespace-nowrap ${
                 sidebar === 'files'
                   ? 'bg-white/10 text-zinc-100'
                   : 'text-zinc-500 hover:text-zinc-200'
               }`}
             >
               <FolderTree size={13} strokeWidth={2} />
-              Files
+              <span className="@max-sm:hidden">Files</span>
             </button>
             <button
               onClick={() => setSidebar('search')}
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium ${
+              title="Search"
+              aria-label="Search"
+              className={`flex shrink-0 grow items-center justify-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium whitespace-nowrap ${
                 sidebar === 'search'
                   ? 'bg-white/10 text-zinc-100'
                   : 'text-zinc-500 hover:text-zinc-200'
               }`}
             >
               <Search size={13} strokeWidth={2} />
-              Search
+              <span className="@max-sm:hidden">Search</span>
             </button>
             <button
               onClick={() => setSidebar('changes')}
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium ${
+              title="Changes"
+              aria-label="Changes"
+              className={`flex shrink-0 grow items-center justify-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium whitespace-nowrap ${
                 sidebar === 'changes'
                   ? 'bg-white/10 text-zinc-100'
                   : 'text-zinc-500 hover:text-zinc-200'
               }`}
             >
               <GitCompare size={13} strokeWidth={2} />
-              Changes
+              <span className="@max-sm:hidden">Changes</span>
             </button>
             <button
               onClick={() => setSidebar('history')}
               title="Commit history"
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium ${
+              aria-label="History"
+              className={`flex shrink-0 grow items-center justify-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium whitespace-nowrap ${
                 sidebar === 'history'
                   ? 'bg-white/10 text-zinc-100'
                   : 'text-zinc-500 hover:text-zinc-200'
               }`}
             >
               <History size={13} strokeWidth={2} />
-              History
+              <span className="@max-sm:hidden">History</span>
             </button>
             <button
               onClick={() => setSidebar('branches')}
               title="Branches, stashes, and tags"
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium ${
+              aria-label="Branches"
+              className={`flex shrink-0 grow items-center justify-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium whitespace-nowrap ${
                 sidebar === 'branches'
                   ? 'bg-white/10 text-zinc-100'
                   : 'text-zinc-500 hover:text-zinc-200'
               }`}
             >
               <GitBranch size={13} strokeWidth={2} />
-              Branches
+              <span className="@max-sm:hidden">Branches</span>
             </button>
           </div>
 
