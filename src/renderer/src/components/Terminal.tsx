@@ -554,11 +554,24 @@ export function TerminalPane({
     }
     window.addEventListener('gt.theme.changed', onTheme)
 
-    // spawn the chosen engine attached to the session, sized to the live terminal
-    gt.startSession(sessionKey, { ...choice, cols: term.cols, rows: term.rows }).then((info) => {
+    // spawn the chosen engine attached to the session, sized to the live terminal.
+    // `prefillInput`/`spawnCount` are renderer-only spawn options (typed-not-sent
+    // text; a multiplier App already fanned out), so they never go over IPC.
+    const { prefillInput, spawnCount: _spawnCount, ...startOpts } = choice
+    gt.startSession(sessionKey, { ...startOpts, cols: term.cols, rows: term.rows }).then((info) => {
       resolvedCwdRef.current = info.cwd || resolvedCwdRef.current
       onStarted?.(info)
-      if (choice.initialInput && !info.seeded) {
+      // Two texts can reach the prompt box, and only one of them is submitted:
+      //   initialInput — the session's first TURN. Main seeds it at launch when
+      //     the engine supports it (info.seeded); otherwise it is pasted here.
+      //   prefillInput — spawn options' prompt. Always pasted, NEVER submitted:
+      //     it is typed for the human, who presses Enter. That is why it is not
+      //     seeded at launch (a launch seed runs immediately) and why autoSubmit
+      //     does not apply to it.
+      const seedText = choice.initialInput && !info.seeded ? choice.initialInput : ''
+      const pasteText = seedText || prefillInput || ''
+      const autoSubmit = !!seedText && !!choice.autoSubmit
+      if (pasteText) {
         // FALLBACK path only: main seeds the first prompt as a launch argument
         // for supported engines (info.seeded), which is deterministic. This
         // post-boot paste remains for the cases it can't seed (e.g. a `local`
@@ -584,7 +597,7 @@ export function TerminalPane({
           // dir makes Claude Code show "trust this folder?", whose default
           // accepts on Enter — otherwise our prompt answers THAT dialog and is
           // lost. A leading Enter with nothing pending is a harmless no-op.
-          if (choice.autoSubmit) {
+          if (autoSubmit) {
             gt.pty.input(sessionKey, '\r')
             window.setTimeout(() => paste(), 400)
           } else {
@@ -593,11 +606,11 @@ export function TerminalPane({
         }
         const paste = () => {
           // Bracketed-paste framing keeps embedded newlines literal.
-          gt.pty.input(sessionKey, frameInitialInput(choice.initialInput || ''))
+          gt.pty.input(sessionKey, frameInitialInput(pasteText))
           // No one is at the Mac to press Enter — submit for it, after the paste
           // is ingested, and once more as insurance (a second Enter on an empty
           // prompt box is a no-op).
-          if (choice.autoSubmit) {
+          if (autoSubmit) {
             window.setTimeout(() => gt.pty.input(sessionKey, '\r'), 500)
             window.setTimeout(() => gt.pty.input(sessionKey, '\r'), 1800)
           }

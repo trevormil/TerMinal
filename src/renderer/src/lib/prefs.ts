@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ALL as ALL_INBOX_CATEGORIES } from '../../../shared/inbox-categories'
+import { NO_PROMPT } from './spawnOptions'
 
 // Typed registry for renderer-local UI preferences.
 //
@@ -64,6 +65,11 @@ export const PREFS = {
   // map and filtered analytics — is where a review should start, so it is the
   // default; an explicit choice sticks until the user changes it again.
   mrDetailPane: str('gt.mrs.detailPane', 'overview'),
+  // Spawn options on the New session screen. Per-machine, not per-repo: how
+  // many sessions you like to fan out and which prompt you prefill is a habit,
+  // not a property of the repo you happen to open.
+  spawnCount: num('gt.spawn.count', 1),
+  spawnPromptId: str('gt.spawn.promptId', NO_PROMPT),
 } satisfies Record<string, PrefDef<never> | PrefDef<string> | PrefDef<number> | PrefDef<string[]>>
 
 export type PrefName = keyof typeof PREFS

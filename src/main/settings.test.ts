@@ -793,3 +793,55 @@ describe('slack inbox destination', () => {
     expect(slackSidecarPayload(s)).toBeNull() // token cleared
   })
 })
+
+describe('savedPrompts (spawn prompt library)', () => {
+  test('defaults to an empty library', () => {
+    expect(defaultSettings().savedPrompts).toEqual([])
+    expect(migrate({}).savedPrompts).toEqual([])
+  })
+
+  test('round-trips a saved prompt, newlines intact', () => {
+    const s = migrate({
+      savedPrompts: [{ id: 'p1', name: 'Ship it', text: 'line one\nline two' }],
+    })
+    expect(s.savedPrompts).toEqual([{ id: 'p1', name: 'Ship it', text: 'line one\nline two' }])
+  })
+
+  test('junk entries are dropped rather than taking the library out', () => {
+    const s = migrate({
+      savedPrompts: [
+        null,
+        'nope',
+        { id: 'ok', name: 'Fine', text: 'body' },
+        { id: 'empty', name: 'No body', text: '   ' },
+        { id: 'badtext', name: 'Bad', text: 42 },
+      ],
+    })
+    expect(s.savedPrompts).toEqual([{ id: 'ok', name: 'Fine', text: 'body' }])
+  })
+
+  test('a nameless or id-less entry is kept with a stable fallback', () => {
+    const s = migrate({ savedPrompts: [{ text: 'body' }] })
+    expect(s.savedPrompts).toHaveLength(1)
+    expect(s.savedPrompts[0].id).toBeTruthy()
+    expect(s.savedPrompts[0].name).toBeTruthy()
+    // Migrating the same file twice must not renumber the library.
+    expect(migrate({ savedPrompts: [{ text: 'body' }] })).toEqual(s)
+  })
+
+  test('a bad list is not an array → empty, never a crash', () => {
+    expect(migrate({ savedPrompts: 'nope' }).savedPrompts).toEqual([])
+    expect(migrate({ savedPrompts: { id: 'x' } }).savedPrompts).toEqual([])
+  })
+
+  test('a patch replaces the whole library and is validated on the way in', () => {
+    const cur = migrate({ savedPrompts: [{ id: 'old', name: 'Old', text: 'old body' }] })
+    const next = mergeSettingsPatch(cur, {
+      savedPrompts: [
+        { id: 'new', name: 'New', text: 'new body' },
+        { id: 'junk', name: 'Junk', text: '' },
+      ],
+    })
+    expect(next.savedPrompts).toEqual([{ id: 'new', name: 'New', text: 'new body' }])
+  })
+})

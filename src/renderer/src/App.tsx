@@ -18,6 +18,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { EntryScreen, type Choice, type PairedLoopConfig } from './components/EntryScreen'
+import { clampSpawnCount } from './lib/spawnOptions'
 import { FleetView } from './components/FleetView'
 import { SettingsPanel } from './components/SettingsPanel'
 import { UpdateBanner } from './components/UpdateBanner'
@@ -744,10 +745,19 @@ export default function App() {
     [sessions],
   )
 
+  // `spawnCount` (the New session screen's multiplier) fans out HERE rather
+  // than in main: N sessions of the same choice are just N ordinary sessions,
+  // so the count never has to exist below the renderer. Focus lands on the
+  // first of them — the one the user was asking for.
   const addSession = (choice: Choice) => {
-    const key = crypto.randomUUID()
-    setSessions((s) => [...s, { key, choice, info: { sessionId: '', cwd: '' } }])
-    activate(key)
+    const { spawnCount, ...one } = choice
+    const count = clampSpawnCount(spawnCount ?? 1)
+    const keys = Array.from({ length: count }, () => crypto.randomUUID())
+    setSessions((s) => [
+      ...s,
+      ...keys.map((key) => ({ key, choice: one, info: { sessionId: '', cwd: '' } })),
+    ])
+    activate(keys[0])
     setAdding(false)
   }
 
