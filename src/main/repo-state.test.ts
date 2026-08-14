@@ -15,13 +15,14 @@ import {
   SIDECAR_AREAS,
   SIDECAR_STATE_RELS,
 } from './repo-state'
-import { MIGRATION_SUNSET } from '../shared/migration-sunset'
+import { INSIDE_MIGRATION_WINDOW, MIGRATION_SUNSET_AT } from '../shared/migration-sunset'
 
-// Clocks either side of the migration sunset. Every assertion about the legacy
-// fallback pins one explicitly — a test that relied on the real clock would
-// pass today and start failing by itself on the sunset date.
-const OPEN = new Date('2026-08-13T00:00:00Z')
-const CLOSED = new Date(`${MIGRATION_SUNSET}T00:00:00Z`)
+// Clocks either side of the migration sunset, both DERIVED from the constant.
+// Every assertion about the legacy fallback pins one explicitly — a test that
+// relied on the real clock would pass today and start failing by itself on the
+// sunset date.
+const OPEN = INSIDE_MIGRATION_WINDOW
+const CLOSED = MIGRATION_SUNSET_AT
 
 // The sidecar keeps personal workflow state (tickets, reviews, sessions) out of
 // a repo that may be shared with collaborators. The key must be stable across

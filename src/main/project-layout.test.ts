@@ -4,12 +4,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { detectProjectLayout, existingProjectAreaPaths } from './project-layout'
 import { clearRepoStateCache, repoStateAreaPath } from './repo-state'
-import { MIGRATION_SUNSET } from '../shared/migration-sunset'
+import { INSIDE_MIGRATION_WINDOW, MIGRATION_SUNSET_AT } from '../shared/migration-sunset'
 
 const repo = () => mkdtempSync(join(tmpdir(), 'layout-'))
 
-const OPEN = new Date('2026-08-13T00:00:00Z')
-const CLOSED = new Date(`${MIGRATION_SUNSET}T00:00:00Z`)
+const OPEN = INSIDE_MIGRATION_WINDOW
+const CLOSED = MIGRATION_SUNSET_AT
 
 describe('detectProjectLayout', () => {
   test('a clean repo is v2 — no marker required', () => {

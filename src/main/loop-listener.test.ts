@@ -25,6 +25,11 @@ describe('paired-loop listener routing', () => {
         home,
         `import { mock } from 'bun:test';
 mock.module('electron', () => ({ Notification: class { static isSupported() { return false } show() {} } }));
+// The loop dir seeded below is the LEGACY in-repo one, whose read sunsets on
+// MIGRATION_SUNSET — pin the child's clock inside the window (this case is
+// about listener routing, not about where the events file lives).
+const MS = await import('./src/shared/migration-sunset.ts');
+MS.setMigrationClock(MS.INSIDE_MIGRATION_WINDOW);
 import { mkdirSync, writeFileSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 const repo = join('${home}', 'repo');

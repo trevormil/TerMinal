@@ -22,11 +22,38 @@ export const MIGRATION_SUNSET = '2026-10-13'
 
 const SUNSET_MS = Date.parse(`${MIGRATION_SUNSET}T00:00:00Z`)
 
+/** The instant the window closes — the boundary, as a Date. */
+export const MIGRATION_SUNSET_AT = new Date(SUNSET_MS)
+
+/**
+ * TEST-ONLY: an instant guaranteed to be inside the window. Derived from the
+ * sunset rather than hardcoded, so moving the date can never strand a test on
+ * the wrong side of it.
+ */
+export const INSIDE_MIGRATION_WINDOW = new Date(SUNSET_MS - 24 * 60 * 60 * 1000)
+
+/**
+ * TEST-ONLY clock. Most of the read path (backlog, sessions, docs, the ticket
+ * providers) resolves state paths several layers below the resolvers, so a
+ * test that exercises the LEGACY fallback has no parameter to pin the date
+ * with — and would quietly start failing on the sunset date itself, turning a
+ * planned deprecation into a red suite. Pinning the clock keeps those tests
+ * about the fallback they were written for.
+ *
+ * Never called from production code; `src/main/migration-sunset-seam.test.ts`
+ * fails the build if it ever is.
+ */
+let testClock: Date | null = null
+
+export function setMigrationClock(now: Date | null): void {
+  testClock = now
+}
+
 /**
  * Is the gradual-migration window still open? True strictly BEFORE the sunset
  * date — on the date itself the window is closed, which is what "sunset on
- * 2026-10-13" means to a user reading the banner.
+ * MIGRATION_SUNSET" means to a user reading the banner.
  */
-export function migrationWindowOpen(now: Date = new Date()): boolean {
+export function migrationWindowOpen(now: Date = testClock ?? new Date()): boolean {
   return now.getTime() < SUNSET_MS
 }

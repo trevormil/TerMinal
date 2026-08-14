@@ -1,10 +1,20 @@
-import { describe, expect, test, beforeEach, afterEach } from 'bun:test'
+import { describe, expect, test, beforeAll, afterAll, beforeEach, afterEach } from 'bun:test'
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { resolveTemplateSha, writeBootstrapStamp } from './bootstrap-stamp'
 import { clearRepoStateCache, repoStateRoot } from './repo-state'
+
+import { INSIDE_MIGRATION_WINDOW, setMigrationClock } from '../shared/migration-sunset'
+
+// These cases exercise ADR-0020's LEGACY in-repo read, which sunsets on
+// MIGRATION_SUNSET. Pin the clock inside the migration window so they keep
+// testing the fallback they were written for instead of turning red by
+// themselves on the sunset date.
+beforeAll(() => setMigrationClock(INSIDE_MIGRATION_WINDOW))
+afterAll(() => setMigrationClock(null))
+
 
 const STAMP = { sha: 'abc1234def5678', stampedAt: '2026-07-17T12:00:00.000Z' }
 
