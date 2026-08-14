@@ -89,6 +89,7 @@ import { registerGitIpc } from './ipc/git'
 import { registerCheckpointsIpc } from './ipc/checkpoints'
 import { registerMrsIpc } from './ipc/mrs'
 import { registerDocsIpc } from './ipc/docs'
+import { registerTicketsIpc } from './ipc/tickets'
 import { createBridgeDeps } from './bridge-deps'
 import {
   bindSessionSender,
@@ -140,19 +141,6 @@ import {
 import { repoRootOf, repoForCwd } from './repo'
 import { orderFleetSnapshotEntries, restoreFleetSnapshotEntryOrder } from './fleet-snapshot'
 import { checkForUpdate } from './update-check'
-import { recommendTicketAgent } from './backlog'
-import type { NewTicket, TicketAgentRecommendationInput, TicketPatch } from './backlog'
-import {
-  listLinearTeams,
-  type NewTicketComment,
-  readRepoTicketConfig,
-  resolveHumanAuthor,
-  saveRepoTicketConfig,
-  scaffoldObsidianVault,
-  obsidianRepoDeepLink,
-  testRepoTicketProvider,
-  type RepoTicketsConfig,
-} from './ticket-provider'
 import { onDigestEvent } from './digest-run'
 import { type NotesScope } from './notes'
 import {
@@ -229,7 +217,6 @@ import {
 import {
   DEFAULT_AGENTS,
   readAgentRunContexts,
-  runTicketSpawn,
   listRuns,
   readAgentRunLog,
   agentRunLogPath,
@@ -281,7 +268,7 @@ import { tailscaleSelf } from './bridge/tailscale'
 import { apnsPaths, pushStatus } from './bridge/push'
 import { collectRemoteRuns, collectRemoteHitl } from './remote-runs'
 import { listRepoArtifacts } from './run-artifacts'
-import { isExternallyOpenableUrl, isObsidianDeepLink } from '../shared/url-safety'
+import { isExternallyOpenableUrl } from '../shared/url-safety'
 import { appCsp, isAppUrl, navigationDecision } from './window-guard'
 
 // Only forward web/mail URLs to the OS. Non-http(s) schemes (file://, custom
@@ -1451,161 +1438,6 @@ handle('sessions:project-list', () => {
   return activeDaemon().sessionsList()
 })
 handle('sessions:project-get', (_e, slug: string) => activeDaemon().sessionGet(slug))
-handle('tickets:list', () => {
-  return activeDaemon().ticketsList()
-})
-handle('tickets:get', (_e, slug: string) => {
-  return activeDaemon().ticketGet(slug)
-})
-// NOT on the map: main's `RepoTicketsConfig` and the renderer's
-// `TicketProviderConfig` are the same config forked in two, and they have
-// drifted (`linear.tools.comment` exists only on main's half). Unforking them
-// also means unforking `SavedTicketView`, which is declared twice with main's
-// copy commenting that the renderer's is the original. Follow-up ticket.
-ipcMain.handle('tickets:provider-get', () => {
-  const daemon = activeDaemon()
-  if (daemon.kind !== 'local') return { error: 'Ticket provider setup is local-only for now.' }
-  return readRepoTicketConfig(daemon.repoRoot())
-})
-ipcMain.handle('tickets:provider-save', (_e, cfg: RepoTicketsConfig) => {
-  const daemon = activeDaemon()
-  if (daemon.kind !== 'local') return { error: 'Ticket provider setup is local-only for now.' }
-  const saved = saveRepoTicketConfig(daemon.repoRoot(), cfg)
-  // Seed the vault's guide/board/template on save (idempotent, best-effort).
-  if (saved.provider === 'obsidian') scaffoldObsidianVault(saved.obsidian)
-  emitActivity({
-    kind: 'info',
-    title: `Ticket provider · ${saved.provider || 'local'}`,
-    detail: daemon.repoLabel(),
-    repo: daemon.repoLabel(),
-    repoRoot: daemon.repoRoot(),
-    sessionId: cur().sessionId,
-  })
-  return saved
-})
-handle('tickets:provider-test', (_e, cfg: RepoTicketsConfig, smoke?: boolean) => {
-  const daemon = activeDaemon()
-  if (daemon.kind !== 'local')
-    return { ok: false, provider: 'local', message: 'Ticket provider setup is local-only for now.' }
-  return testRepoTicketProvider(daemon.repoRoot(), cfg, { smoke: !!smoke })
-})
-handle('tickets:linear-teams', (_e, cfg?: RepoTicketsConfig) => {
-  const daemon = activeDaemon()
-  if (daemon.kind !== 'local') return []
-  return listLinearTeams(daemon.repoRoot(), cfg)
-})
-// Open a ticket in Obsidian via its obsidian:// deep link. No-op (returns false)
-// when the repo isn't on the obsidian provider or the vault isn't configured.
-handle('tickets:open-in-obsidian', (_e, slug: string) => {
-  const daemon = activeDaemon()
-  if (daemon.kind !== 'local') return false
-  const link = obsidianRepoDeepLink(daemon.repoRoot(), slug)
-  if (!link) return false
-  // Deep links are minted from repo-controlled config (vault name + subdir), so
-  // validate the result is still an obsidian://open link before handing it to
-  // the OS — a custom-scheme sink is the whole reason url-safety.ts exists.
-  if (!isObsidianDeepLink(link)) {
-    console.error('[gt] refused non-obsidian deep link:', String(link).slice(0, 80))
-    return false
-  }
-  void shell.openExternal(link)
-  return true
-})
-handle('tickets:create', async (_e, input: NewTicket) => {
-  const daemon = activeDaemon()
-  const t = await daemon.ticketCreate(input)
-  emitActivity({
-    kind: 'ticket-filed',
-    title: `Ticket filed · #${t.id}`,
-    detail: t.title,
-    repo: daemon.repoLabel(),
-    repoRoot: daemon.kind === 'local' ? daemon.repoRoot() : '',
-    sessionId: cur().sessionId,
-    ref: { ticket: t.id },
-  })
-  return t
-})
-handle('tickets:recommend-agent', (_e, input: TicketAgentRecommendationInput) =>
-  recommendTicketAgent(input),
-)
-handle('tickets:spawn', (_e, text: string, engine: Engine, model?: string, requested?: unknown) => {
-  const daemon = daemonForRequest(requested)
-  if (!daemon.remote) return runTicketSpawn(daemon.repoRoot(), text, engine, model)
-  const t = text.trim()
-  if (!t) return { error: 'empty request' }
-  const prompt = `File exactly ONE new backlog ticket for the request below, using this project's ticket conventions: allocate the next id, write $TERMINAL_BACKLOG_DIR/NNNN-slug.md with valid YAML frontmatter matching the repo's examples (legacy v1 repos may use backlog/), put detail in the body after the closing ---, and commit it. Do NOT implement anything or open a PR — just file the ticket. Request: ${t}`
-  return remoteRuns.start(daemon.remote, {
-    agentId: 'ticket-spawn',
-    agentTitle: `File ticket · ${t.slice(0, 48)}`,
-    engine,
-    model: remoteEngineModel(daemon.remote, engine, model),
-    steps: [{ label: 'file ticket', prompt }],
-    inPlace: true,
-  })
-})
-handle('tickets:update', async (_e, slug: string, patch: TicketPatch) => {
-  const daemon = activeDaemon()
-  const before = await daemon.ticketGet(slug)
-  const ok = await daemon.ticketUpdate(slug, patch)
-  if (ok && patch.status) {
-    const t = await daemon.ticketGet(slug)
-    const unblocked = before?.status === 'stuck' && patch.status !== 'stuck'
-    emitActivity({
-      kind: patch.status === 'closed' ? 'ticket-closed' : 'info',
-      title: unblocked
-        ? `Ticket unblocked · #${t?.id ?? slug}`
-        : `Ticket ${patch.status} · #${t?.id ?? slug}`,
-      detail: unblocked ? `${t?.title || slug} · ${patch.status}` : t?.title,
-      repo: daemon.repoLabel(),
-      repoRoot: daemon.kind === 'local' ? daemon.repoRoot() : '',
-      sessionId: cur().sessionId,
-      ref: t?.id ? { ticket: t.id } : undefined,
-    })
-  } else if (ok && patch.priority) {
-    const t = await daemon.ticketGet(slug)
-    emitActivity({
-      kind: 'info',
-      title: `Ticket priority · #${t?.id ?? slug}`,
-      detail: `${t?.title || slug} · ${patch.priority}`,
-      repo: daemon.repoLabel(),
-      repoRoot: daemon.kind === 'local' ? daemon.repoRoot() : '',
-      sessionId: cur().sessionId,
-      ref: t?.id ? { ticket: t.id } : undefined,
-    })
-  }
-  return ok
-})
-handle(
-  'tickets:comment',
-  async (_e, slug: string, input: Partial<NewTicketComment> & { body: string }) => {
-    const daemon = activeDaemon()
-    // The UI never asks who you are — a human comment is signed with the repo's
-    // git identity so the log matches the commits and PRs beside it.
-    const kind = input.kind === 'agent' ? 'agent' : 'human'
-    const comment: NewTicketComment = {
-      ...input,
-      kind,
-      author:
-        input.author?.trim() ||
-        (kind === 'agent'
-          ? 'agent'
-          : await resolveHumanAuthor(daemon.kind === 'local' ? daemon.repoRoot() : process.cwd())),
-    }
-    const ok = await daemon.ticketComment(slug, comment)
-    if (!ok) return false
-    const t = await daemon.ticketGet(slug)
-    emitActivity({
-      kind: 'info',
-      title: `Ticket comment · #${t?.id ?? slug}`,
-      detail: `${comment.author}: ${comment.body.trim().slice(0, 120)}`,
-      repo: daemon.repoLabel(),
-      repoRoot: daemon.kind === 'local' ? daemon.repoRoot() : '',
-      sessionId: cur().sessionId,
-      ref: t?.id ? { ticket: t.id } : undefined,
-    })
-    return true
-  },
-)
 // Cursor's live model catalog (incl. the `auto` entry point for Cursor
 // Router). Empty when the CLI is missing or not logged in — the renderer then
 // keeps the static catalog.
@@ -2126,6 +1958,14 @@ registerGitIpc({ activeDaemon })
 registerCheckpointsIpc({ activeDaemon })
 registerMrsIpc({ activeDaemon })
 registerDocsIpc({ activeDaemon, sessionId: () => cur().sessionId })
+// Tickets: reads, the per-repo provider config, and the write paths that emit
+// into the Activity feed.
+registerTicketsIpc({
+  activeDaemon,
+  daemonForRequest,
+  sessionId: () => cur().sessionId,
+  remoteEngineModel,
+})
 
 // ---- my workflow (local Claude/Codex configuration) ----
 handle('workflow:list', (_e, rel: string) => listWorkflowFiles(rel || ''))

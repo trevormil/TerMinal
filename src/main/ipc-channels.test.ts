@@ -61,7 +61,7 @@ describe('generated channel map', () => {
     // list rather than a discouraged one. To add to it, say why here.
     const EXCLUDED = new Set([
       // Their payload is a config type forked between main and the renderer;
-      // see the comment at the registration in index.ts.
+      // see the comment at the registration in ipc/tickets.ts.
       'tickets:provider-get',
       'tickets:provider-save',
       // registerRepoTrustDenialIpc takes `ipcMain` as a parameter so the test
