@@ -550,6 +550,11 @@ const gt: GtApi = {
     ragSearch: (scope: 'repo' | 'global', item: unknown, query: string) =>
       ipcRenderer.invoke('knowledge:rag-search', scope, item, query),
   },
+  favicons: {
+    cache: (pageUrl: string, iconUrl: string) =>
+      ipcRenderer.invoke('favicons:cache', pageUrl, iconUrl),
+    read: (name: string) => ipcRenderer.invoke('favicons:read', name),
+  },
   files: {
     list: (rel: string) => ipcRenderer.invoke('files:list', rel),
     read: (rel: string) => ipcRenderer.invoke('files:read', rel),
