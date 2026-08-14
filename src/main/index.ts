@@ -650,7 +650,7 @@ registerWidgetsIpc({
 })
 // Detached background tasks, the planner/generator/evaluator loops, and the
 // AgentView observability reads.
-registerBgTasksIpc({ curRemote, localOnlyToRemote, remoteEngineModel })
+registerBgTasksIpc({ curRemote })
 registerLoopsIpc({ cur, curRemote })
 registerAgentViewIpc({ curRemote })
 // Session lifecycle + fleet snapshot, the mobile bridge's read surface, and

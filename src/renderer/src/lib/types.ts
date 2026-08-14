@@ -66,7 +66,6 @@ import type {
   AgentDefinition,
   AgentRun,
   AgentScorecard,
-  BgTask,
   BootstrapStatus,
   BridgeStatus,
   CiInfo,
@@ -108,7 +107,6 @@ import type {
   MonitorState,
   MrDetail,
   MrListResult,
-  NewTicket,
   ObservabilityIndexBuildResult,
   ObservabilityIndexQueryId,
   ObservabilityIndexQueryResult,
@@ -667,7 +665,6 @@ export type GtApi = {
   }
   listeners: {
     status: () => Promise<ListenerStatus>
-    toggle: (enabled: boolean) => Promise<ListenerStatus>
   }
   monitors: {
     list: () => Promise<MonitorWithState[]>
@@ -753,7 +750,6 @@ export type GtApi = {
       cfg?: TicketProviderConfig,
     ) => Promise<{ id: string; name: string; key?: string }[]>
     openInObsidian: (slug: string) => Promise<boolean>
-    create: (input: NewTicket) => Promise<Ticket>
     recommendAgent: (input: {
       title?: string
       type?: string
@@ -811,7 +807,6 @@ export type GtApi = {
   /** Per-turn workspace snapshots, in a shadow git repo (never the user's). */
   checkpoints: {
     list: () => Promise<{ sha: string; at: number; label: string }[]>
-    create: (label: string) => Promise<{ ok: boolean; sha: string }>
     restore: (sha: string) => Promise<{ ok: boolean; error?: string; backup?: string }>
     /** A file's content at a checkpoint ('' where it didn't exist). */
     /** Line ranges a checkpoint touched per file — the AI-attribution source. */
@@ -933,17 +928,6 @@ export type GtApi = {
     ) => Promise<ObservabilityTranscriptWindow | null>
   }
   bg: {
-    list: () => Promise<BgTask[]>
-    get: (id: string) => Promise<BgTask | null>
-    log: (id: string) => Promise<string>
-    spawn: (input: {
-      repoRoot: string
-      prompt: string
-      engine?: Engine
-      model?: string
-      // A remote workspace runs the task through the remote-runs transport,
-      // which answers an AgentRun — the local path answers a BgTask.
-    }) => Promise<BgTask | AgentRun | { error: string }>
     cancel: (id: string) => Promise<{ ok: boolean; error?: string }>
   }
   loops: {

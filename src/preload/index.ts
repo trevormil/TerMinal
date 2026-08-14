@@ -256,7 +256,6 @@ const gt: GtApi = {
   },
   listeners: {
     status: () => ipcRenderer.invoke('listeners:status'),
-    toggle: (enabled: boolean) => ipcRenderer.invoke('listeners:toggle', enabled),
   },
   monitors: {
     list: () => ipcRenderer.invoke('monitors:list'),
@@ -370,7 +369,6 @@ const gt: GtApi = {
       ipcRenderer.invoke('tickets:provider-test', cfg, smoke),
     linearTeams: (cfg?: unknown) => ipcRenderer.invoke('tickets:linear-teams', cfg),
     openInObsidian: (slug: string) => ipcRenderer.invoke('tickets:open-in-obsidian', slug),
-    create: (input: unknown) => ipcRenderer.invoke('tickets:create', input),
     recommendAgent: (input: unknown) => ipcRenderer.invoke('tickets:recommend-agent', input),
     update: (slug: string, patch: unknown) => ipcRenderer.invoke('tickets:update', slug, patch),
     comment: (slug: string, comment: unknown) =>
@@ -406,7 +404,6 @@ const gt: GtApi = {
     ipcRenderer.invoke('git:compare-files-patch', a, b),
   checkpoints: {
     list: () => ipcRenderer.invoke('checkpoints:list'),
-    create: (label: string) => ipcRenderer.invoke('checkpoints:create', label),
     restore: (sha: string) => ipcRenderer.invoke('checkpoints:restore', sha),
     ranges: (sha: string) => ipcRenderer.invoke('checkpoints:ranges', sha),
     reviewBase: (rel: string, buffer: string) =>
@@ -461,11 +458,6 @@ const gt: GtApi = {
   },
   harnessStatus: () => ipcRenderer.invoke('harness:status'),
   bg: {
-    list: () => ipcRenderer.invoke('bg:list'),
-    get: (id: string) => ipcRenderer.invoke('bg:get', id),
-    log: (id: string) => ipcRenderer.invoke('bg:log', id),
-    spawn: (input: { repoRoot: string; prompt: string; engine?: Engine; model?: string }) =>
-      ipcRenderer.invoke('bg:spawn', input),
     cancel: (id: string) => ipcRenderer.invoke('bg:cancel', id),
   },
   loops: {
