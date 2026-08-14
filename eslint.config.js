@@ -60,12 +60,12 @@ export default tseslint.config(
   // what `no-floating-promises` needs. Settling for the non-type-aware subset
   // would have left out the one rule that motivates the ticket.
   {
-    files: ['bin/terminal-*', 'bin/gt-notify'],
+    files: ['bin/gt-notify'],
     extends: [tseslint.configs.base],
     languageOptions: {
       parserOptions: {
         projectService: {
-          allowDefaultProject: ['bin/terminal-*', 'bin/gt-notify'],
+          allowDefaultProject: ['bin/*'],
         },
         tsconfigRootDir: import.meta.dirname,
         // The project service keys off the extension, and these files have
