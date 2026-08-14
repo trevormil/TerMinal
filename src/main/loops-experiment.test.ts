@@ -40,10 +40,10 @@ describe('experimentGate — the server-side gate for loops:create', () => {
 
 describe('the gate is wired where it matters', () => {
   test('the loops:create handler calls it before creating anything', () => {
-    const src = read('src/main/index.ts')
-    const start = src.indexOf("ipcMain.handle('loops:create'")
+    const src = read('src/main/ipc/loops.ts')
+    const start = src.indexOf("handle('loops:create'")
     expect(start).toBeGreaterThan(-1)
-    const body = src.slice(start, src.indexOf("ipcMain.handle('loops:step'", start))
+    const body = src.slice(start, src.indexOf("handle('loops:step'", start))
     expect(body).toContain("experimentGate(readSettings(), 'loops')")
     // …and it must return the refusal, not merely compute it.
     expect(body).toMatch(/experimentGate\(readSettings\(\), 'loops'\)\n\s*if \(\w+\) return \w+/)

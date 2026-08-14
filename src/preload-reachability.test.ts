@@ -33,8 +33,6 @@ const ALLOWED = new Set([
   'loops.restart',
   'loops.list',
   'loops.get',
-  'loops.state',
-  'loops.stop',
   // FOUND BY THIS GUARD, not yet swept. These have no renderer call site either,
   // but they were outside the audited scope of the sweep that added this test, so
   // deleting them here would ship an unreviewed removal. They are a follow-up
