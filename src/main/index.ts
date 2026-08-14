@@ -47,7 +47,7 @@ function projectTemplateSource(marker: string): TemplateSource | { error: string
   })
 }
 
-import { readTranscriptStats, listSessions, findSessionFile, lastAssistantTurn } from './data'
+import { readTranscriptStats, findSessionFile, lastAssistantTurn } from './data'
 import { registerAgentInsightsIpc } from './ipc/agent-insights'
 import { registerObservabilityIpc } from './ipc/observability'
 import { registerSchedulesIpc } from './ipc/schedules'
@@ -75,6 +75,15 @@ import { registerWorkspaceIpc } from './ipc/workspace'
 import { registerKnowledgeIpc } from './ipc/knowledge'
 import { registerWorkflowIpc } from './ipc/workflow'
 import { openExternalSafe } from './open-external'
+import { registerSessionsIpc } from './ipc/sessions'
+import { registerBridgeIpc } from './ipc/bridge'
+import { registerProjectsIpc } from './ipc/projects'
+import {
+  localOnlyToRemote,
+  remoteAgentCatalog,
+  remoteEngineModel,
+  remoteSteps,
+} from './remote-dispatch'
 import { createBridgeDeps } from './bridge-deps'
 import {
   bindSessionSender,
@@ -87,14 +96,10 @@ import {
   requestedRemote,
   sessions,
   activeSessionKey,
-  setActiveSession,
-  startSession,
-  stopSession,
   watchSession,
   stopWatchSession,
   activeDaemon,
   daemonForRequest,
-  type StartOpts,
 } from './session-registry'
 import { registerPersistentAgentsIpc } from './ipc/persistent-agents'
 import { registerInboxIpc } from './ipc/inbox'
@@ -105,18 +110,15 @@ import { fixPath } from './env'
 import { emitActivity, onActivity, startActivityTail } from './events'
 import { installStatuslineShim } from './statusline'
 import { repoRootOf, repoForCwd } from './repo'
-import { orderFleetSnapshotEntries, restoreFleetSnapshotEntryOrder } from './fleet-snapshot'
 import { checkForUpdate } from './update-check'
 import { onDigestEvent } from './digest-run'
-import { hiddenPresetIds } from './presets'
-import { scaffoldProject, type ScaffoldTicketProvider } from './scaffold'
 import {
   readSettings,
   setSettingsSecretStorage,
   syncTelegramSidecar,
   syncSlackSidecar,
 } from './settings'
-import { telegramControlEnabled, resolvedTemplateRepo, resolveEngineModel } from './settings'
+import { telegramControlEnabled, resolvedTemplateRepo } from './settings'
 import { startMonitorLivenessWatch } from './monitor-liveness-runtime'
 import {
   cloneTemplateToTmp,
@@ -125,15 +127,7 @@ import {
   type TemplateSource,
 } from './template'
 import { configureTelegramControl, markTelegramControlEnabled, pollTelegramOnce } from './telegram'
-import {
-  DEFAULT_AGENTS,
-  readAgentRunContexts,
-  onAgentEvent,
-  loadPersistedRuns,
-  type Agent,
-  type Engine,
-  killAllAgentRuns,
-} from './agents'
+import { onAgentEvent, loadPersistedRuns, killAllAgentRuns } from './agents'
 import { readSchedules } from './schedules'
 import { installTmPlugin } from './plugin-install'
 import {
@@ -149,10 +143,8 @@ import {
 import { reconcileHosts } from './schedule-router'
 import { registerMcpEverywhere } from './mcp-register'
 import { flushAllSessionRunLogs, sweepStaleCronRuns, sweepStaleSessionRuns } from './cron-runs'
-import { bridgeStatus, startBridge, stopBridge } from './bridge/server'
-import { bridgeHosts, ensureIdentity, pairingPayload, rotateToken } from './bridge/identity'
-import { tailscaleSelf } from './bridge/tailscale'
-import { apnsPaths, pushStatus } from './bridge/push'
+import { startBridge, stopBridge } from './bridge/server'
+import { bridgeHosts } from './bridge/identity'
 import { isExternallyOpenableUrl } from '../shared/url-safety'
 import { appCsp, isAppUrl, navigationDecision } from './window-guard'
 
@@ -161,14 +153,7 @@ import { startListenerInboxWatcher } from './listeners'
 import { startBgWatcher } from './bg-tasks'
 import { startLoopWatcher } from './loops'
 import { startLoopListener, noteLoopTurnComplete, noteSingleLoopTurn } from './loop-listener'
-import { composeSteps, pipelineLabel } from './pipelines'
-import { remoteAgents, remoteDirs, remoteProject } from './remote'
 import { createCheckpoint } from './checkpoints'
-// `handle` is `ipcMain.handle` bound to the generated channel map, so a handler
-// is checked against the preload key that calls it. Channels migrate one domain
-// at a time; the rest still use `ipcMain.handle` directly.
-import { handle } from './typed-ipc'
-
 setSettingsSecretStorage({
   canEncrypt: () => safeStorage.isEncryptionAvailable(),
   seal: (value) => safeStorage.encryptString(value).toString('base64'),
@@ -519,53 +504,6 @@ function createWindow() {
   void win.loadURL(appUrl)
 }
 
-// ---- session IPC ----
-handle('sessions:list', (_e, engine?: Engine) => listSessions(engine))
-handle('session:start', (_e, key: string, opts: StartOpts) => startSession(key, opts))
-handle('session:setActive', (_e, key: string) => setActiveSession(key))
-handle('session:stop', (_e, key: string) => stopSession(key))
-// Fleet snapshot: a summary of every live session (for the cross-session
-// overview + the live status dots on the session tabs).
-function fleetSnapshot() {
-  const entries = [...sessions]
-  const out = []
-  for (const [key, s] of orderFleetSnapshotEntries(entries, activeSessionKey())) {
-    const sid = s.pinned.sessionId
-    const st = readTranscriptStats(sid)
-    let status: 'working' | 'idle' = 'idle'
-    const f = sid ? findSessionFile(sid) : null
-    if (f) {
-      const t = lastAssistantTurn(f)
-      if (t && !t.endTurn) status = 'working'
-    }
-    out.push({
-      key,
-      sessionId: sid,
-      name:
-        s.pinned.name ||
-        (s.pinned.remote
-          ? s.pinned.remote.label || s.pinned.remote.sshTarget
-          : basename(s.pinned.cwd)) ||
-        'session',
-      cwd: s.pinned.cwd,
-      repo: s.pinned.remote
-        ? s.pinned.remote.label || s.pinned.remote.sshTarget
-        : repoForCwd(s.pinned.cwd)?.path || basename(repoRootOf(s.pinned.cwd) || s.pinned.cwd),
-      branch: st.gitBranch,
-      model: st.model,
-      status,
-      contextPct: st.contextPct,
-      contextTokens: st.contextTokens,
-      contextLimit: st.contextLimit,
-      turns: st.turns,
-      aiTitle: st.aiTitle,
-      lastAction: st.lastAction,
-    })
-  }
-  return restoreFleetSnapshotEntryOrder(out, entries)
-}
-handle('fleet:list', () => fleetSnapshot())
-
 const bridgeDeps = createBridgeDeps({
   liveSessions: () =>
     [...sessions.values()].map((s) => ({
@@ -597,134 +535,6 @@ async function applyBridgeSetting(): Promise<void> {
       : `Mobile bridge failed to start`,
     detail: status.error || `${bridgeHosts().join(', ') || 'no network interface'}`,
   })
-}
-
-handle('bridge:status', () => {
-  const cfg = readSettings().bridge
-  const status = bridgeStatus()
-  return { ...status, enabled: cfg.enabled, port: cfg.enabled ? status.port : cfg.port }
-})
-// The pairing payload carries the bearer token, so it is only ever produced on
-// demand for the Settings pane — never returned from a bridge HTTP route.
-handle('bridge:pairing', () => {
-  const cfg = readSettings().bridge
-  const identity = ensureIdentity()
-  return pairingPayload({ port: cfg.port, identity })
-})
-handle('bridge:push-status', () => ({ ...pushStatus(), ...apnsPaths() }))
-handle('bridge:tailscale', async () => {
-  const self = await tailscaleSelf()
-  return self ? { available: true, dnsName: self.dnsName, login: self.login } : { available: false }
-})
-handle('bridge:rotate-token', () => {
-  const cfg = readSettings().bridge
-  const identity = rotateToken()
-  emitActivity({
-    kind: 'info',
-    title: 'Mobile bridge token rotated',
-    detail: 'Every paired device must scan the new code',
-  })
-  return pairingPayload({ port: cfg.port, identity })
-})
-handle(
-  'project:scaffold',
-  (_e, name: string, parentDir?: string, ticketProvider?: ScaffoldTicketProvider) => {
-    const r = scaffoldProject(name, parentDir, ticketProvider)
-    emitActivity(
-      {
-        kind: r.ok ? 'task-complete' : 'error',
-        title: r.ok
-          ? `Project scaffolded · ${basename(r.path || name)}`
-          : `Project scaffold failed · ${name}`,
-        detail: r.ok ? r.path : r.error,
-        repo: r.ok && r.path ? basename(r.path) : undefined,
-        repoRoot: r.ok ? r.path : undefined,
-      },
-      { notify: !r.ok },
-    )
-    return r
-  },
-)
-handle('remote:dirs', (_e, hostId: string, path?: string) => {
-  const remote = remoteFromHostId(hostId, path)
-  if (!remote) return { cwd: path || '', parent: '', entries: [], error: 'remote host not found' }
-  return remoteDirs
-    .list(remote, path)
-    .catch((e) => ({ cwd: path || '', parent: '', entries: [], error: (e as Error).message }))
-})
-handle('remote:scaffold', async (_e, hostId: string, name: string, parentDir?: string) => {
-  const remote = remoteFromHostId(hostId, parentDir)
-  if (!remote) return { ok: false, error: 'remote host not found' }
-  const templateRepo = remote.daemon?.templateRepo || resolvedTemplateRepo()
-  const r = await remoteProject
-    .scaffold(remote, name, parentDir || remote.cwd || '~', templateRepo)
-    .catch((e) => ({
-      ok: false,
-      path: undefined,
-      error: (e as Error).message,
-    }))
-  emitActivity(
-    {
-      kind: r.ok ? 'task-complete' : 'error',
-      title: r.ok
-        ? `Remote project scaffolded · ${basename(r.path || name)}`
-        : `Remote project scaffold failed · ${name}`,
-      detail: r.ok ? `${remote.sshTarget}:${r.path}` : r.error,
-      repo: r.ok && r.path ? basename(r.path) : undefined,
-      repoRoot: '',
-    },
-    { notify: !r.ok },
-  )
-  return r
-})
-
-async function remoteAgentCatalog(
-  remote: NonNullable<ReturnType<typeof curRemote>>,
-): Promise<Agent[]> {
-  const hiddenDefaults = hiddenPresetIds('agents')
-  const byId = new Map<string, Agent>()
-  for (const a of DEFAULT_AGENTS.filter((a) => !hiddenDefaults.has(a.id))) {
-    byId.set(a.id, { ...a, source: 'default', hasScript: false })
-  }
-  for (const a of await remoteAgents.list(remote).catch(() => [])) {
-    byId.set(a.id, {
-      ...byId.get(a.id),
-      ...a,
-      source: byId.has(a.id) ? ('repo-override' as const) : ('repo' as const),
-    })
-  }
-  return [...byId.values()]
-}
-
-function remoteSteps(
-  base: { label: string; prompt: string },
-  personaId?: string,
-  pipelineId?: string,
-) {
-  const persona = personaId ? readAgentRunContexts('').find((p) => p.id === personaId) : null
-  return {
-    steps: composeSteps(base, persona?.prompt ?? null, pipelineId),
-    persona: persona?.title,
-    pipeline: pipelineLabel(pipelineId),
-  }
-}
-
-// OpenRouter (or-agent) and Hermes are local-only harnesses — a remote host has
-// neither, so coerce them to a universally-present engine for remote dispatch.
-function localOnlyToRemote(engine: Engine): Engine {
-  // openrouter/openai-compat ride the local or-agent harness + local Settings
-  // (base URL, sealed keys); hermes is a local install. None dispatch remotely.
-  return engine === 'openrouter' || engine === 'hermes' || engine === 'openai-compat'
-    ? 'claude'
-    : engine
-}
-
-function remoteEngineModel(
-  remote: NonNullable<ReturnType<typeof curRemote>>,
-  engine: Engine,
-  model?: string,
-) {
-  return resolveEngineModel(engine, model, remote.daemon) || undefined
 }
 
 registerAgentsIpc({
@@ -761,12 +571,6 @@ ipcMain.on('pty:resize', (_e, key: string, size: { cols: number; rows: number })
     /* ignore transient resize errors */
   }
 })
-
-// ---- tabs: repo context + tickets/MRs (scoped to the session's repo) ----
-handle('sessions:project-list', () => {
-  return activeDaemon().sessionsList()
-})
-handle('sessions:project-get', (_e, slug: string) => activeDaemon().sessionGet(slug))
 
 // Installed-build update check (update-check.ts): compares the baked build sha
 // against origin/main via the local source checkout (exact, fork-aware), else
@@ -849,6 +653,11 @@ registerWidgetsIpc({
 registerBgTasksIpc({ curRemote, localOnlyToRemote, remoteEngineModel })
 registerLoopsIpc({ cur, curRemote })
 registerAgentViewIpc({ curRemote })
+// Session lifecycle + fleet snapshot, the mobile bridge's read surface, and
+// local/remote project scaffolding.
+registerSessionsIpc()
+registerBridgeIpc()
+registerProjectsIpc({ remoteFromHostId })
 // OS integration (picker, scratch dir, MCP install, open-in-app, clipboard),
 // the workspace bootstrap flow, notes/knowledge, my-workflow files, and the
 // self-service maintenance surface.
