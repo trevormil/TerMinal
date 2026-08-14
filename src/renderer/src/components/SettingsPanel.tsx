@@ -160,7 +160,7 @@ export function SettingsPanel({
             {/* Which daemon every pane below reads from — the one piece of
                 context that has to survive switching categories. */}
             <div className="mt-0.5 truncate text-[10.5px] text-zinc-500">
-              {selectedHost ? `SSH · ${selectedHost}` : 'Local daemon'}
+              {selectedHost ? `SSH · ${selectedHost.label}` : 'Local daemon'}
             </div>
           </div>
           <div
