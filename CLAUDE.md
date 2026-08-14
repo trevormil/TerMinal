@@ -114,7 +114,7 @@ CLAUDE.md §14). This is also where the persona/lanes machinery
 
 | You're touching | Read |
 |---|---|
-| A new IPC | `src/main/index.ts` (handler) + `src/preload/index.ts` + `src/renderer/src/lib/types.ts` (Gt API surface) — all three must agree |
+| A new IPC | `src/main/ipc/<domain>.ts` (handler — index.ts registers zero of its own; it only calls the registrars) + `src/preload/index.ts` + `src/renderer/src/lib/types.ts` (Gt API surface) — all three must agree. Register via the typed `handle` from `src/main/typed-ipc.ts`; raw `ipcMain.handle` is a closed list enforced by `src/main/ipc-channels.test.ts` |
 | Agent runtime | `src/main/agents.ts` is the heart; `runSpec` is the spawn entry |
 | Schedules | `src/main/schedules.ts` + `bin/terminal-cron` — keep state shapes in sync |
 | Per-(repo, agent) state | `plugin/agents/scripts.md` — the canonical convention doc, shipped with the plugin like every other contract |

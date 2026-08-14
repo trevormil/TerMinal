@@ -8,7 +8,10 @@ the system changes.
 An Electron app in three layers, built with **electron-vite**:
 
 - **main** (`src/main/`) — Node. Spawns PTYs, owns all filesystem/CLI reads,
-  exposes everything over IPC. No DOM.
+  exposes everything over IPC. No DOM. `src/main/index.ts` is lifecycle only —
+  app/window/PTY wiring plus the registrar calls; every IPC handler lives in a
+  per-domain module under `src/main/ipc/`, which takes the session state it
+  needs as injected deps.
 - **preload** (`src/preload/index.ts`) — the single `gt` bridge, published to the
   renderer via `contextBridge`. Every renderer↔main call goes through it.
 - **renderer** (`src/renderer/src/`) — React 19 + Tailwind v4. The UI: the
