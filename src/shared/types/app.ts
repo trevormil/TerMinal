@@ -50,6 +50,9 @@ export type Usage = {
   ts: number
 }
 
+/** One turn handed to the cheap-LLM route (`llm:cheap`). */
+export type CheapMessage = { role: 'system' | 'user' | 'assistant'; content: string }
+
 export type PipelineId = 'single' | 'review' | 'review-iterate'
 
 export type PresetKind = 'agents' | 'snippets'

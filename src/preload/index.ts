@@ -6,6 +6,7 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type {
   ActivityEvent,
   AgentRun,
+  CheapMessage,
   DigestRunState,
   Engine,
   FilesSearchOptions,
@@ -71,7 +72,7 @@ const gt: GtApi = {
       ipcRenderer.invoke('alerts:test', channel, webhookId),
   },
   cheapLlm: (opts: {
-    messages: { role: string; content: string }[]
+    messages: CheapMessage[]
     model?: string
     engine?: Engine
     route?: 'auto' | 'claude-p'

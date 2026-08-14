@@ -13,7 +13,8 @@ import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { enginePath, type EngineId } from './settings'
 
-export type CheapMessage = { role: 'system' | 'user' | 'assistant'; content: string }
+export type { CheapMessage } from '../shared/types/app'
+import type { CheapMessage } from '../shared/types/app'
 
 export type CheapResponse = {
   ok: boolean

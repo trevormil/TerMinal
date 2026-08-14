@@ -803,7 +803,7 @@ handle('dialog:pickDir', async () => {
   })
   return r.canceled ? null : r.filePaths[0]
 })
-ipcMain.handle(
+handle(
   'project:scaffold',
   (_e, name: string, parentDir?: string, ticketProvider?: ScaffoldTicketProvider) => {
     const r = scaffoldProject(name, parentDir, ticketProvider)
@@ -871,7 +871,7 @@ handle('slack:test', () => testSlack())
 // One "send test alert" entry point per outbound channel (Settings → Alerts).
 // `webhookId` picks one destination out of the list; the renderer only holds a
 // mask of the URL, so it names the entry instead of sending the value back.
-ipcMain.handle(
+handle(
   'alerts:test',
   (_e, channel: 'telegram' | 'desktop' | 'webhook', webhookId?: string) => {
     if (channel === 'telegram') return testTelegram()
@@ -1110,7 +1110,7 @@ registerSchedulesIpc({
 // separate `runs:remote-all` fan-out so the Runs tab can show BOTH in one view
 // without switching the session's daemon profile.
 handle('runs:all', () => listAllRuns())
-ipcMain.handle(
+handle(
   'runs:running-count',
   () => listAllRuns().filter((r) => r.source !== 'session' && r.status === 'running').length,
 )
@@ -1125,7 +1125,7 @@ handle('runs:remote-all', () => {
     return remoteRuns.all(ref)
   })
 })
-ipcMain.handle(
+handle(
   'runs:log',
   (_e, source: 'cron' | 'agent' | 'bg' | 'session', runId: string, hostId?: string) => {
     // A run row carries its host; route the log fetch to that host. Fall back to
@@ -1145,7 +1145,7 @@ ipcMain.handle(
 // are read and shipped over IPC. The pane polls every 1.5s while a run streams
 // — full-file reads of multi-MB agent logs froze both processes. runs:log stays
 // the full-fidelity path (export buttons, "load full log").
-ipcMain.handle(
+handle(
   'runs:log-tail',
   async (
     _e,
@@ -1977,7 +1977,7 @@ handle('release:tail', () => {
 handle('bg:list', () => (curRemote() ? [] : listBgTasks()))
 handle('bg:get', (_e, id: string) => (curRemote() ? null : getBgTask(id)))
 handle('bg:log', (_e, id: string) => (curRemote() ? '' : readBgTaskLog(id)))
-ipcMain.handle(
+handle(
   'bg:spawn',
   (_e, input: { repoRoot: string; prompt: string; engine?: Engine; model?: string }) => {
     const remote = curRemote()
@@ -2034,7 +2034,7 @@ handle('loops:restart', (_e, id: string) =>
 handle('loops:stop', (_e, id: string) => (curRemote() ? { error: 'remote' } : stopLoop(id)))
 
 // Cheap one-shot LLM call — routes through local coding-agent subscriptions.
-ipcMain.handle(
+handle(
   'llm:cheap',
   async (_e, opts: Parameters<typeof import('./cheap-llm').cheapCall>[0]) => {
     const { cheapCall } = await import('./cheap-llm')
@@ -2088,7 +2088,7 @@ handle('agentview:session', (_e, sessionId: string) =>
 handle('agentview:tool-call', (_e, sessionId: string, callId: string) =>
   curRemote() ? null : readObservabilityToolCallPayload(sessionId, callId),
 )
-ipcMain.handle(
+handle(
   'agentview:transcript-window',
   (_e, sessionId: string, centerLine: number = 0, radius: number = 24) =>
     curRemote() ? null : readObservabilityTranscriptWindow(sessionId, centerLine, radius),
@@ -2212,12 +2212,12 @@ handle('knowledge:preview', (_e, url: string) => fetchKnowledgePreview(url))
 handle('knowledge:rag-status', (_e, scope: KnowledgeScope, item: any) =>
   knowledgeRagStatus({ scope, repoRoot: activeDaemon().repoRoot(), item }),
 )
-ipcMain.handle(
+handle(
   'knowledge:rag-reindex',
   (_e, scope: KnowledgeScope, item: any, fullRebuild?: boolean) =>
     knowledgeRagReindex({ scope, repoRoot: activeDaemon().repoRoot(), item }, !!fullRebuild),
 )
-ipcMain.handle(
+handle(
   'knowledge:rag-add-document',
   (_e, scope: KnowledgeScope, item: any, content: string, filepath?: string) =>
     knowledgeRagAddDocument({
@@ -2228,7 +2228,7 @@ ipcMain.handle(
       filepath,
     }),
 )
-ipcMain.handle(
+handle(
   'knowledge:rag-add-url',
   (_e, scope: KnowledgeScope, item: any, url: string, title?: string) =>
     knowledgeRagAddUrl({ scope, repoRoot: activeDaemon().repoRoot(), item, url, title }),

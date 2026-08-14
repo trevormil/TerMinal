@@ -72,6 +72,7 @@ import type {
   CiInfo,
   CiJobsResult,
   CiListResult,
+  CheapMessage,
   CiLogResult,
   CommandResult,
   CronRun,
@@ -468,7 +469,7 @@ export type GtApi = {
     ) => Promise<{ ok: boolean; error?: string; note?: string }>
   }
   cheapLlm: (opts: {
-    messages: { role: string; content: string }[]
+    messages: CheapMessage[]
     model?: string
     engine?: Engine
     route?: 'auto' | 'claude-p'
@@ -906,7 +907,9 @@ export type GtApi = {
       prompt: string
       engine?: Engine
       model?: string
-    }) => Promise<BgTask | { error: string }>
+      // A remote workspace runs the task through the remote-runs transport,
+      // which answers an AgentRun — the local path answers a BgTask.
+    }) => Promise<BgTask | AgentRun | { error: string }>
     cancel: (id: string) => Promise<{ ok: boolean; error?: string }>
   }
   loops: {
