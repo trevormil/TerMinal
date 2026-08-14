@@ -17,6 +17,7 @@ import {
   SlidersHorizontal,
   X,
 } from 'lucide-react'
+import { Button, IconButton, Input } from '../../components/ui'
 import { langForPath, useLangsReady } from '../../lib/lazyLang'
 import { FileTree, type FileTreeActions } from '../../components/FileTree'
 import { FileViewer, hasViewer } from '../../components/FileViewer'
@@ -1150,7 +1151,7 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
                         ? 'folder'
                         : 'file'}
                   </span>
-                  <input
+                  <Input
                     autoFocus
                     value={pv}
                     onChange={(e) => setPv(e.target.value)}
@@ -1158,7 +1159,8 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
                       if (e.key === 'Enter') commitPrompt()
                       if (e.key === 'Escape') setPrompt(null)
                     }}
-                    className="min-w-0 flex-1 rounded border border-[var(--gt-border)] bg-black/40 px-1.5 py-0.5 font-mono text-[11px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
+                    size="xs"
+                    className="min-w-0 flex-1 rounded bg-black/40 font-mono text-[11px]"
                   />
                 </div>
               )}
@@ -1167,18 +1169,19 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
                   <span className="min-w-0 flex-1 truncate text-[var(--gt-red)]">
                     Delete {base(confirmDelete)}?
                   </span>
-                  <button
-                    onClick={commitDelete}
-                    className="rounded bg-[var(--gt-red)]/20 px-1.5 py-0.5 text-[var(--gt-red)]"
-                  >
+                  <Button variant="danger" size="xs" onClick={commitDelete}>
                     Delete
-                  </button>
-                  <button
+                  </Button>
+                  {/* Was an unlabelled icon-only <button>: nothing but a mouse
+                      could reach it. IconButton makes the name mandatory. */}
+                  <IconButton
+                    label="Cancel delete"
+                    size="xs"
+                    className="px-1"
                     onClick={() => setConfirmDelete(null)}
-                    className="flex items-center px-1 text-zinc-500 hover:text-zinc-300"
                   >
                     <X size={12} strokeWidth={2} />
-                  </button>
+                  </IconButton>
                 </div>
               )}
 
@@ -1195,13 +1198,13 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
             <div className="flex min-h-0 flex-1 flex-col">
               <div className="shrink-0 space-y-1.5 p-2">
                 <div className="flex items-center gap-1.5">
-                  <input
+                  <Input
                     autoFocus
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && runSearch()}
                     placeholder="Search repo (Enter)"
-                    className="min-w-0 flex-1 rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
+                    className="min-w-0 flex-1 text-[12px]"
                   />
                   <button
                     onClick={() => setReplaceOpen((o) => !o)}
@@ -1250,44 +1253,42 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
                 </div>
                 {globsOpen && (
                   <div className="space-y-1">
-                    <input
+                    <Input
                       value={searchInclude}
                       onChange={(e) => setSearchInclude(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && runSearch()}
                       placeholder="files to include (e.g. src/**/*.ts)"
-                      className="w-full rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[11px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
+                      className="w-full"
                     />
-                    <input
+                    <Input
                       value={searchExclude}
                       onChange={(e) => setSearchExclude(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && runSearch()}
                       placeholder="files to exclude (e.g. **/*.test.ts)"
-                      className="w-full rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[11px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
+                      className="w-full"
                     />
                   </div>
                 )}
                 {replaceOpen && (
                   <div className="flex items-center gap-1.5">
-                    <input
+                    <Input
                       value={replacement}
                       onChange={(e) => setReplacement(e.target.value)}
                       placeholder="Replace with"
-                      className="min-w-0 flex-1 rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
+                      className="min-w-0 flex-1 text-[12px]"
                     />
-                    <button
+                    <Button
+                      variant="primary"
                       onClick={runReplace}
+                      busy={replacing}
                       disabled={
-                        replacing ||
-                        !results ||
-                        results.length === 0 ||
-                        results.length === excluded.size
+                        !results || results.length === 0 || results.length === excluded.size
                       }
-                      className="shrink-0 rounded-md bg-[var(--gt-accent)]/20 px-2 py-1 text-[11px] font-medium text-zinc-100 disabled:opacity-40"
                     >
                       {replacing
                         ? 'Replacing…'
                         : `Replace${results ? ` ${results.length - excluded.size}` : ''}`}
-                    </button>
+                    </Button>
                   </div>
                 )}
                 {replaceMsg && (

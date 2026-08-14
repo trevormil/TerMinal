@@ -12,9 +12,16 @@
 //   disabled:opacity-40|50 .......  57  -> disabled
 //   bg-[var(--gt-red)]/10 ........  13  -> danger
 //
-// So a migrated call site should be pixel-identical: the primitives codify the
-// majority spelling rather than proposing a new one. Tints stay on the two
-// steps design-system.md §2.2 allows (/10, /20) — a third fails the build.
+// So the primitives codify the majority spelling rather than proposing a new
+// one, and a migrated call site CONVERGES on it. That is not always literally
+// pixel-identical — a minority spelling like `bg-black/25` becomes the dominant
+// `bg-black/30`. That is the point of the layer, not a regression. Tints stay
+// on the two steps design-system.md §2.2 allows (/10, /20) — a third fails the
+// build.
+//
+// Overrides are safe: `mergeClasses` (below) evicts the base class an override
+// conflicts with, because Tailwind resolves same-property conflicts by
+// STYLESHEET order rather than by class-list order.
 //
 // Pure strings, no React: this is the half that `bun test` can check without a
 // DOM (see controls.test.ts).
