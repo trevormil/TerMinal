@@ -101,7 +101,7 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
               <span>/close &lt;slug|n&gt;</span>
               <span>/schedules</span>
               <span>/pause · /resume · /runnow</span>
-              <span>/hitl · /resolve &lt;n|all&gt; · /reopen</span>
+              <span>/inbox (/hitl) · /resolve &lt;n|all&gt; · /reopen</span>
               <span>/mrs [@repo] · /mr &lt;iid&gt;</span>
               <span>/state &lt;agent&gt;</span>
               <span>/reset-state &lt;agent&gt;</span>
@@ -115,7 +115,7 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
             <div className="mt-1.5 text-[10px] text-zinc-600">
               <span className="text-zinc-500">/feature</span> drafts a ticket from plain text, then
               offers a "Start work" button that builds it and links the PR back. Plain English works
-              too — it's translated to a command. HITL pings include inline "Resolve" and "Tail run"
+              too — it's translated to a command. Inbox pings include inline "Resolve" and "Tail run"
               buttons.
             </div>
           </details>
