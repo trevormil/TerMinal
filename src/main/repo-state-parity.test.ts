@@ -4,7 +4,12 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { REPO_STATE_BLOCK } from './repo-state-inline'
-import { clearRepoStateCache, repoStateAreaPath } from './repo-state'
+import { clearRepoStateCache, repoStateAreaPath, repoStatePathForRead } from './repo-state'
+import {
+  INSIDE_MIGRATION_WINDOW,
+  MIGRATION_SUNSET,
+  MIGRATION_SUNSET_AT,
+} from '../shared/migration-sunset'
 
 // bin/terminal-cli, bin/terminal-cron and bin/terminal-mcp-server cannot import
 // from the app bundle, so each carries a copy of the sidecar resolver. Three
@@ -146,6 +151,68 @@ describe('inline resolver agrees with the app resolver', () => {
   parityCase('local-path origin (unparseable) falls back to the hashed local key', (repo) =>
     g(repo, 'remote', 'add', 'origin', '/Users/somebody/other-repo'),
   )
+
+  // The sunset is the one behaviour where a hand-copied resolver drifting by a
+  // single day is invisible until it bites: the app would stop reading a repo's
+  // in-repo tickets while terminal-cli kept writing beside them (or the
+  // reverse). So both sides are checked against the SAME clock, not just for a
+  // matching date literal.
+  const runAt = (repo: string, stateDir: string, nowMs: number) =>
+    execFileSync(
+      'bun',
+      [
+        '-e',
+        `const { join, basename } = require('node:path')
+         const { existsSync } = require('node:fs')
+         const { execFileSync } = require('node:child_process')
+         const { createHash } = require('node:crypto')
+         const CFG = ${JSON.stringify(join(stateDir, 'cfg'))}
+         Date.now = () => ${nowMs}
+         ${REPO_STATE_BLOCK.replace(/^\/\/.*$/gm, '')}
+         console.log(statePathForRead(${JSON.stringify(repo)}, 'notes.md'))`,
+      ],
+      { encoding: 'utf8', env: { ...process.env, TERMINAL_REPO_STATE_DIR: stateDir } },
+    ).trim()
+
+  test('app and inline drop the legacy read on the same day', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'parity-sunset-'))
+    try {
+      const repo = join(tmp, 'r')
+      mkdirSync(join(repo, '.TerMinal'), { recursive: true })
+      execFileSync('git', ['-C', repo, 'init', '-q'], { stdio: 'ignore' })
+      execFileSync(
+        'git',
+        ['-C', repo, 'remote', 'add', 'origin', 'https://github.com/o/sunset.git'],
+        { stdio: 'ignore' },
+      )
+      writeFileSync(join(repo, '.TerMinal', 'notes.md'), 'legacy')
+      const stateDir = join(tmp, 'state')
+      const prev = process.env.TERMINAL_REPO_STATE_DIR
+      process.env.TERMINAL_REPO_STATE_DIR = stateDir
+      clearRepoStateCache()
+      const appOpen = repoStatePathForRead(repo, 'notes.md', INSIDE_MIGRATION_WINDOW)
+      const appClosed = repoStatePathForRead(repo, 'notes.md', MIGRATION_SUNSET_AT)
+      if (prev === undefined) delete process.env.TERMINAL_REPO_STATE_DIR
+      else process.env.TERMINAL_REPO_STATE_DIR = prev
+      clearRepoStateCache()
+
+      // Inside the window both read the in-repo copy…
+      expect(appOpen).toBe(join(repo, '.TerMinal', 'notes.md'))
+      expect(runAt(repo, stateDir, INSIDE_MIGRATION_WINDOW.getTime())).toBe(appOpen)
+      // …and at the boundary instant both stop, in the same place.
+      expect(appClosed).toBe(join(stateDir, 'github.com/o/sunset', 'notes.md'))
+      expect(runAt(repo, stateDir, MIGRATION_SUNSET_AT.getTime())).toBe(appClosed)
+    } finally {
+      rmSync(tmp, { recursive: true, force: true })
+    }
+  })
+
+  test('the copies name the same sunset date the app does', () => {
+    // Belt and braces on top of the behavioural check: a copy that hardcodes a
+    // different day would still pass a same-clock comparison run on a day both
+    // agree about.
+    expect(REPO_STATE_BLOCK).toContain(`'${MIGRATION_SUNSET}T00:00:00Z'`)
+  })
 
   test('no-origin repo hashes the same canonical path in both', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'parity-local-'))
