@@ -145,6 +145,7 @@ export type ChannelMap = {
   'mrs:get': Of<GtApi['getMr']>
   'mrs:list': Of<GtApi['listMrs']>
   'mrs:merge': Of<GtApi['mergeMr']>
+  'mrs:overview': Of<GtApi['getMrOverview']>
   'mrs:structural-diff': Of<GtApi['getStructuralDiff']>
   'notes:read': Of<GtApi['notes']['read']>
   'notes:write': Of<GtApi['notes']['write']>

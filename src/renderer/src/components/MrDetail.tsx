@@ -13,6 +13,7 @@ import {
   Folder,
   File,
   Rows3,
+  LayoutGrid,
   Image as ImageIcon,
 } from 'lucide-react'
 import parseDiff from 'parse-diff'
@@ -26,16 +27,19 @@ import { MrMergeButton } from './MrMergeButton'
 import { StackMap } from './StackMap'
 import { StackMergeButton } from './StackMergeButton'
 import { DigestView } from './DigestView'
+import { PrOverviewPanel } from './PrOverviewPanel'
 import { xtermThemeFromCss } from './Terminal'
 import { groupJobsByStage } from '../lib/ci'
 import { shouldRerun, RESIZE_DEBOUNCE_MS, COL_THRESHOLD } from '../lib/structuralReflow'
 import { useResizableWidth, ResizeHandle } from './ResizeHandle'
 import { stateTone, verdictTone, testTone, sevTone, ciTone } from '../lib/badges'
+import { usePref } from '../lib/prefs'
 import type {
   MrDetail,
   Finding,
   CiInfo,
   Mr,
+  PrOverview,
   PrStack,
   StructuralDiffResult,
   Screenshot,
@@ -749,7 +753,22 @@ function CiPanel({ ci }: { ci: CiInfo | null | undefined }) {
   )
 }
 
-function Overview({ mr, ci }: { mr: MrDetail; ci: CiInfo | null | undefined }) {
+/** The detail view's panes, in strip order. `overview` — the change map and the
+ *  filtered analytics — comes first because it is what decides HOW to review;
+ *  `description` is the PR body and CI, which used to hold this slot. */
+const PANES = [
+  'overview',
+  'description',
+  'diff',
+  'digest',
+  'review',
+  'findings',
+  'suggestions',
+  'screenshots',
+] as const
+type PaneId = (typeof PANES)[number]
+
+function DescriptionPanel({ mr, ci }: { mr: MrDetail; ci: CiInfo | null | undefined }) {
   return (
     <div className="h-full overflow-y-auto p-5">
       <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11px] text-zinc-500">
@@ -929,17 +948,28 @@ export function MrDetailView({
 }) {
   const [mr, setMr] = useState<MrDetail | null | undefined>(undefined)
   const [ci, setCi] = useState<CiInfo | null | undefined>(undefined)
-  const [view, setView] = useState<
-    'overview' | 'review' | 'findings' | 'suggestions' | 'diff' | 'digest' | 'screenshots'
-  >('overview')
+  const [pane, setPane] = usePref('mrDetailPane')
+  // A remembered pane that no longer exists (an older build's spelling, or
+  // Screenshots on a PR that has none) must not leave the detail view blank.
+  const view = (PANES as readonly string[]).includes(pane) ? (pane as PaneId) : 'overview'
+  const setView = (next: PaneId): void => setPane(next)
+  const [overview, setOverview] = useState<PrOverview | null | undefined>(undefined)
   const [diff, setDiff] = useState<string | null>(null)
 
   useEffect(() => {
     setMr(undefined)
     setCi(undefined)
     setDiff(null)
+    setOverview(undefined)
     window.gt.getMr(iid).then(setMr)
     window.gt.getMrCi(iid).then(setCi)
+    // The Overview pane is the default landing pane, so its data is fetched
+    // with the MR rather than on first click — clicking into a PR should not
+    // show a spinner where the headline numbers go.
+    window.gt
+      .getMrOverview(iid)
+      .then(setOverview)
+      .catch(() => setOverview(null))
   }, [iid])
   useEffect(() => {
     // Both the Diff and Digest tabs render the real green/red diff.
@@ -965,9 +995,10 @@ export function MrDetailView({
       </div>
     )
 
-  const sub = (k: typeof view, label: ReactNode, count?: number) => (
+  const sub = (k: PaneId, label: ReactNode, count?: number) => (
     <button
       onClick={() => setView(k)}
+      aria-current={view === k || undefined}
       className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-[12px] font-medium ${
         view === k ? 'bg-[var(--gt-accent)]/20 text-zinc-100' : 'text-zinc-500 hover:text-zinc-200'
       }`}
@@ -1026,8 +1057,15 @@ export function MrDetailView({
         {sub(
           'overview',
           <>
-            <FileText size={13} strokeWidth={2} />
+            <LayoutGrid size={13} strokeWidth={2} />
             Overview
+          </>,
+        )}
+        {sub(
+          'description',
+          <>
+            <FileText size={13} strokeWidth={2} />
+            Description
           </>,
         )}
         {sub(
@@ -1100,7 +1138,8 @@ export function MrDetailView({
         </div>
       )}
       <div className="min-h-0 flex-1 overflow-hidden">
-        {view === 'overview' && <Overview mr={mr} ci={ci} />}
+        {view === 'overview' && <PrOverviewPanel overview={overview} reviewMeta={mr.reviewMeta} />}
+        {view === 'description' && <DescriptionPanel mr={mr} ci={ci} />}
         {view === 'review' && <ReviewBody mr={mr} />}
         {view === 'findings' && (
           <FindingCards items={mr.findings} empty="No findings for this MR." />

@@ -386,6 +386,7 @@ const gt: GtApi = {
   listMrs: () => ipcRenderer.invoke('mrs:list'),
   getMr: (iid: number) => ipcRenderer.invoke('mrs:get', iid),
   getMrDiff: (iid: number) => ipcRenderer.invoke('mrs:diff', iid),
+  getMrOverview: (iid: number) => ipcRenderer.invoke('mrs:overview', iid),
   getWorkingDiff: () => ipcRenderer.invoke('git:working-diff'),
   getFileAtHead: (rel: string) => ipcRenderer.invoke('git:file-at-head', rel),
   getFileAtHeadBinary: (rel: string) => ipcRenderer.invoke('git:file-at-head-binary', rel),

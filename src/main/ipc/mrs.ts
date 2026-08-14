@@ -8,6 +8,7 @@
 
 import { handle } from '../typed-ipc'
 import { type WorkspaceDaemon } from '../workspace-daemon'
+import { analyzePrDiff } from '../../shared/pr-overview'
 
 export function registerMrsIpc(deps: { activeDaemon(): WorkspaceDaemon }): void {
   handle('mrs:list', () => {
@@ -18,6 +19,12 @@ export function registerMrsIpc(deps: { activeDaemon(): WorkspaceDaemon }): void 
   })
   handle('mrs:diff', (_e, iid: number) => {
     return deps.activeDaemon().mrDiff(iid)
+  })
+  // Derived from the very diff `mrs:diff` returns, so it costs no extra forge
+  // call and works identically for a local repo and an SSH workspace — the
+  // daemon surface stays as it was.
+  handle('mrs:overview', async (_e, iid: number) => {
+    return analyzePrDiff(await deps.activeDaemon().mrDiff(iid))
   })
   handle('mrs:structural-diff', (_e, iid: number, path: string, width?: number) => {
     return deps.activeDaemon().mrStructuralDiff(iid, path, width)

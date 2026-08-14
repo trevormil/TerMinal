@@ -125,6 +125,7 @@ import type {
   PipelineId,
   PresetKind,
   PresetPrefs,
+  PrOverview,
   ProjectSession,
   ProjectsDirValidation,
   PromptSnippet,
@@ -758,6 +759,10 @@ export type GtApi = {
   listMrs: () => Promise<MrListResult>
   getMr: (iid: number) => Promise<MrDetail | null>
   getMrDiff: (iid: number) => Promise<string>
+  /** Pre-diff read of an MR: per-file churn, noise classification, and the
+   *  aggregates computed both raw and noise-filtered. Derived from the same
+   *  diff `getMrDiff` returns — no extra forge call. */
+  getMrOverview: (iid: number) => Promise<PrOverview>
   getWorkingDiff: () => Promise<WorkingDiff>
   /** A file's content at HEAD — the base for a per-file working diff. */
   getFileAtHead: (rel: string) => Promise<{ ok: boolean; content: string; reason?: string }>

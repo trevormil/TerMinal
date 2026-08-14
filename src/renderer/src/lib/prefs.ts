@@ -60,6 +60,10 @@ export const PREFS = {
   activityLastSeen: num('gt.activity.lastSeen', 0),
   inboxCategory: str('gt.inbox.category', ALL_INBOX_CATEGORIES),
   inboxCollapsed: strArray('gt.inbox.collapsed', []),
+  // Last pane the user chose in the MR/PR detail view. 'overview' — the change
+  // map and filtered analytics — is where a review should start, so it is the
+  // default; an explicit choice sticks until the user changes it again.
+  mrDetailPane: str('gt.mrs.detailPane', 'overview'),
 } satisfies Record<string, PrefDef<never> | PrefDef<string> | PrefDef<number> | PrefDef<string[]>>
 
 export type PrefName = keyof typeof PREFS
