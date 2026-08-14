@@ -23,6 +23,13 @@ export type Monitor = {
   intervalSec: number
   enabled: boolean
   group?: string
+  /**
+   * How many checks in a row must fail before the monitor is published as
+   * down and an alert is filed. 1 restores the old alert-on-first-failure
+   * behaviour. Absent on monitors written before this field existed — read
+   * through `normalizeMinConsecutiveFailures`, never raw.
+   */
+  minConsecutiveFailures: number
   notify: MonitorNotify
   /** Type-specific knobs (thresholds, expected status, etc.). */
   config: Record<string, unknown>

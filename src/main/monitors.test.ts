@@ -123,6 +123,9 @@ describe('config + status join', () => {
     )
     expect(listMonitorsWithStatus(cfg, state).map((m) => m.id)).toEqual(['b', 'a'])
     expect(readMonitors(cfg)).toHaveLength(2)
+    // Pre-existing monitors carry no threshold field on disk; the read path
+    // migrates them so the UI and the daemon agree on the value.
+    expect(readMonitors(cfg).every((m) => m.minConsecutiveFailures === 2)).toBe(true)
   })
 })
 
@@ -206,6 +209,24 @@ describe('validateMonitors', () => {
     const { monitors, rejected } = validateMonitors([ok, { ...ok, target: 'https://other' }])
     expect(monitors.length).toBe(1)
     expect(rejected).toBe(1)
+  })
+
+  // The consecutive-failure threshold is only as good as its migration: every
+  // monitor in the existing monitors.json predates the field.
+  test('fills in the consecutive-failure threshold and clamps it', () => {
+    expect(validateMonitors([ok]).monitors[0].minConsecutiveFailures).toBe(2)
+    expect(
+      validateMonitors([{ ...ok, minConsecutiveFailures: 4 }]).monitors[0]
+        .minConsecutiveFailures,
+    ).toBe(4)
+    expect(
+      validateMonitors([{ ...ok, minConsecutiveFailures: 0 }]).monitors[0]
+        .minConsecutiveFailures,
+    ).toBe(1)
+    expect(
+      validateMonitors([{ ...ok, minConsecutiveFailures: 999 }]).monitors[0]
+        .minConsecutiveFailures,
+    ).toBe(10)
   })
 
   test('a non-array payload yields nothing', () => {

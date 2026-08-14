@@ -253,10 +253,23 @@ export type MonitorSaveResult = {
   error?: string
 }
 
+/** Which layer a failing probe failed at — re-exported from the shared flap logic. */
+import type { FailureCategory as MonitorFailureCategory } from '../../../shared/monitor-flap'
+export type { FailureCategory as MonitorFailureCategory } from '../../../shared/monitor-flap'
+/** Daemon verdict on whether THIS machine has connectivity. */
+export type MonitorConnectivity = { offline: boolean; since?: number }
 export type MonitorStatusState = {
   id: string
   status: MonitorState
   summary: string
+  /** Failed checks in a row, including ones held below the alert threshold. */
+  consecutiveFailures?: number
+  category?: MonitorFailureCategory
+  /** The raw probe verdict — differs from `status` while a blip is held back. */
+  observed?: MonitorState
+  /** The last cycle was discarded for lack of local connectivity. */
+  paused?: boolean
+  pausedSince?: number
   metrics?: Record<string, unknown>
   detail?: {
     sections: {
@@ -268,6 +281,14 @@ export type MonitorStatusState = {
   since: number
   lastTransition: { from: string; to: string; at: number } | null
   history: { at: number; status: string }[]
+  /** Failed checks in a row, including ones held below the alert threshold. */
+  consecutiveFailures?: number
+  category?: MonitorFailureCategory
+  /** The raw probe verdict — differs from `status` while a blip is held back. */
+  observed?: MonitorState
+  /** The last cycle was discarded for lack of local connectivity. */
+  paused?: boolean
+  pausedSince?: number
 }
 export type MonitorWithState = Monitor & { state: MonitorStatusState | null }
 // Push readiness for the Settings pane. `configured` flips once an APNs key
@@ -652,11 +673,15 @@ export type GtApi = {
   }
   monitors: {
     list: () => Promise<MonitorWithState[]>
+    /** Whether the daemon has established that THIS machine is offline. */
+    connectivity: () => Promise<MonitorConnectivity>
     /** Reports what was actually written — it used to return `true` even when
      *  nothing was saved. Callers may ignore it; a UI that surfaces failures
      *  should not. */
     save: (list: Monitor[]) => Promise<MonitorSaveResult>
     run: (id: string) => Promise<MonitorWithState[]>
+    /** Whether the daemon has established that THIS machine is offline. */
+    connectivity: () => Promise<MonitorConnectivity>
   }
   ci: {
     list: (repoRoot: string, limit?: number) => Promise<CiListResult>

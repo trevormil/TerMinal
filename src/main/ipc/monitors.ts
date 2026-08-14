@@ -9,6 +9,7 @@ import {
   writeMonitors,
   validateMonitors,
   runMonitorProbe,
+  readMonitorConnectivity,
 } from '../monitors'
 import { syncMonitorDaemon } from '../launchd'
 import { listCiRuns, listCiJobs, fetchCiLog } from '../ci'
@@ -17,6 +18,9 @@ export function registerMonitorsIpc(): void {
   // Monitoring: read-only list for the tab; writes go through monitors.json (the
   // tab edits it directly via these handlers), and a check triggers the daemon.
   handle('monitors:list', () => listMonitorsWithStatus())
+  // Local-connectivity gate state: when the daemon pauses (our-end outage) the
+  // tab shows a paused banner instead of a wall of failing monitors.
+  handle('monitors:connectivity', () => readMonitorConnectivity())
   handle('monitors:save', (_e, list: unknown) => {
     // monitors.json is executed by bin/terminal-monitor on a launchd timer, so
     // the write path validates rather than trusting the renderer's JSON.

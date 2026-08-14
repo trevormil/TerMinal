@@ -26,7 +26,7 @@ import { homedir } from 'node:os'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { connect as tlsConnect } from 'node:tls'
 import { connect as netConnect } from 'node:net'
-import { resolve as dnsResolve } from 'node:dns/promises'
+import { resolve as dnsResolve, lookup as dnsLookup } from 'node:dns/promises'
 
 // Single resolution point for the config dir, honouring TERMINAL_CONFIG_DIR the
 // same way src/main/config-dir.ts does. These are SEPARATE PROCESSES writing the
@@ -40,6 +40,8 @@ const MONITORS_FILE = join(CFG, 'monitors.json')
 const STATE_DIR = join(CFG, 'monitor-state')
 const CLI = join(CFG, 'bin', 'terminal-cli')
 const LOG = join(CFG, 'monitor.log')
+const TICK_LOCK = join(CFG, 'monitor-tick.lock')
+const CONNECTIVITY_FILE = join(CFG, 'monitor-connectivity.json')
 
 function log(msg) {
   try {
@@ -102,16 +104,261 @@ function classifyCert(days, warnDays = 15, critDays = 5) {
   return 'ok'
 }
 
+// ---- flap suppression (mirrors src/shared/monitor-flap.ts) ------------------
+// Canonical impl + tests live in src/shared/monitor-flap.ts. This file cannot
+// import from the app bundle (it runs from ~/.config/TerMinal/bin under
+// launchd), so the pure logic is duplicated here the same way the classifiers
+// already are. Keep in sync; the typed-bin refactor is where the two collapse.
+
+const DNS_CODES = new Set(['ENOTFOUND', 'EAI_AGAIN', 'ENODATA', 'EAI_NONAME', 'NOTFOUND'])
+const UNREACHABLE_CODES = new Set(['EHOSTUNREACH', 'ENETUNREACH', 'ENETDOWN', 'EHOSTDOWN'])
+const TIMEOUT_CODES = new Set(['ETIMEDOUT', 'ESOCKETTIMEDOUT', 'UND_ERR_CONNECT_TIMEOUT'])
+const NETWORK_LAYER = new Set(['dns', 'unreachable', 'timeout'])
+
+function isNetworkLayer(category) {
+  return NETWORK_LAYER.has(category)
+}
+
+function categorizeError(err) {
+  if (!err || typeof err !== 'object') return 'unknown'
+  const code = typeof err.code === 'string' ? err.code : ''
+  const name = typeof err.name === 'string' ? err.name : ''
+  const message = typeof err.message === 'string' ? err.message : ''
+  if (DNS_CODES.has(code)) return 'dns'
+  if (UNREACHABLE_CODES.has(code)) return 'unreachable'
+  if (TIMEOUT_CODES.has(code)) return 'timeout'
+  if (code === 'ECONNREFUSED') return 'refused'
+  if (code.startsWith('CERT_') || code.startsWith('ERR_TLS') || code.includes('SELF_SIGNED'))
+    return 'tls'
+  if (code.startsWith('UNABLE_TO_') || code.startsWith('DEPTH_ZERO_')) return 'tls'
+  if (name === 'TimeoutError' || name === 'AbortError') return 'timeout'
+  if (/getaddrinfo|ENOTFOUND|EAI_AGAIN|dns/i.test(message)) return 'dns'
+  if (/ECONNREFUSED|refused/i.test(message)) return 'refused'
+  if (/EHOSTUNREACH|ENETUNREACH|unreachable|network is down/i.test(message)) return 'unreachable'
+  if (/ETIMEDOUT|timed? ?out/i.test(message)) return 'timeout'
+  if (/certificate|tls|ssl/i.test(message)) return 'tls'
+  if (err.cause) return categorizeError(err.cause)
+  return 'unknown'
+}
+
+/**
+ * Bun's fetch reports "the name did not resolve" and "the port refused us" as
+ * the SAME opaque error, with no cause to unwrap. The local-outage gate turns
+ * entirely on that distinction, so the ambiguity is resolved with a name lookup
+ * rather than a guess. See src/shared/monitor-flap.ts:isOpaqueConnectFailure.
+ */
+function isOpaqueConnectFailure(err) {
+  if (!err || typeof err !== 'object') return false
+  // `ConnectionRefused` on the first attempt, `FailedToOpenSocket` on the
+  // retry — Bun uses both for the same "no connection, no reason given".
+  if (err.code === 'ConnectionRefused' || err.code === 'FailedToOpenSocket') return true
+  return (
+    typeof err.message === 'string' &&
+    /unable to connect|typo in the url|failed to open socket/i.test(err.message)
+  )
+}
+
+const IP_LITERAL = /^(\d{1,3}\.){3}\d{1,3}$|^\[?[0-9a-f:]+\]?$/i
+
+/**
+ * Categorize a failed fetch, disambiguating Bun's opaque connect error.
+ *
+ * The lookup only ever runs on the failure path of an already-failed request,
+ * and only when the error itself said nothing useful — so a healthy cycle pays
+ * nothing for it.
+ */
+async function categorizeFetchError(url, err) {
+  const base = categorizeError(err)
+  if (base !== 'unknown' || !isOpaqueConnectFailure(err)) return base
+  let host = ''
+  try {
+    host = new URL(url).hostname.replace(/^\[|\]$/g, '')
+  } catch {
+    return 'unknown'
+  }
+  // An IP literal was never resolved, so a failure to connect to it can only be
+  // their end refusing — there is no name that could have failed.
+  if (!host || IP_LITERAL.test(host)) return 'refused'
+  try {
+    await dnsLookup(host)
+    return 'refused'
+  } catch (e) {
+    const cat = categorizeError(e)
+    return cat === 'unknown' ? 'dns' : cat
+  }
+}
+
+const CATEGORY_LABEL = {
+  dns: 'DNS lookup failed — the name did not resolve',
+  refused: 'connection refused — their end answered but nothing is listening',
+  unreachable: 'unreachable — no network path to the host',
+  timeout: 'timed out — no response before the deadline',
+  tls: 'TLS problem — the certificate or handshake was rejected',
+  'http-status': 'their end: the server returned an error status',
+  body: 'their end: the response did not contain what we expect',
+  command: 'the check command itself reported failure',
+  unknown: 'failed for an unrecognised reason',
+}
+function categoryLabel(category) {
+  return CATEGORY_LABEL[category] || CATEGORY_LABEL.unknown
+}
+
+const DEFAULT_MIN_CONSECUTIVE_FAILURES = 2
+function normalizeMinConsecutiveFailures(raw) {
+  if (raw === null || raw === undefined || raw === '') return DEFAULT_MIN_CONSECUTIVE_FAILURES
+  const n = Number(raw)
+  if (!Number.isFinite(n)) return DEFAULT_MIN_CONSECUTIVE_FAILURES
+  return Math.min(10, Math.max(1, Math.round(n)))
+}
+
+/** Fold one observation into the published state. See monitor-flap.ts. */
+function applyThreshold({ prev, observed, minConsecutiveFailures, localOutage }) {
+  const prevStatus = prev?.status ?? 'ok'
+  const prevCount = Number(prev?.consecutiveFailures)
+  const carried = Number.isFinite(prevCount) && prevCount > 0 ? Math.floor(prevCount) : 0
+
+  if (localOutage)
+    return {
+      status: prevStatus,
+      consecutiveFailures: 0,
+      changed: false,
+      alert: false,
+      suppressed: false,
+      paused: true,
+    }
+
+  if (observed === 'ok') {
+    const changed = prevStatus !== 'ok'
+    return {
+      status: 'ok',
+      consecutiveFailures: 0,
+      changed,
+      alert: changed,
+      suppressed: false,
+      paused: false,
+    }
+  }
+
+  const consecutiveFailures = carried + 1
+  const threshold = normalizeMinConsecutiveFailures(minConsecutiveFailures)
+
+  if (prevStatus !== 'ok') {
+    const changed = prevStatus !== observed
+    return {
+      status: observed,
+      consecutiveFailures,
+      changed,
+      alert: changed,
+      suppressed: false,
+      paused: false,
+    }
+  }
+  if (consecutiveFailures < threshold)
+    return {
+      status: 'ok',
+      consecutiveFailures,
+      changed: false,
+      alert: false,
+      suppressed: true,
+      paused: false,
+    }
+  return {
+    status: observed,
+    consecutiveFailures,
+    changed: true,
+    alert: true,
+    suppressed: false,
+    paused: false,
+  }
+}
+
+function suspectsLocalOutage(results) {
+  if (!results.length) return false
+  return results.every((r) => r.failed && isNetworkLayer(r.category))
+}
+function confirmsLocalOutage(reachable) {
+  if (!reachable.length) return false
+  return reachable.every((r) => !r)
+}
+
+// Two independent majors on different networks, neither of them a monitored
+// target, both answering a tiny unauthenticated request.
+// TERMINAL_MONITOR_REFERENCE_URLS exists so the pause/resume behaviour can be
+// exercised without unplugging the machine — there is no other way to make a
+// test observe a real local outage.
+const REFERENCE_PROBES = (process.env.TERMINAL_MONITOR_REFERENCE_URLS || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean)
+const DEFAULT_REFERENCE_PROBES = [
+  'https://www.google.com/generate_204',
+  'https://1.1.1.1/cdn-cgi/trace',
+]
+function referenceUrls() {
+  return REFERENCE_PROBES.length ? REFERENCE_PROBES : DEFAULT_REFERENCE_PROBES
+}
+
+/**
+ * Ask whether WE still have connectivity. Only ever called after
+ * suspectsLocalOutage — two extra requests on a cycle where everything already
+ * failed is free, and on every healthy cycle it costs nothing at all.
+ */
+async function referenceReachability() {
+  return Promise.all(
+    referenceUrls().map(async (url) => {
+      try {
+        await fetch(url, {
+          method: 'HEAD',
+          redirect: 'manual',
+          signal: AbortSignal.timeout(5000),
+          headers: { 'user-agent': 'terminal-monitor/1.0' },
+        })
+        // Any HTTP answer at all proves the packet made the round trip; the
+        // status is irrelevant here.
+        return true
+      } catch (e) {
+        // A refused/TLS error still proves reachability — only network-layer
+        // errors count as "we are offline".
+        return !isNetworkLayer(await categorizeFetchError(url, e))
+      }
+    }),
+  )
+}
+
+/** Resolve the connectivity verdict for a set of cycle results. */
+async function localOutageVerdict(results) {
+  if (!suspectsLocalOutage(results)) return false
+  return confirmsLocalOutage(await referenceReachability())
+}
+
 // ---- probes ----------------------------------------------------------------
+// Every probe reports a `category` alongside its verdict. Two reasons: the
+// local-connectivity gate can only tell "our uplink died" from "their server
+// died" by looking at WHICH layer failed, and an alert that says "HTTP 500" is
+// actionable where "is down" is not.
+
+/**
+ * Per-probe deadline. Capped on purpose: a monitor configured with a 5-minute
+ * timeout stacks against the tick interval and the confirm re-probe until a
+ * cycle outlives the next one.
+ */
+const MAX_PROBE_TIMEOUT_MS = 60_000
+function probeTimeout(raw, fallback) {
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n <= 0) return fallback
+  return Math.min(MAX_PROBE_TIMEOUT_MS, Math.round(n))
+}
+
 async function probeHttp(m) {
   const warnLatency = Number(m.config?.warnLatencyMs) || undefined
   const t0 = Date.now()
   let status = null
+  let category
   try {
     const res = await fetch(m.target, {
       method: m.config?.method || 'GET',
       redirect: 'manual',
-      signal: AbortSignal.timeout(Number(m.config?.timeoutMs) || 10000),
+      signal: AbortSignal.timeout(probeTimeout(m.config?.timeoutMs, 10000)),
       headers: { 'user-agent': 'terminal-monitor/1.0' },
     })
     status = res.status
@@ -119,15 +366,27 @@ async function probeHttp(m) {
     if (needle) {
       const body = await res.text()
       if (!body.includes(String(needle)))
-        return { status: 'fail', summary: `body missing "${needle}"`, metrics: { http: status } }
+        return {
+          status: 'fail',
+          summary: `body missing "${needle}"`,
+          metrics: { http: status },
+          category: 'body',
+        }
     }
-  } catch {
+  } catch (e) {
     status = null
+    category = await categorizeFetchError(m.target, e)
   }
   const latencyMs = Date.now() - t0
   const state = classifyHttp(status, latencyMs, warnLatency)
-  const summary = status === null ? 'no response' : `HTTP ${status} · ${latencyMs}ms`
-  return { status: state, summary, metrics: { http: status ?? 0, latencyMs } }
+  const summary = status === null ? `no response (${categoryLabel(category)})` : `HTTP ${status} · ${latencyMs}ms`
+  return {
+    status: state,
+    summary,
+    metrics: { http: status ?? 0, latencyMs },
+    // A status code came back ⇒ their end answered, whatever it said.
+    category: state === 'ok' ? undefined : (category ?? 'http-status'),
+  }
 }
 
 function probeTls(m) {
@@ -147,7 +406,7 @@ function probeTls(m) {
         const authError = socket.authorizationError ? String(socket.authorizationError) : ''
         socket.end()
         if (!cert || !cert.valid_to)
-          return resolve({ status: 'fail', summary: 'no certificate' })
+          return resolve({ status: 'fail', summary: 'no certificate', category: 'tls' })
         const days = Math.floor((new Date(cert.valid_to).getTime() - Date.now()) / 86400000)
         const expiry = classifyCert(days, Number(m.config?.warnDays) || 15, Number(m.config?.critDays) || 5)
         const state = classifyCertTrust(expiry, authorized)
@@ -163,13 +422,23 @@ function probeTls(m) {
             authorized,
             authorizationError: authError,
           },
+          category: state === 'ok' ? undefined : 'tls',
         })
       },
     )
-    socket.on('error', () => resolve({ status: 'fail', summary: 'TLS handshake failed' }))
+    socket.on('error', (e) => {
+      // A handshake that never got off the ground can be OUR network rather
+      // than their certificate — the category has to reflect that.
+      const category = categorizeError(e)
+      resolve({
+        status: 'fail',
+        summary: `TLS handshake failed (${categoryLabel(category === 'unknown' ? 'tls' : category)})`,
+        category: category === 'unknown' ? 'tls' : category,
+      })
+    })
     socket.on('timeout', () => {
       socket.destroy()
-      resolve({ status: 'fail', summary: 'TLS timeout' })
+      resolve({ status: 'fail', summary: 'TLS timeout', category: 'timeout' })
     })
   })
 }
@@ -183,10 +452,17 @@ function probeTcp(m) {
       socket.end()
       resolve({ status: 'ok', summary: `port ${port} open · ${Date.now() - t0}ms`, metrics: { latencyMs: Date.now() - t0 } })
     })
-    socket.on('error', () => resolve({ status: 'fail', summary: `port ${port} closed/unreachable` }))
+    socket.on('error', (e) => {
+      const category = categorizeError(e)
+      resolve({
+        status: 'fail',
+        summary: `port ${port} unavailable — ${categoryLabel(category)}`,
+        category,
+      })
+    })
     socket.on('timeout', () => {
       socket.destroy()
-      resolve({ status: 'fail', summary: `port ${port} timeout` })
+      resolve({ status: 'fail', summary: `port ${port} timeout`, category: 'timeout' })
     })
   })
 }
@@ -196,17 +472,29 @@ async function probeDns(m) {
     const recs = await dnsResolve(m.target, m.config?.recordType || 'A')
     const expect = m.config?.expect
     if (expect && !recs.flat().map(String).includes(String(expect)))
-      return { status: 'fail', summary: `no ${m.config?.recordType || 'A'} record = ${expect}`, metrics: { records: recs.length } }
+      // The resolver answered — the answer is just wrong. That is their end,
+      // and it must not vote for a local outage.
+      return {
+        status: 'fail',
+        summary: `no ${m.config?.recordType || 'A'} record = ${expect}`,
+        metrics: { records: recs.length },
+        category: 'body',
+      }
     return { status: 'ok', summary: `${recs.length} record(s)`, metrics: { records: recs.length } }
-  } catch {
-    return { status: 'fail', summary: 'DNS resolution failed' }
+  } catch (e) {
+    const category = categorizeError(e)
+    return {
+      status: 'fail',
+      summary: `DNS resolution failed — ${categoryLabel(category === 'unknown' ? 'dns' : category)}`,
+      category: category === 'unknown' ? 'dns' : category,
+    }
   }
 }
 
 function probeCommand(m) {
   const r = spawnSync('/bin/bash', ['-lc', m.target], {
     encoding: 'utf8',
-    timeout: Number(m.config?.timeoutMs) || 30000,
+    timeout: probeTimeout(m.config?.timeoutMs, 30000),
     maxBuffer: 4 * 1024 * 1024,
   })
   const out = (r.stdout || '').trim()
@@ -227,6 +515,9 @@ function probeCommand(m) {
     summary: String(summary).slice(0, 200),
     metrics: parsed?.metrics || { exitCode: r.status ?? -1 },
     detail: parsed?.detail,
+    // A command monitor runs locally: whatever it reports, it is never
+    // evidence that the operator's uplink is down.
+    category: status === 'ok' ? undefined : 'command',
   }
 }
 
@@ -243,7 +534,7 @@ async function probe(m) {
     case 'command':
       return probeCommand(m)
     default:
-      return { status: 'fail', summary: `unknown type ${m.type}` }
+      return { status: 'fail', summary: `unknown type ${m.type}`, category: 'unknown' }
   }
 }
 
@@ -252,6 +543,23 @@ function fileInbox(title, action, severity) {
   if (!existsSync(CLI)) return
   try {
     execFileSync(CLI, ['hitl', title, action, `--severity=${severity}`], {
+      stdio: 'ignore',
+      timeout: 15000,
+      env: { ...process.env, TERMINAL_REPO: '' },
+    })
+  } catch {}
+}
+
+/**
+ * The Activity feed, NOT the Inbox. A local outage is something the operator
+ * already knows about — their wifi is down, they are looking at it. Pausing is
+ * worth a line in the feed and nothing more; a notification for it would be
+ * exactly the spam this feature removes.
+ */
+function emitActivity(kind, title, detail) {
+  if (!existsSync(CLI)) return
+  try {
+    execFileSync(CLI, ['activity', kind, title, detail], {
       stdio: 'ignore',
       timeout: 15000,
       env: { ...process.env, TERMINAL_REPO: '' },
@@ -279,7 +587,7 @@ function humanSince(since, now) {
   return `${Math.round(s / 86400)} days ago`
 }
 
-function compose(m, prevStatus, next, res, now, since) {
+function compose(m, prevStatus, next, res, now, since, consecutive = 0) {
   const kind = KIND[m.type] || 'check'
   const summary = (res.summary || '').trim()
   // The concrete thing being watched — a URL/host for network checks; a command
@@ -311,11 +619,17 @@ function compose(m, prevStatus, next, res, now, since) {
       ? 'It was healthy on the previous check.'
       : `It had already been ${prevStatus} before this.`
   const verb = next === 'fail' ? 'started failing' : 'started reporting problems'
+  // WHICH kind of failure, in the alert itself: "their end: HTTP 500" and
+  // "no network path to the host" call for completely different reactions, and
+  // the old copy rendered both as "is down".
+  const kindLine = res.category ? `Failure kind — ${categoryLabel(res.category)}. ` : ''
+  const runsLine =
+    consecutive > 1 ? `Confirmed over ${consecutive} consecutive failed checks. ` : ''
   return {
     title,
     body:
       `${m.name}'s ${kind}${where} ${verb} ${humanSince(since, now)}. ` +
-      `${summary ? `What we saw: ${summary}. ` : ''}${priorLine}`,
+      `${summary ? `What we saw: ${summary}. ` : ''}${kindLine}${runsLine}${priorLine}`,
   }
 }
 
@@ -331,20 +645,57 @@ function needsConfirmation(prev, next) {
   return RANK[next] > RANK[prev]
 }
 
-async function runOne(m, now) {
+/** Phase 1: probe (with the confirm re-probe) and report — writes NO state. */
+async function probeOne(m) {
   const prev = readState(m.id)
-  let res = await probe(m)
   const prevStatus = prev && ['ok', 'warn', 'fail'].includes(prev.status) ? prev.status : 'ok'
+  let res = await probe(m)
   if (needsConfirmation(prevStatus, res.status)) {
     const raw = Number(m.config?.confirmDelayMs)
     const delayMs = Number.isFinite(raw) && raw >= 0 ? raw : 5000
     if (delayMs) await new Promise((r) => setTimeout(r, delayMs))
     res = await probe(m)
   }
-  const next = res.status
-  const changed = prevStatus !== next
+  return { m, prev, prevStatus, res }
+}
+
+/**
+ * Phase 2: fold the observation into published state and alert if warranted.
+ *
+ * Separated from probing so the connectivity verdict can be decided for the
+ * WHOLE cycle before any state is written — the old shape wrote and alerted
+ * monitor-by-monitor, which is precisely why one dropped uplink produced one
+ * urgent item per monitor.
+ */
+function commitOne({ m, prev, prevStatus, res }, now, localOutage) {
+  const decision = applyThreshold({
+    prev: { status: prevStatus, consecutiveFailures: prev?.consecutiveFailures },
+    observed: res.status,
+    minConsecutiveFailures: m.minConsecutiveFailures,
+    localOutage,
+  })
+  const next = decision.status
   const notify = m.notify || {}
 
+  if (decision.paused) {
+    // Nothing about the monitor's health was learned, so nothing about it is
+    // published — only the fact that the check was skipped and the counter
+    // cleared, so resuming cannot complete a run of failures begun earlier.
+    const state = {
+      ...(prev || { id: m.id, status: next, summary: '', history: [] }),
+      id: m.id,
+      status: next,
+      lastCheckedAt: now,
+      consecutiveFailures: 0,
+      paused: true,
+      pausedSince: prev?.pausedSince || now,
+    }
+    writeState(m.id, state)
+    log(`run ${m.id} (${m.type}) skipped — no local connectivity`)
+    return state
+  }
+
+  const changed = decision.changed
   const state = {
     id: m.id,
     status: next,
@@ -355,44 +706,158 @@ async function runOne(m, now) {
     since: changed ? now : prev?.since || now,
     lastTransition: changed ? { from: prevStatus, to: next, at: now } : prev?.lastTransition || null,
     history: [{ at: now, status: next }, ...(Array.isArray(prev?.history) ? prev.history : [])].slice(0, 100),
+    consecutiveFailures: decision.consecutiveFailures,
+    // The raw verdict, kept when the threshold held it back, so the UI can say
+    // "1 recent blip" instead of pretending the check was clean.
+    observed: res.status,
+    category: res.status === 'ok' ? undefined : res.category,
+    paused: false,
   }
   writeState(m.id, state)
 
-  // Notify on transition, or re-nag a still-failing check after its window.
+  // Re-nag a still-failing check after its window — only for a state that was
+  // actually published as failing, never for suppressed blips.
   const renotifySec = Number(notify.renotifyAfterSec) || 0
   const lastAlertAt = prev?.lastTransition?.at ?? prev?.since ?? now
-  const dueRenotify = !changed && next !== 'ok' && renotifySec && now - lastAlertAt >= renotifySec * 1000
-  if (changed || dueRenotify) {
+  const dueRenotify =
+    !changed && next !== 'ok' && renotifySec && now - lastAlertAt >= renotifySec * 1000
+  if (decision.alert || dueRenotify) {
     if (next === 'ok' && notify.onRecovery !== false) {
       const { title, body } = compose(m, prevStatus, next, res, now, state.since)
       fileInbox(title, body, 'low')
     } else if (next !== 'ok') {
       const sev = notify.onFailure && notify.onFailure !== 'off' ? notify.onFailure : 'urgent'
       if (notify.onFailure !== 'off') {
-        const { title, body } = compose(m, prevStatus, next, res, now, state.since)
+        const { title, body } = compose(
+          m,
+          prevStatus,
+          next,
+          res,
+          now,
+          state.since,
+          decision.consecutiveFailures,
+        )
         fileInbox(title, body, sev)
       }
     }
   }
-  log(`run ${m.id} (${m.type}) ${prevStatus}→${next}${changed ? ' *' : ''}`)
+  const suffix = decision.suppressed
+    ? ` (blip ${decision.consecutiveFailures}/${normalizeMinConsecutiveFailures(m.minConsecutiveFailures)}, held)`
+    : changed
+      ? ' *'
+      : ''
+  log(`run ${m.id} (${m.type}) ${prevStatus}→${next}${suffix}`)
   return state
+}
+
+async function runOne(m, now, localOutage = null) {
+  const probed = await probeOne(m)
+  const offline =
+    localOutage === null
+      ? await localOutageVerdict([
+          { failed: probed.res.status !== 'ok', category: probed.res.category },
+        ])
+      : localOutage
+  if (localOutage === null) recordConnectivity(offline, now)
+  return commitOne(probed, now, offline)
+}
+
+// ---- connectivity bookkeeping ---------------------------------------------
+function readConnectivity() {
+  try {
+    return JSON.parse(readFileSync(CONNECTIVITY_FILE, 'utf8'))
+  } catch {
+    return { offline: false }
+  }
+}
+
+/** Persist the verdict for the UI, and announce only the EDGES to Activity. */
+function recordConnectivity(offline, now) {
+  const prev = readConnectivity()
+  if (prev.offline === offline) return
+  const next = { offline, since: now }
+  try {
+    writeFileSync(CONNECTIVITY_FILE, `${JSON.stringify(next, null, 2)}\n`)
+  } catch {}
+  if (offline) {
+    emitActivity(
+      'check',
+      'Monitoring paused — no local connectivity',
+      'Every check failed at the network layer and both reference hosts were unreachable, so this machine is offline. Checks are not counting and no alerts will be filed until connectivity returns.',
+    )
+  } else {
+    const downFor = prev.since ? humanSince(prev.since, now) : ''
+    emitActivity(
+      'check',
+      'Monitoring resumed — local connectivity restored',
+      `Reference hosts are reachable again${downFor ? ` (paused since ${downFor})` : ''}. Failure counters were reset, so a monitor must fail afresh before it alerts.`,
+    )
+  }
+  log(`connectivity ${offline ? 'LOST' : 'RESTORED'}`)
+}
+
+// ---- tick lock -------------------------------------------------------------
+// launchd fires the tick on a fixed interval; a cycle that runs long (a hung
+// endpoint plus its confirm re-probe) would otherwise overlap the next one, and
+// two processes writing the same state files interleave transitions.
+const TICK_LOCK_TTL_MS = 15 * 60_000
+
+function acquireTickLock(now) {
+  try {
+    const held = JSON.parse(readFileSync(TICK_LOCK, 'utf8'))
+    if (Number(held?.at) && now - Number(held.at) < TICK_LOCK_TTL_MS) return false
+  } catch {}
+  try {
+    mkdirSync(CFG, { recursive: true })
+    writeFileSync(TICK_LOCK, `${JSON.stringify({ pid: process.pid, at: now })}\n`)
+    return true
+  } catch {
+    // Cannot take the lock ⇒ cannot prove we are alone. Skipping one tick is
+    // strictly safer than two daemons racing on the state files.
+    return false
+  }
+}
+function releaseTickLock() {
+  try {
+    unlinkSync(TICK_LOCK)
+  } catch {}
 }
 
 // ---- entrypoints -----------------------------------------------------------
 async function tick() {
-  // Prune orphaned state (monitor deleted).
-  const ids = new Set(readMonitors().map((m) => m.id))
-  try {
-    for (const f of readdirSync(STATE_DIR))
-      if (f.endsWith('.json') && !ids.has(f.slice(0, -5))) rmSync(join(STATE_DIR, f))
-  } catch {}
-
   const now = Date.now()
-  for (const m of readMonitors()) {
-    if (m.enabled === false) continue
-    const prev = readState(m.id)
-    const dueAt = (prev?.lastCheckedAt || 0) + (Number(m.intervalSec) || 60) * 1000
-    if (now >= dueAt) await runOne(m, now)
+  if (!acquireTickLock(now)) {
+    log('tick skipped — previous cycle still running')
+    return
+  }
+  try {
+    // Prune orphaned state (monitor deleted).
+    const ids = new Set(readMonitors().map((m) => m.id))
+    try {
+      for (const f of readdirSync(STATE_DIR))
+        if (f.endsWith('.json') && !ids.has(f.slice(0, -5))) rmSync(join(STATE_DIR, f))
+    } catch {}
+
+    const due = []
+    for (const m of readMonitors()) {
+      if (m.enabled === false) continue
+      const prev = readState(m.id)
+      const dueAt = (prev?.lastCheckedAt || 0) + (Number(m.intervalSec) || 60) * 1000
+      if (now >= dueAt) due.push(m)
+    }
+    if (!due.length) return
+
+    const probed = []
+    for (const m of due) probed.push(await probeOne(m))
+
+    const offline = await localOutageVerdict(
+      probed.map((p) => ({ failed: p.res.status !== 'ok', category: p.res.category })),
+    )
+    recordConnectivity(offline, now)
+
+    for (const p of probed) commitOne(p, now, offline)
+  } finally {
+    releaseTickLock()
   }
 }
 

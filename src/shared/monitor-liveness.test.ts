@@ -31,6 +31,7 @@ function monitor(over: Partial<Monitor> = {}): Monitor {
     target: 'https://example.com',
     intervalSec: 300,
     enabled: true,
+    minConsecutiveFailures: 2,
     notify: {
       onFailure: 'urgent',
       onRecovery: true,
