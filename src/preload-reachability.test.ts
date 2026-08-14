@@ -50,6 +50,17 @@ const ALLOWED = new Set([
   'listeners.toggle',
   //   Tickets are filed through `tickets.spawn` and bin/terminal-cli, not this.
   'tickets.create',
+  // Pre-rename alias of `gt.inbox`'s item methods (ticket 0123). The app itself
+  // calls `gt.inbox.*`, so these have no in-tree call site BY DESIGN — they exist
+  // for plugin widgets and older bundles written against the HITL spelling, and
+  // src/main/ipc/inbox-alias.test.ts pins them to the same implementations.
+  // Unlike the block above, this is a supported surface, not an unswept leftover.
+  'hitl.list',
+  'hitl.remoteAll',
+  'hitl.resolve',
+  'hitl.remove',
+  'hitl.markRead',
+  'hitl.markAllRead',
 ])
 
 /** Comments and string bodies carry unbalanced braces/parens — drop them first. */

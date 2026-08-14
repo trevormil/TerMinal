@@ -62,7 +62,7 @@ import { registerActivityIpc } from './ipc/activity'
 import { registerSettingsIpc } from './ipc/settings'
 import { registerRunsIpc } from './ipc/runs'
 import { registerHostsIpc } from './ipc/hosts'
-import { registerHitlIpc } from './ipc/hitl'
+import { registerInboxItemsIpc } from './ipc/inbox-items'
 import { registerMonitorsIpc } from './ipc/monitors'
 import { registerDataIpc } from './ipc/data'
 import { registerWidgetsIpc } from './ipc/widgets'
@@ -639,7 +639,7 @@ registerSettingsIpc({ cur, remoteFromHostId, repoLabelFor, applyBridgeSetting })
 // cross-repo HITL inbox, and Monitoring/CI.
 registerRunsIpc({ curRemote, remoteFromHostId })
 registerHostsIpc({ runnerSrcPath, cliSrcPath })
-registerHitlIpc({ remoteFromHostId })
+registerInboxItemsIpc({ remoteFromHostId })
 registerMonitorsIpc()
 // Plugin pollers (all keyed to the attached session) and the declarative
 // widget/tab surface with its repo-trust gate.

@@ -162,7 +162,7 @@ describe('bulk actions mean what the visible list says (ticket 120)', () => {
     const fn = tab.slice(tab.indexOf('const markAllRead'), tab.indexOf('const remove ='))
     expect(fn).toContain('scopedUnread')
     // The whole-inbox IPC is only correct when nothing is filtered.
-    expect(fn).toMatch(/activeCategory === ALL\s*\?\s*window\.gt\.hitl\.markAllRead\(\)/)
+    expect(fn).toMatch(/activeCategory === ALL\s*\?\s*window\.gt\.inbox\.markAllRead\(\)/)
   })
 
   test('the scoped set is derived from `shown`, which is the rendered list', () => {

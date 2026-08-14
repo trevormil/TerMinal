@@ -663,6 +663,8 @@ export type GtApi = {
     jobs: (repoRoot: string, runId: string) => Promise<CiJobsResult>
     log: (repoRoot: string, jobId: string) => Promise<CiLogResult>
   }
+  /** Pre-rename alias of `inbox`'s item methods (ticket 0123). Same channels'
+   *  implementations; kept forever so existing callers keep working. */
   hitl: {
     list: () => Promise<HitlItem[]>
     remoteAll: () => Promise<{
@@ -883,6 +885,17 @@ export type GtApi = {
     merge: (repoRoot: string, iid: number) => Promise<{ ok: boolean; error?: string }>
   }
   inbox: {
+    /** The cross-repo Inbox. Items carry an open-ended `category`; HITL is one
+     *  of them, not the whole surface (ticket 0123). */
+    list: () => Promise<HitlItem[]>
+    remoteAll: () => Promise<{
+      items: HitlItem[]
+      errors: { hostId: string; label: string; error: string }[]
+    }>
+    resolve: (id: string, resolved?: boolean, hostId?: string) => Promise<boolean>
+    remove: (id: string, hostId?: string) => Promise<boolean>
+    markRead: (ids: string[], hostId?: string, read?: boolean) => Promise<number>
+    markAllRead: () => Promise<number>
     snoozes: () => Promise<Record<string, number>>
     snooze: (id: string, until: number) => Promise<Record<string, number>>
     unsnooze: (id: string) => Promise<Record<string, number>>

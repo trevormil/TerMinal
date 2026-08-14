@@ -268,6 +268,9 @@ const gt: GtApi = {
     jobs: (repoRoot: string, runId: string) => ipcRenderer.invoke('ci:jobs', repoRoot, runId),
     log: (repoRoot: string, jobId: string) => ipcRenderer.invoke('ci:log', repoRoot, jobId),
   },
+  // Pre-rename spelling of gt.inbox's item methods (ticket 0123). Kept as a
+  // permanent alias — main binds `hitl:*` to the same implementations as
+  // `inbox:*` — so a plugin or widget written against it keeps working.
   hitl: {
     list: () => ipcRenderer.invoke('hitl:list'),
     remoteAll: () => ipcRenderer.invoke('hitl:remote-all'),
@@ -460,12 +463,8 @@ const gt: GtApi = {
     list: () => ipcRenderer.invoke('bg:list'),
     get: (id: string) => ipcRenderer.invoke('bg:get', id),
     log: (id: string) => ipcRenderer.invoke('bg:log', id),
-    spawn: (input: {
-      repoRoot: string
-      prompt: string
-      engine?: Engine
-      model?: string
-    }) => ipcRenderer.invoke('bg:spawn', input),
+    spawn: (input: { repoRoot: string; prompt: string; engine?: Engine; model?: string }) =>
+      ipcRenderer.invoke('bg:spawn', input),
     cancel: (id: string) => ipcRenderer.invoke('bg:cancel', id),
   },
   loops: {
@@ -500,6 +499,14 @@ const gt: GtApi = {
     merge: (repoRoot: string, iid: number) => ipcRenderer.invoke('stacks:merge', repoRoot, iid),
   },
   inbox: {
+    list: () => ipcRenderer.invoke('inbox:list'),
+    remoteAll: () => ipcRenderer.invoke('inbox:remote-all'),
+    resolve: (id: string, resolved?: boolean, hostId?: string) =>
+      ipcRenderer.invoke('inbox:resolve', id, resolved, hostId),
+    remove: (id: string, hostId?: string) => ipcRenderer.invoke('inbox:remove', id, hostId),
+    markRead: (ids: string[], hostId?: string, read?: boolean) =>
+      ipcRenderer.invoke('inbox:mark-read', ids, hostId, read),
+    markAllRead: () => ipcRenderer.invoke('inbox:mark-all-read'),
     snoozes: () => ipcRenderer.invoke('inbox:snoozes'),
     snooze: (id: string, until: number) => ipcRenderer.invoke('inbox:snooze', id, until),
     unsnooze: (id: string) => ipcRenderer.invoke('inbox:unsnooze', id),

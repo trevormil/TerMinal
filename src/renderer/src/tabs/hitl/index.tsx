@@ -214,8 +214,8 @@ export function InboxDrawer({
   // Best-effort: an unreachable host is dropped, never blocks the local view.
   const reload = () =>
     Promise.all([
-      window.gt.hitl.list(),
-      window.gt.hitl
+      window.gt.inbox.list(),
+      window.gt.inbox
         .remoteAll()
         .then((r) => r.items)
         .catch(() => [] as HitlItem[]),
@@ -285,13 +285,13 @@ export function InboxDrawer({
       (prev || []).map((h) => (freshIds.includes(h.id) ? { ...h, readAt: Date.now() } : h)),
     )
     for (const [hostId, hostIds] of byHost(fresh))
-      void window.gt.hitl.markRead(hostIds, hostId).catch(() => 0)
+      void window.gt.inbox.markRead(hostIds, hostId).catch(() => 0)
   }
   // Email parity: put an item back on the unread pile (and return to the list,
   // like a mail client does).
   const markUnread = (h: HitlItem) => {
     setItems((prev) => (prev || []).map((x) => (x.id === h.id ? { ...x, readAt: undefined } : x)))
-    void window.gt.hitl.markRead([h.id], h.hostId, false).catch(() => 0)
+    void window.gt.inbox.markRead([h.id], h.hostId, false).catch(() => 0)
     setReading(null)
   }
   /**
@@ -313,22 +313,22 @@ export function InboxDrawer({
     const remote = targets.filter((h) => h.hostId)
     await Promise.all([
       activeCategory === ALL
-        ? window.gt.hitl.markAllRead()
-        : window.gt.hitl
+        ? window.gt.inbox.markAllRead()
+        : window.gt.inbox
             .markRead(
               targets.filter((h) => !h.hostId).map((h) => h.id),
               undefined,
             )
             .catch(() => 0),
       ...[...byHost(remote)].map(([hostId, hostIds]) =>
-        window.gt.hitl.markRead(hostIds, hostId).catch(() => 0),
+        window.gt.inbox.markRead(hostIds, hostId).catch(() => 0),
       ),
     ])
   }
   const remove = async (h: HitlItem) => {
     setItems((prev) => (prev || []).filter((x) => x.id !== h.id))
     setReading(null)
-    await window.gt.hitl.remove(h.id, h.hostId).catch(() => false)
+    await window.gt.inbox.remove(h.id, h.hostId).catch(() => false)
   }
 
   const snooze = async (ids: string[], until: number) => {
@@ -366,7 +366,7 @@ export function InboxDrawer({
     setItems((prev) => (prev || []).filter((h) => !selectedIds.includes(h.id)))
     setSelected(new Set())
     await Promise.all(
-      targets.map((h) => window.gt.hitl.resolve(h.id, true, h.hostId).catch(() => false)),
+      targets.map((h) => window.gt.inbox.resolve(h.id, true, h.hostId).catch(() => false)),
     )
   }
 
@@ -835,7 +835,7 @@ const tab: Tab = {
   // otherwise "ask me tomorrow" still nags you today.
   badge: async (gt) => {
     const [items, snoozes, settings] = await Promise.all([
-      gt.hitl.list(),
+      gt.inbox.list(),
       gt.inbox.snoozes().catch(() => ({}) as Record<string, number>),
       gt.settings.get().catch(() => null),
     ])

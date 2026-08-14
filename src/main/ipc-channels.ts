@@ -112,6 +112,12 @@ export type ChannelMap = {
   'hosts:health': Of<GtApi['healthCheckHost']>
   'hosts:provision': Of<GtApi['provisionHost']>
   'inbox:delivery-log': Of<GtApi['inbox']['deliveryLog']>
+  'inbox:list': Of<GtApi['inbox']['list']>
+  'inbox:mark-all-read': Of<GtApi['inbox']['markAllRead']>
+  'inbox:mark-read': Of<GtApi['inbox']['markRead']>
+  'inbox:remote-all': Of<GtApi['inbox']['remoteAll']>
+  'inbox:remove': Of<GtApi['inbox']['remove']>
+  'inbox:resolve': Of<GtApi['inbox']['resolve']>
   'inbox:snooze': Of<GtApi['inbox']['snooze']>
   'inbox:snoozes': Of<GtApi['inbox']['snoozes']>
   'inbox:unsnooze': Of<GtApi['inbox']['unsnooze']>
