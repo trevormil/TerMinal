@@ -66,18 +66,19 @@ const EXPECTED: Record<
     'src/main/hitl.ts': 'updateJsonState',
     'src/main/bridge/push.ts': 'read-only',
     'src/main/remote-host-script.cjs': 'updateJsonListShared',
-    // The runner names each shared path exactly once, in its config seam; the
-    // modules that mutate them are pinned by the runner suite below.
+    // The bundled processes name each shared path exactly once, in their path
+    // seam; the modules that mutate them are pinned by the constant-following
+    // suite below.
     'src/runner/config.ts': 'read-only',
-    'bin/terminal-cli': 'updateJsonListShared',
+    'src/cli/env.ts': 'read-only',
     'bin/terminal-mcp-server': 'updateJsonListShared',
   },
   'monitors.json': {
     'src/main/monitors.ts': 'updateJsonState',
-    'bin/terminal-cli': 'updateJsonListShared',
-    // The daemon names the path once, in its own path module, and never writes
-    // it — the app is the single writer, through its lock.
+    // The daemon and the CLI each name the path once, in their own path module;
+    // the writes are pinned by the constant-following suite below.
     'src/monitor/paths.ts': 'read-only',
+    'src/cli/env.ts': 'read-only',
   },
   'schedules.json': {
     'src/main/schedules.ts': 'updateJsonState',
@@ -152,20 +153,22 @@ describe('the standalone processes carry the inlined lock helper', () => {
   }
 })
 
-describe('the runner mutates shared state through the same lock (ticket 110)', () => {
-  // src/runner resolves every shared path through its config seam, so the
-  // literal-filename scan above cannot see its writers. Follow the CONSTANT
-  // instead: any runner line that names one and performs an unlocked write is
-  // the same bug the discipline suite exists to catch.
+describe('the bundled processes mutate shared state through the same lock (ticket 110)', () => {
+  // src/runner, src/cli and src/monitor resolve every shared path through a
+  // path seam, so the literal-filename scan above cannot see their writers.
+  // Follow the CONSTANT instead: any line that names one and performs an
+  // unlocked write is the same bug the discipline suite exists to catch.
   const CONST_FOR: Partial<Record<SharedFile, string>> = {
     'hitl.json': 'HITL_FILE()',
     'schedules.json': 'SCHED_FILE()',
+    'monitors.json': 'MONITORS_FILE()',
   }
   const RAW = /\b(?:writeFileSync|appendFileSync|writeJsonAtomicShared)\s*\(/
-  const runnerSources = SOURCES.filter((rel) => rel.startsWith('src/runner/'))
+  const BUNDLED = ['src/runner/', 'src/cli/', 'src/monitor/']
+  const runnerSources = SOURCES.filter((rel) => BUNDLED.some((d) => rel.startsWith(d)))
 
-  test('the scan sees the runner at all', () => {
-    expect(runnerSources.length).toBeGreaterThan(5)
+  test('the scan sees the bundled sources at all', () => {
+    expect(runnerSources.length).toBeGreaterThan(15)
   })
 
   for (const [file, name] of Object.entries(CONST_FOR)) {

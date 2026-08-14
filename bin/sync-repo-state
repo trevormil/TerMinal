@@ -13,9 +13,9 @@ import { REPO_STATE_BLOCK } from '../src/main/repo-state-inline'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 export const TARGETS = [
-  'bin/terminal-cli',
-  // bin/terminal-cron is BUILT from src/runner (bun build), so the copy that has
-  // to stay in sync is the runner's source module, not the generated bundle.
+  // bin/terminal-cron and bin/terminal-cli are BUILT (bun build) from src/runner
+  // and src/cli, and both import this module — so the copy that has to stay in
+  // sync is that source module, not either generated bundle.
   'src/runner/repo-state-block.js',
   'bin/terminal-mcp-server',
   // Ships to remote hosts, so it cannot import from the app bundle either —

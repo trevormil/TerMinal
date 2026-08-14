@@ -22,6 +22,7 @@ export const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 export const TARGETS: Record<string, string> = {
   'terminal-cron': 'runner',
   'terminal-monitor': 'monitor',
+  'terminal-cli': 'cli',
 }
 
 export const entryFor = (name: string): string => join(ROOT, 'src', TARGETS[name], 'index.ts')

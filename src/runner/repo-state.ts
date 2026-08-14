@@ -55,6 +55,11 @@ export function statePathForRead(root: string, rel: string): string {
   return repoState().statePathForRead(root, rel)
 }
 
+/** Where a loop already running out of a legacy in-repo dir keeps writing. */
+export function statePathSticky(root: string, rel: string): string {
+  return repoState().statePathSticky(root, rel)
+}
+
 export function repoStateEnv(root: string): Record<string, string> {
   return repoState().repoStateEnv(root)
 }

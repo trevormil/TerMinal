@@ -6,10 +6,11 @@ import { join, resolve } from 'node:path'
 // Ticket 0123. The agent-facing verbs speak Inbox now; the HITL spellings stay
 // forever as aliases.
 //
-// Both files are self-contained scripts (copied to remote hosts, no sibling
-// modules), so they cannot be imported here — the CLI dispatches on
-// `process.argv` at load and the MCP server opens stdio. Source analysis is the
-// same technique src/main/inbox-category-wiring.test.ts already uses on them.
+// Neither entrypoint can be imported here — the CLI dispatches on `process.argv`
+// at load and the MCP server opens stdio. Source analysis is the same technique
+// src/main/inbox-category-wiring.test.ts already uses on them. The CLI is read
+// from its TYPED SOURCE (src/cli/index.ts) now that bin/terminal-cli is a build
+// artifact of it; the MCP server is still a hand-written script.
 //
 // What matters is not that the new names EXIST but that they reach the same
 // implementation: a generic verb wired to a second, subtly different code path
@@ -17,7 +18,7 @@ import { join, resolve } from 'node:path'
 
 const ROOT = resolve(import.meta.dir, '../..')
 const read = (rel: string): string => readFileSync(join(ROOT, rel), 'utf8')
-const CLI = read('bin/terminal-cli')
+const CLI = read('src/cli/index.ts')
 const MCP = read('bin/terminal-mcp-server')
 
 describe('terminal-cli: inbox-item is the documented verb (ticket 0123)', () => {
