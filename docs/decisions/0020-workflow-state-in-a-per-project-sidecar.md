@@ -9,6 +9,9 @@ Date: 2026-08-04
 > personal files this ADR left behind as "repo config" (tickets.json, notes,
 > knowledge, snippets, loops, agent-requests, the stamp) move to the sidecar
 > too.
+> Amended by the [Sunset](#sunset-2026-10-13) note appended below: the
+> COMPATIBILITY half of this decision — legacy in-repo reads and the ambient
+> migration banner — now ends on a fixed date. The decision itself stands.
 
 Status: accepted
 
@@ -103,3 +106,41 @@ Workflow state for a repo lives in a **per-project sidecar** at
 - Obsidian-provider repos are unaffected: the vault still wins for tickets, and
   that precedence is now consistent across the app, the CLI, cron and MCP
   (cron previously ignored it entirely — ticket 0281).
+
+## Sunset (2026-10-13)
+
+Appended 2026-08-13. The decision above is unchanged; this note gives its
+transitional machinery an expiry.
+
+"Migration is opt-in per repo and non-destructive" was the right call for the
+cutover and the wrong shape to keep forever. The gradual path costs a legacy
+branch in every resolver — `repoStatePathForRead`, the STICKY loop variant,
+`existingProjectAreaPaths`, and the byte-identical copy of all three inside
+`repo-state-inline.ts` — and each of those branches is a live route by which
+personal state can be read out of (and so keep accreting in) a shared checkout.
+An indefinite compatibility layer is also indefinitely untested against the
+thing it enables: the longer it stands, the more repos never move.
+
+So the window has an end date, `MIGRATION_SUNSET = 2026-10-13`, in
+`src/shared/migration-sunset.ts`. Every consumer resolves it through
+`migrationWindowOpen(now?)`, which takes an injectable clock so before/on/after
+is unit-testable rather than a thing you wait for.
+
+Before the date, nothing changes. From it:
+
+- **Legacy reads stop.** Sidecar areas and personal state files resolve
+  sidecar-only. Unmigrated files stay on disk, untouched — they are simply no
+  longer a state root. `agents` is unaffected: it never moved.
+- **The ambient offer stops.** The in-session banner does not appear and the
+  legacy-seed sweep is no longer proposed unprompted.
+- **The manual migrate does NOT stop.** `repoState:migrate` stays callable from
+  Settings → Updates → Project state, with the same move/never-clobber rules. A
+  repo that turns up years late must still be able to move its state; what
+  sunsets is the flow that ran by itself, not the capability.
+- **It is not silent.** A repo that still holds state files files one deduped
+  Activity warning per repo on open, naming the count, the date, and where the
+  manual move lives.
+
+The app and the standalone scripts cut over on the same day by construction:
+the sunset lives in the canonical inline block too, and a parity test drives
+both implementations against one injected clock.

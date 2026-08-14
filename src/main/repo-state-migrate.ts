@@ -10,9 +10,13 @@ import {
   rmSync,
   statSync,
 } from 'node:fs'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { projectAreaCandidates, TERMINAL_DIR, type ProjectArea } from './project-layout'
 import { legacyStatePath, repoStateRoot, SIDECAR_AREAS, MIGRATED_STATE_RELS } from './repo-state'
+// Type-only: importing the events MODULE would pull electron into a file the
+// migration tests exercise headlessly. The emitter is injected instead.
+import type { ActivityEvent } from './events'
+import { MIGRATION_SUNSET, migrationWindowOpen } from '../shared/migration-sunset'
 
 // One-time move of a repo's existing workflow state into its sidecar.
 //
@@ -253,6 +257,49 @@ export function sidecarGitStatus(repoRoot: string): SidecarGitStatus {
   if (!path || !existsSync(join(path, '.git'))) return { isRepo: false, commits: 0, path }
   const count = Number(git(path, ['rev-list', '--count', 'HEAD']) || '0')
   return { isRepo: true, commits: Number.isFinite(count) ? count : 0, path }
+}
+
+// Repos already warned about stranded state, so opening one repeatedly (every
+// Settings visit re-probes it) produces one event, not a stream. Per app run
+// on purpose: a restart is a cheap, deliberate re-reminder of a repo the user
+// has not dealt with, and it keeps this out of persisted state.
+const warnedRepos = new Set<string>()
+
+/** Clear the per-run dedupe (tests). */
+export function resetLegacyStateWarnings(): void {
+  warnedRepos.clear()
+}
+
+/**
+ * Past the migration sunset, an unmigrated repo's tickets/reviews/sessions
+ * stop being read: the files are intact, but nothing shows them. Silently
+ * losing a backlog is the worst possible way to end a migration, so say it
+ * once per repo — and say where the still-supported manual move lives, since
+ * the banner that used to offer it is gone by then.
+ *
+ * Returns whether it emitted, so a caller can test the dedupe.
+ */
+export function warnIfLegacyStateStranded(
+  repoRoot: string,
+  pending: number,
+  deps: { now?: Date; emit: (e: Omit<ActivityEvent, 'id' | 'ts'>) => unknown },
+): boolean {
+  if (!repoRoot || pending <= 0) return false
+  if (migrationWindowOpen(deps.now)) return false
+  if (warnedRepos.has(repoRoot)) return false
+  warnedRepos.add(repoRoot)
+  const repo = basename(repoRoot)
+  deps.emit({
+    kind: 'blocked',
+    title: `Workflow state stranded in ${repo}`,
+    detail:
+      `${pending} file(s) still live inside the repo and are no longer read — ` +
+      `the automatic migration to the per-project sidecar ended on ${MIGRATION_SUNSET}. ` +
+      `Move them with Settings → Updates → Project state → Migrate.`,
+    repo,
+    repoRoot,
+  })
+  return true
 }
 
 /** Files still sitting in the repo that the sidecar should own. */

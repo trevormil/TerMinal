@@ -12,6 +12,7 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { INSIDE_MIGRATION_WINDOW, MIGRATION_SUNSET_AT } from './shared/migration-sunset'
 
 // Four separate bugs shipped where a skill helper prefixed an ABSOLUTE sidecar
 // path with the repo root, writing state back inside the repo. Text guards
@@ -51,6 +52,30 @@ const run = (script: string, args: string[] = []) =>
       PATH: `${PLUGIN_BIN}:${process.env.PATH}`,
     },
   }).trim()
+
+/** The same run, with `date -u +%s` answering a chosen instant. The shell
+ *  reader's legacy merge sunsets on a date it can only learn from the clock,
+ *  so faking the clock is the only way to test either side of it. */
+const runAt = (script: string, args: string[], nowMs: number) => {
+  const shim = join(tmp, 'clockbin')
+  mkdirSync(shim, { recursive: true })
+  const fake = join(shim, 'date')
+  writeFileSync(
+    fake,
+    `#!/bin/sh\nif [ "$*" = "-u +%s" ]; then echo ${Math.floor(nowMs / 1000)}; else exec /bin/date "$@"; fi\n`,
+    { mode: 0o755 },
+  )
+  return execFileSync('bash', [script, ...args], {
+    cwd: repo,
+    encoding: 'utf8',
+    env: {
+      ...cleanEnv(),
+      HOME: join(tmp, 'home'),
+      TERMINAL_REPO_STATE_DIR: stateDir,
+      PATH: `${shim}:${PLUGIN_BIN}:${process.env.PATH}`,
+    },
+  }).trim()
+}
 
 /** Files anywhere under the repo that look like workflow state. */
 function stateFilesInRepo(): string[] {
@@ -149,8 +174,14 @@ describe('skill helpers resolve into the sidecar, never into the repo', () => {
     rmSync(join(repo, '.TerMinal'), { recursive: true, force: true })
     mkdirSync(join(repo, 'backlog'), { recursive: true })
     const sidecar = join(stateDir, 'github.com/o/beh', 'backlog')
+    // Pinned inside the migration window: this case is ABOUT the legacy read,
+    // which ends on MIGRATION_SUNSET (the case below covers the other side).
     const dirs = () =>
-      run(join(import.meta.dir, '..', 'plugin/bin/tm-state-dirs'), ['backlog'])
+      runAt(
+        join(import.meta.dir, '..', 'plugin/bin/tm-state-dirs'),
+        ['backlog'],
+        INSIDE_MIGRATION_WINDOW.getTime(),
+      )
         .split('\n')
         .filter(Boolean)
 
@@ -163,6 +194,21 @@ describe('skill helpers resolve into the sidecar, never into the repo', () => {
     // repo copy stays visible, which is what makes the migration free.
     mkdirSync(sidecar, { recursive: true })
     expect(dirs()).toEqual([sidecar, join(repo, 'backlog')])
+  })
+
+  test('…until the migration sunset, after which the shell reads sidecar-only', () => {
+    // Same repo, same files, one thing different: the clock. A skill listing
+    // tickets through this helper must go quiet about the repo on the same day
+    // the app does, or the two disagree about where the backlog is.
+    rmSync(join(repo, '.TerMinal'), { recursive: true, force: true })
+    mkdirSync(join(repo, 'backlog'), { recursive: true })
+    const sidecar = join(stateDir, 'github.com/o/beh', 'backlog')
+    mkdirSync(sidecar, { recursive: true })
+    const script = join(import.meta.dir, '..', 'plugin/bin/tm-state-dirs')
+    const at = (nowMs: number) => runAt(script, ['backlog'], nowMs).split('\n').filter(Boolean)
+
+    expect(at(INSIDE_MIGRATION_WINDOW.getTime())).toEqual([sidecar, join(repo, 'backlog')])
+    expect(at(MIGRATION_SUNSET_AT.getTime())).toEqual([sidecar])
   })
 })
 

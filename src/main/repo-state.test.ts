@@ -10,10 +10,19 @@ import {
   repoStateEnv,
   repoStatePathForRead,
   repoStatePathForWrite,
+  repoStatePathSticky,
   clearRepoStateCache,
   SIDECAR_AREAS,
   SIDECAR_STATE_RELS,
 } from './repo-state'
+import { INSIDE_MIGRATION_WINDOW, MIGRATION_SUNSET_AT } from '../shared/migration-sunset'
+
+// Clocks either side of the migration sunset, both DERIVED from the constant.
+// Every assertion about the legacy fallback pins one explicitly — a test that
+// relied on the real clock would pass today and start failing by itself on the
+// sunset date.
+const OPEN = INSIDE_MIGRATION_WINDOW
+const CLOSED = MIGRATION_SUNSET_AT
 
 // The sidecar keeps personal workflow state (tickets, reviews, sessions) out of
 // a repo that may be shared with collaborators. The key must be stable across
@@ -287,21 +296,21 @@ describe('personal state files (SIDECAR_STATE_RELS)', () => {
     const repo = makeRepo('reads', 'git@github.com:acme/reads.git')
     const sidecar = join(stateDir, 'github.com/acme/reads')
     // nothing anywhere → the (missing) sidecar path, where a write would land
-    expect(repoStatePathForRead(repo, 'notes.md')).toBe(join(sidecar, 'notes.md'))
+    expect(repoStatePathForRead(repo, 'notes.md', OPEN)).toBe(join(sidecar, 'notes.md'))
     // legacy only → legacy (committed state stays visible, no migration needed)
     mkdirSync(join(repo, '.TerMinal'), { recursive: true })
     writeFileSync(join(repo, '.TerMinal', 'notes.md'), 'old')
-    expect(repoStatePathForRead(repo, 'notes.md')).toBe(join(repo, '.TerMinal', 'notes.md'))
+    expect(repoStatePathForRead(repo, 'notes.md', OPEN)).toBe(join(repo, '.TerMinal', 'notes.md'))
     // both → sidecar wins (writes went there; it is the live copy)
     mkdirSync(sidecar, { recursive: true })
     writeFileSync(join(sidecar, 'notes.md'), 'new')
-    expect(repoStatePathForRead(repo, 'notes.md')).toBe(join(sidecar, 'notes.md'))
+    expect(repoStatePathForRead(repo, 'notes.md', OPEN)).toBe(join(sidecar, 'notes.md'))
   })
 
   test('dir rels resolve the same way as file rels', () => {
     const repo = makeRepo('dirs', 'git@github.com:acme/dirs.git')
     mkdirSync(join(repo, '.TerMinal', 'loops', 'abc'), { recursive: true })
-    expect(repoStatePathForRead(repo, 'loops')).toBe(join(repo, '.TerMinal', 'loops'))
+    expect(repoStatePathForRead(repo, 'loops', OPEN)).toBe(join(repo, '.TerMinal', 'loops'))
     const sidecarLoops = join(stateDir, 'github.com/acme/dirs', 'loops')
     mkdirSync(sidecarLoops, { recursive: true })
     expect(repoStatePathForRead(repo, 'loops')).toBe(sidecarLoops)
@@ -329,5 +338,66 @@ describe('personal state files (SIDECAR_STATE_RELS)', () => {
     for (const repoOwned of ['template.json', 'widgets.json', 'tabs.json']) {
       expect(SIDECAR_STATE_RELS as readonly string[]).not.toContain(repoOwned)
     }
+  })
+})
+
+describe('the legacy fallback sunsets on MIGRATION_SUNSET', () => {
+  // The compatibility read is the last route by which a shared checkout can
+  // still act as a state root. It is deliberately kept while the migration
+  // window is open and deliberately dropped once it closes — with the SAME
+  // in-repo file present in both cases, which is what proves the clock (and
+  // not some incidental filesystem state) is what changed.
+  test('a legacy-only file is read before the sunset and ignored after it', () => {
+    const repo = makeRepo('sunset-read', 'git@github.com:acme/sunset-read.git')
+    const sidecar = join(stateDir, 'github.com/acme/sunset-read')
+    mkdirSync(join(repo, '.TerMinal'), { recursive: true })
+    writeFileSync(join(repo, '.TerMinal', 'notes.md'), 'old')
+
+    expect(repoStatePathForRead(repo, 'notes.md', OPEN)).toBe(join(repo, '.TerMinal', 'notes.md'))
+    expect(repoStatePathForRead(repo, 'notes.md', CLOSED)).toBe(join(sidecar, 'notes.md'))
+  })
+
+  test('after the sunset a read resolves exactly where a write would land', () => {
+    const repo = makeRepo('sunset-parity', 'git@github.com:acme/parity.git')
+    mkdirSync(join(repo, '.TerMinal'), { recursive: true })
+    writeFileSync(join(repo, '.TerMinal', 'tickets.json'), '{}')
+    expect(repoStatePathForRead(repo, 'tickets.json', CLOSED)).toBe(
+      repoStatePathForWrite(repo, 'tickets.json'),
+    )
+  })
+
+  test('a MIGRATED file is unaffected by the sunset — the sidecar always wins', () => {
+    const repo = makeRepo('sunset-migrated', 'git@github.com:acme/migrated.git')
+    const sidecar = join(stateDir, 'github.com/acme/migrated')
+    mkdirSync(sidecar, { recursive: true })
+    writeFileSync(join(sidecar, 'notes.md'), 'new')
+    for (const now of [OPEN, CLOSED]) {
+      expect(repoStatePathForRead(repo, 'notes.md', now)).toBe(join(sidecar, 'notes.md'))
+    }
+  })
+
+  test('the STICKY variant keeps an in-flight legacy loop before the sunset…', () => {
+    const repo = makeRepo('sticky-open', 'git@github.com:acme/sticky-open.git')
+    mkdirSync(join(repo, '.TerMinal', 'loops', 'run1'), { recursive: true })
+    expect(repoStatePathSticky(repo, join('loops', 'run1'), OPEN)).toBe(
+      join(repo, '.TerMinal', 'loops', 'run1'),
+    )
+  })
+
+  test('…and degrades to the sidecar after it, rather than to an empty path', () => {
+    // Sticky's whole job is to prefer the legacy dir, so the sunset has to
+    // leave it with a real path — not '' — or a post-sunset loop writes to the
+    // filesystem root.
+    const repo = makeRepo('sticky-closed', 'git@github.com:acme/sticky-closed.git')
+    mkdirSync(join(repo, '.TerMinal', 'loops', 'run1'), { recursive: true })
+    const resolved = repoStatePathSticky(repo, join('loops', 'run1'), CLOSED)
+    expect(resolved).toBe(join(stateDir, 'github.com/acme/sticky-closed', 'loops', 'run1'))
+    expect(resolved).toBe(repoStatePathForWrite(repo, join('loops', 'run1')))
+  })
+
+  test('with no repo at all the sunset still yields the legacy shape, never an empty path', () => {
+    // repoStatePathForWrite returns '' without a repo; sticky must not hand
+    // that back as a directory to write into.
+    expect(repoStatePathSticky('', 'loops', CLOSED)).toBe(join('', '.TerMinal', 'loops'))
   })
 })

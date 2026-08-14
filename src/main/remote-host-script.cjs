@@ -58,6 +58,15 @@ const CFG =
    script uses every helper, and the copies must stay byte-identical. */
 const SIDECAR_AREAS = ['backlog', 'sessions', 'reviews', 'checks', 'reports']
 const repoStateKeyCache = new Map()
+// The legacy in-repo READ has an end date — see src/shared/migration-sunset.ts.
+// The CLI has to cut over on exactly the same day as the app: if one side kept
+// reading the repo a day longer, it would keep resurrecting (and appending
+// beside) state the other had already stopped seeing. The date is pinned
+// against the app's constant by src/main/repo-state-parity.test.ts.
+const MIGRATION_SUNSET_MS = Date.parse('2026-10-13T00:00:00Z')
+function migrationWindowOpen() {
+  return Date.now() < MIGRATION_SUNSET_MS
+}
 function repoStateDir() {
   return process.env.TERMINAL_REPO_STATE_DIR?.trim() || join(CFG, 'repos')
 }
@@ -123,14 +132,16 @@ function sidecarAreaPath(root, area) {
 }
 // Reads merge sidecar + in-repo so state already committed stays visible;
 // writes always go to the sidecar so a shared repo stops accreting state.
+// The in-repo half is the migration's compatibility layer and ends with it.
 function areaPathsFor(root, area, candidates) {
   const out = []
   const sidecar = sidecarAreaPath(root, area)
   if (sidecar && existsSync(sidecar)) out.push(sidecar)
-  for (const rel of candidates) {
-    const p = join(root, rel)
-    if (existsSync(p)) out.push(p)
-  }
+  if (migrationWindowOpen())
+    for (const rel of candidates) {
+      const p = join(root, rel)
+      if (existsSync(p)) out.push(p)
+    }
   return out
 }
 function areaWritePath(root, area, candidates, isV2) {
@@ -174,15 +185,16 @@ function statePathForRead(root, rel) {
   const sidecar = statePathForWrite(root, rel)
   if (sidecar && existsSync(sidecar)) return sidecar
   const legacy = join(root, '.TerMinal', rel)
-  if (existsSync(legacy)) return legacy
+  if (migrationWindowOpen() && existsSync(legacy)) return legacy
   return sidecar || legacy
 }
 // STICKY variant for live runtime dirs (loops/<id>): legacy wins while it
 // exists, so an in-flight legacy loop never flips to a half-written sidecar
-// copy mid-run. Mirrors repoStatePathSticky in src/main/repo-state.ts.
+// copy mid-run. Mirrors repoStatePathSticky in src/main/repo-state.ts —
+// including degrading to the write path once the migration window closes.
 function statePathSticky(root, rel) {
   const legacy = join(root, '.TerMinal', rel)
-  if (existsSync(legacy)) return legacy
+  if (migrationWindowOpen() && existsSync(legacy)) return legacy
   return statePathForWrite(root, rel) || legacy
 }
 // Env handed to a spawned agent/script: the same TERMINAL_<AREA>_DIR values
