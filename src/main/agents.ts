@@ -1169,7 +1169,7 @@ The script body MUST follow this shape:
       cursor-agent -p --force --trust --workspace "\${TERMINAL_WORKTREE}" --model "\${TERMINAL_MODEL:-composer-2.5-fast}" "<prompt>"
   - For TerMinal helpers, use these (on PATH via ~/.config/TerMinal/bin/terminal-cli):
       terminal-cli ticket "<title>" "<body>"   # file a backlog ticket on TERMINAL_REPO
-      terminal-cli hitl "<title>" "<action>"   # file a global HITL item + Telegram ping
+      terminal-cli inbox-item "<title>" "<action>"   # file a global Inbox item + Telegram ping
       terminal-cli activity <kind> "<title>" "<detail>"   # emit one activity-feed event
       terminal-cli notify "<message>"          # raw Telegram message
       terminal-cli state get-sha               # last main/master sha this agent scanned ("" if first run)
@@ -1188,7 +1188,7 @@ THE BODY MUST FOLLOW THE PROJECT'S WORKFLOW:
   - File backlog tickets via \`terminal-cli ticket\` for findings the script cannot fix in-pass.
   - Open a PR only when there are concrete changes. If the diff is ONLY docs/markdown/tickets/reports, apply the \`auto-mergeable\` label per the forge contract (\`tm-agent-spec forge\`).
   - Explicit success criteria (what makes the run "done"). \`exit 0\` on success; non-zero on failure.
-  - HITL only for true blockers (decisions, credentials, hard blockers) via \`terminal-cli hitl\`.
+  - Inbox items only for true blockers (decisions, credentials, hard blockers) via \`terminal-cli inbox-item\`.
 
 CONVENTIONS TO READ BEFORE WRITING THE SCRIPT:
   1. CLAUDE.md (root) — project conventions and global rules.
@@ -1553,7 +1553,7 @@ export function runTicketSpawn(
  *  merge-ready PRs (stacked-mr passes, gated by review), never merging to main. */
 export function runFactorySpawn(repoRoot: string, engine: Engine): AgentRun | { error: string } {
   if (!repoRoot) return { error: 'not a git repo' }
-  const prompt = `Run the /factory orchestrator for THIS repository, following the project's /factory skill exactly. This is a no-handoff loop: continuously turn the backlog into REVIEWED, merge-ready PRs by reconciling with /merge-sync, running /stacked-mr passes (build a stack TDD-first → batch-review to the bar → handle verdicts), compacting/migrating context at phase boundaries, then continuing with any runnable independent lane. NEVER stop with "tell me when you're ready" language. Stop only if the user explicitly stops you, the goal is actually complete, or every remaining lane is blocked on human-only action. NEVER merge to main/master — the human merges. Park any TRUE human-need (decision, approval, creds, hard blocker) to the global HITL inbox with ~/.config/TerMinal/plugin/bin/hitl, then continue other work. Emit an activity event at each checkpoint. Do not invent scope. End only when the factory loop has no runnable work left.`
+  const prompt = `Run the /factory orchestrator for THIS repository, following the project's /factory skill exactly. This is a no-handoff loop: continuously turn the backlog into REVIEWED, merge-ready PRs by reconciling with /merge-sync, running /stacked-mr passes (build a stack TDD-first → batch-review to the bar → handle verdicts), compacting/migrating context at phase boundaries, then continuing with any runnable independent lane. NEVER stop with "tell me when you're ready" language. Stop only if the user explicitly stops you, the goal is actually complete, or every remaining lane is blocked on human-only action. NEVER merge to main/master — the human merges. Park any TRUE human-need (decision, approval, creds, hard blocker) to the global Inbox with ~/.config/TerMinal/plugin/bin/inbox-item, then continue other work. Emit an activity event at each checkpoint. Do not invent scope. End only when the factory loop has no runnable work left.`
   return runSpec(repoRoot, {
     id: 'factory',
     title: 'Factory',

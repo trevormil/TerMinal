@@ -79,10 +79,10 @@ anything else that can run a shell command.
   without the agent polling. Silent and exit 0 wherever no session is
   registered, which is most sessions.
 - **`src/main/bridge/`** is a small authenticated JSON API — no streaming.
-  Sessions: `GET /v1/remote` (sessions + HITL), `POST /v1/remote/new`,
+  Sessions: `GET /v1/remote` (sessions + Inbox), `POST /v1/remote/new`,
   `DELETE /v1/remote/:id`, `GET /v1/remote/:id/messages`,
   `POST /v1/remote/:id/reply`, `POST /v1/remote/:id/end`,
-  `GET /v1/remote/:id/image/:name`. HITL: `GET /v1/hitl`,
+  `GET /v1/remote/:id/image/:name`. Inbox: `GET /v1/hitl`,
   `POST /v1/hitl/read`, `POST /v1/hitl/:id`. Workspaces: `GET /v1/repos`,
   `GET /v1/workspaces`, `GET /v1/workspaces/:kind` (lists),
   `GET /v1/workspace/:kind` (drill-downs), `GET /v1/engines`. Push:
@@ -99,7 +99,7 @@ anything else that can run a shell command.
   live at `~/.config/TerMinal/bridge/` (0600) rather than `settings.json`,
   whose `safeStorage` sealing drops secrets outright when OS encryption is
   unavailable — which would silently unpair a phone in dev builds.
-- **HITL fans out to remote hosts**, so an agent blocked on `tm` still reaches
+- **The Inbox fans out to remote hosts**, so an agent blocked on `tm` still reaches
   the phone.
 - **Push is an alert channel.** `createPushChannel` sits alongside
   telegram/desktop/webhook in `dispatchAlert`, and `src/main/bridge/push.ts`
@@ -123,7 +123,7 @@ Both are "just a folder" discovered with Vite `import.meta.glob`:
 - **Tabs** — `src/renderer/src/tabs/<id>/index.tsx` default-exporting a `Tab`
   (`{ id, title, icon, order, appliesTo(ctx), badge?, Component }`).
   `SessionView` filters by `appliesTo(tabContext)` and polls `badge(gt)` for the
-  live count pill (HITL).
+  live count pill (unread Inbox items).
 
 `icon` is a `lucide-react` component in both. **Command widgets**
 (`lib/commandWidget.tsx`) wrap a declarative JSON shell-command spec as a Plugin.
@@ -206,7 +206,7 @@ Both are "just a folder" discovered with Vite `import.meta.glob`:
 
 A continuous, observable agent loop layered on top of the session shell. The
 human gate to `main`/`master` is never crossed by the app — agents stop at "PR
-open" and park true human-needs to HITL.
+open" and park true human-needs to the Inbox.
 
 **Append-only global stores** under `~/.config/TerMinal/` (cross-repo, work
 offline, survive a fresh clone):
@@ -219,9 +219,9 @@ offline, survive a fresh clone):
   channel-agnostic alert layer (`notify-channels.ts`: Telegram, desktop,
   outbound webhook — per-channel toggles in Settings, failure-isolated; see
   [`docs/alert-channels.md`](./alert-channels.md)).
-- `hitl.json` — the global HITL inbox (`hitl.ts`). `fileHitl` writes the item,
+- `hitl.json` — the global Inbox (`hitl.ts`). The FILE keeps its pre-rename name: the concept was renamed (ticket 0123), the state area was not, because five processes write it. `fileHitl` writes the item,
   mirrors a `blocked` activity event, and fires a Telegram ping. The top-right
-  Inbox button badge shows the unresolved count. HITL items filed
+  Inbox button badge shows the unresolved count. Items filed
   **out-of-process** (`bin/terminal-cli`, `bin/terminal-cron`,
   `bin/terminal-mcp-server`) ping Telegram too, but those are plain Bun
   processes that can't call Electron `safeStorage` to decrypt the token sealed
@@ -245,7 +245,7 @@ surfaced instead of silently never firing. `syncSchedule` is idempotent
 plist is unchanged) so an app relaunch doesn't reset a `StartInterval` job's
 timer. Interval `nextRun` is anchored to `max(lastRun, jobLoadedAt)` (plist
 mtime), matching launchd's actual "fires N seconds after load" semantics. A
-failed (not cancelled) run auto-files a HITL item.
+failed (not cancelled) run auto-files an Inbox item.
 
 **Aggregation**: the cross-repo factory-health roll-up (throughput windows,
 agent/cron success rates, recent failures, a daily sparkline, top repos) lives

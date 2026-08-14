@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# inbox-item — file an item to the GLOBAL TerMinal Inbox (ticket 0123).
+#
+#   inbox-item "<title>" ["<action needed>"] ["<detail>"]
+#
+# This is the documented spelling. `hitl` is the same command under its
+# pre-rename name and stays supported forever: a human-in-the-loop request is
+# one kind of Inbox item, not a separate queue. Everything else — what to
+# reserve it for, what it writes, why agents never resolve their own items —
+# is documented in the sibling `hitl` script, which does the work.
+set -uo pipefail
+exec "$(dirname "$0")/hitl" "$@"

@@ -15,7 +15,7 @@ mechanics live below and load only when an agent actually needs them.
 **One GLOBAL inbox**, not per-repo. Any skill/agent in any repo:
 
 ```bash
-$HOME/.config/TerMinal/plugin/bin/hitl "<title>" "<action needed>" "<optional detail>"
+$HOME/.config/TerMinal/plugin/bin/inbox-item "<title>" "<action needed>" "<optional detail>"
 ```
 
 Use the helper only; do not write `~/.config/TerMinal/hitl.json` directly.
@@ -30,7 +30,7 @@ Inbox or Telegram Resolve. To wait on a human decision, query the item/list
 status or periodically re-check the original blocker; when it no longer blocks,
 update any related `stuck` ticket back to `open` (or `in-progress` if resuming
 it now), then continue the workflow. Do not leave stale blocked state behind.
-Do not self-resolve your own HITL item.
+Do not self-resolve your own Inbox item.
 
 Claude/Codex Stop hooks, and Cursor completion flows launched through TerMinal,
 can file deterministic completion Inbox items by default. Disable only those
@@ -76,4 +76,4 @@ request sources, queue counts, and recent request-to-run outcomes. Use
 `terminal-cli inbox example`, `terminal-cli inbox status`, and the
 `enqueue-request` skill for one-off requests. Use `new-inbox-source` to build a
 durable adapter/poller/webhook bridge. Do not put arbitrary shell in inbox
-events; trigger an existing agent/script or file HITL for human approval.
+events; trigger an existing agent/script or file an Inbox item for human approval.

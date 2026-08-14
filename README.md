@@ -27,7 +27,7 @@ every time.
 
 **And it's local-first, all the way down.** No server, no account, no telemetry.
 Sessions run on *your* `claude`/`gh`/`glab` auth. Every artifact — activity
-feed, run logs, schedules, review results, the HITL inbox — is a file on your
+feed, run logs, schedules, review results, the Inbox — is a file on your
 machine that renders offline.
 
 > macOS-first ([why](docs/decisions/0003-macos-primary-platform.md)).
@@ -102,11 +102,11 @@ machine that renders offline.
 ### A human gate that actually gates
 
 - **One inbox for everything human.** Approvals, credentials, decisions, hard
-  blockers — agents file items to a global HITL inbox from any repo, each pings
+  blockers — agents file items to a global Inbox from any repo, each pings
   Telegram, and the app badges the count until you resolve it.
 - **AFK control from your phone.** The Telegram bridge is two-way: `/feature
   <idea>` drafts a ticket and offers a start-work button; `/runs`, `/tail`,
-  `/hitl`, `/cancel` and friends steer the factory while you're away.
+  `/inbox`, `/cancel` and friends steer the factory while you're away.
 - **Merges stay yours.** Agents stop at "PR open" by design, and the tooling
   itself enforces it — a prompt can't talk an agent past the gate.
 
@@ -208,7 +208,7 @@ Settings → Tabs.
 | **Factory** | The orchestrator toggle plus cross-repo health: throughput, cycle time, failures. |
 | **Observability** | The AI-spend and trace explorer — every request, priced. |
 | **CI / Browser / Files / Notes** | Forge CI page, embedded webview, a CodeMirror editor with project search, autosaving markdown notes. |
-| **Inbox** (top-right) | The global HITL queue, badge always visible. |
+| **Inbox** (top-right) | The global Inbox — any category of item needing your eyes; badge always visible. |
 
 Secondary surfaces (Activity feed, Docs, Reports, Sessions, Help, custom
 Panels) are one toggle away.
@@ -278,7 +278,7 @@ per repo; an optional `badge(gt)` paints a live count.
 
 Agents integrate from the outside too: an **MCP server** (installable from
 Settings or onboarding) gives any Claude Code/Codex session cross-session views
-— tickets, runs, HITL, activity — and the append-only stores under
+— tickets, runs, Inbox, activity — and the append-only stores under
 `~/.config/TerMinal/` mean a CI job or shell script can join the activity feed
 by appending a line.
 

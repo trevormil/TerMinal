@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import { join, resolve } from 'node:path'
 
 // Ticket 0123. The agent-facing verbs speak Inbox now; the HITL spellings stay
@@ -114,5 +115,32 @@ describe('terminal-mcp-server: inbox tools alias the hitl tools (ticket 0123)', 
       MCP.indexOf("name: 'resolve_inbox_item'"),
     )
     expect(schema).toContain('category:')
+  })
+})
+
+describe('plugin/bin: the shipped helper is spelled inbox-item too (ticket 0123)', () => {
+  const HELPER = join(ROOT, 'plugin', 'bin', 'inbox-item')
+
+  test('it exists and is executable — agents invoke it by path', () => {
+    // The whole plugin/bin directory is copied into ~/.config/TerMinal at
+    // install; a helper that lands without its exec bit is "permission denied"
+    // at the exact moment an agent is trying to report a blocker.
+    expect(statSync(HELPER).mode & 0o111).toBeGreaterThan(0)
+  })
+
+  test('it delegates to the sibling hitl script rather than re-implementing it', () => {
+    // Two scripts writing hitl.json is two places to get the lock, the dedup
+    // and the Telegram fallback subtly different.
+    const src = readFileSync(HELPER, 'utf8')
+    expect(src).toMatch(/exec\s+"\$\(dirname "\$0"\)\/hitl"\s+"\$@"/)
+  })
+
+  test('running it with no arguments still prints usage instead of filing junk', () => {
+    // Cheap end-to-end proof the delegation actually resolves — a broken
+    // `dirname` path would fail here, not in the grep above.
+    const out = spawnSync(HELPER, [], { encoding: 'utf8' })
+    expect(out.stderr + out.stdout).toContain('usage:')
+    // Always exits 0 by design: a filing helper must never fail an agent run.
+    expect(out.status).toBe(0)
   })
 })

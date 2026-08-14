@@ -18,7 +18,7 @@ green." The right shape is:
 1. **Run a deterministic check** (a shell script). If it exits 0, we're done
    — no tokens spent.
 2. **If it fails** (non-zero exit), escalate to claude or codex with the
-   failure context, and let the LLM diagnose + propose a fix / file HITL.
+   failure context, and let the LLM diagnose + propose a fix / file an Inbox item.
 
 A pipeline encodes this conditional escalation so it doesn't need to be
 hand-coded into every agent prompt.
@@ -52,7 +52,7 @@ steps:
       ${prev.stderr_tail}
       Diagnose root cause, propose a fix, and if it's safe + scoped, apply it
       and open a PR per the project's pr-creation conventions. Otherwise
-      file a ticket + HITL.
+      file a ticket + an Inbox item.
 ```
 
 ## Conditions
