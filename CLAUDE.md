@@ -68,19 +68,23 @@ bunx tsc --noEmit         # typecheck
   with `appliesTo` + `Component` + optional `badge`.
 - `src/renderer/src/lib/nav.ts` — cross-tab navigation bus
   (`navigateTo(tabId, payload?)`). Used for HITL → Runs, Activity → Tickets, etc.
-- `src/runner/` → `bin/terminal-cron`, `src/monitor/` → `bin/terminal-monitor` —
-  the standalone processes, as typed modules. Each is BUILT to a single
-  self-contained bundle by `bun run build:bin` (`scripts/build-bin.ts` holds the
-  table), which `bun run build`/`dist` do for you. Edit the TS, never the
-  artifact; the artifacts stay committed because host-provision, the agent image
-  and the app all copy them out of a checkout, and `src/bin-build-sync.test.ts`
-  fails if any is stale. Being bundles is also what lets them SHARE the pure
-  logic with the app (`src/shared/monitor-flap.ts`,
-  `src/shared/monitor-classify.ts`) instead of mirroring it.
-- `bin/terminal-cli` — helper script exposed inside agent `.sh` bodies for
+- The standalone processes are typed modules under `src/`, each BUILT to a
+  single self-contained bundle in `bin/` by `bun run build:bin`
+  (`scripts/build-bin.ts` holds the table), which `bun run build`/`dist` do for
+  you: `src/runner/` → `bin/terminal-cron`, `src/monitor/` →
+  `bin/terminal-monitor`, `src/cli/` → `bin/terminal-cli`, `src/mcp/` →
+  `bin/terminal-mcp-server`. Edit the TS, never the artifact; the artifacts stay
+  committed because host-provision, the agent image and the app all copy them out
+  of a checkout, and `src/bin-build-sync.test.ts` fails if any is stale.
+  Bundling is also what lets them IMPORT the shared modules
+  (`src/runner/state-io.ts` for the crash-safe lock,
+  `src/runner/repo-state.ts` for sidecar resolution, `src/shared/monitor-*.ts`
+  for the monitor logic) instead of carrying hand-copies — the bundler inlines
+  those at build time, so the artifact still resolves nothing at runtime.
+- `bin/terminal-cli` — helper exposed inside agent `.sh` bodies for
   ticket/hitl/activity/notify/state subcommands plus MCP passthroughs such as
   `terminal-cli mcp list_agents ...` and
-  `terminal-cli mcp request_agent_artifact ...`.
+  `terminal-cli mcp request_agent_artifact ...`. Source: `src/cli/`.
 - `~/.config/TerMinal/` — runtime state (schedules, cron-runs, agent-state,
   hitl, settings). Use Settings → Open TerMinal config dir to inspect.
 

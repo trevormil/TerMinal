@@ -8,9 +8,9 @@ import { join, resolve } from 'node:path'
 //
 // Neither entrypoint can be imported here — the CLI dispatches on `process.argv`
 // at load and the MCP server opens stdio. Source analysis is the same technique
-// src/main/inbox-category-wiring.test.ts already uses on them. The CLI is read
-// from its TYPED SOURCE (src/cli/index.ts) now that bin/terminal-cli is a build
-// artifact of it; the MCP server is still a hand-written script.
+// src/main/inbox-category-wiring.test.ts already uses on them. Both are read
+// from their TYPED SOURCES now that bin/terminal-cli and bin/terminal-mcp-server
+// are build artifacts of src/cli and src/mcp.
 //
 // What matters is not that the new names EXIST but that they reach the same
 // implementation: a generic verb wired to a second, subtly different code path
@@ -19,7 +19,7 @@ import { join, resolve } from 'node:path'
 const ROOT = resolve(import.meta.dir, '../..')
 const read = (rel: string): string => readFileSync(join(ROOT, rel), 'utf8')
 const CLI = read('src/cli/index.ts')
-const MCP = read('bin/terminal-mcp-server')
+const MCP = read('src/mcp/index.ts') + read('src/mcp/tools.ts')
 
 describe('terminal-cli: inbox-item is the documented verb (ticket 0123)', () => {
   // The dispatch arm both verbs share. `hitl` must stay the LAST case label of

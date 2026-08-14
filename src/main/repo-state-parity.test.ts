@@ -11,21 +11,21 @@ import {
   MIGRATION_SUNSET_AT,
 } from '../shared/migration-sunset'
 
-// bin/terminal-mcp-server and the bundled standalone processes cannot import
-// from the app bundle, so a copy of the sidecar resolver is generated from
-// src/main/repo-state-inline.ts and pinned here. Three separate bugs have
-// already shipped from hand-copied logic drifting (the remote-host bootstrap
-// markers, the Obsidian gap, this resolver).
+// The standalone processes cannot import from the app bundle, so a copy of the
+// sidecar resolver is generated from src/main/repo-state-inline.ts and pinned
+// here. Three separate bugs have already shipped from hand-copied logic
+// drifting (the remote-host bootstrap markers, the Obsidian gap, this resolver).
 //
-// The BUNDLED scripts (bin/terminal-cron, bin/terminal-cli) pin their SOURCE
-// module — src/runner/repo-state-block.js, which both import — not the
-// artifact: a bundler's output is not a place to pin anything byte-for-byte.
+// Every BUNDLED script (bin/terminal-cron, bin/terminal-cli,
+// bin/terminal-mcp-server) now IMPORTS one module —
+// src/runner/repo-state-block.js — so that source module is what is pinned, not
+// any artifact: a bundler's output is not a place to pin anything
+// byte-for-byte. src/main/remote-host-script.cjs is the last real hand-copy.
 
 const ROOT = join(import.meta.dir, '..', '..')
 const COPIES = [
   // [file carrying the generated block, file wiring it to the area candidates]
   ['src/runner/repo-state-block.js', 'src/runner/repo-state.ts'],
-  ['bin/terminal-mcp-server', 'bin/terminal-mcp-server'],
 ]
 
 describe('sidecar resolver copies', () => {

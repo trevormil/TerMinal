@@ -1,7 +1,11 @@
 #!/usr/bin/env bun
-// Writes the canonical sidecar-state block (src/main/repo-state-inline.js) into
+// Writes the canonical sidecar-state block (src/main/repo-state-inline.ts) into
 // every standalone script that carries a copy. Run after editing the canonical
 // block; src/main/repo-state-parity.test.ts fails if a copy drifts.
+//
+// Down to two copies: every BUNDLED script (terminal-cron, terminal-cli,
+// terminal-mcp-server) imports src/runner/repo-state-block.js instead of
+// carrying its own.
 //
 //   bun run sync:repo-state          # rewrite the copies
 //   bun run sync:repo-state --check  # exit 1 if any copy is stale (CI-friendly)
@@ -13,11 +17,10 @@ import { REPO_STATE_BLOCK } from '../src/main/repo-state-inline'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 export const TARGETS = [
-  // bin/terminal-cron and bin/terminal-cli are BUILT (bun build) from src/runner
-  // and src/cli, and both import this module — so the copy that has to stay in
-  // sync is that source module, not either generated bundle.
+  // The bundled scripts are BUILT (bun build) from src/runner, src/cli and
+  // src/mcp, and all three import this module — so the copy that has to stay
+  // in sync is that source module, not any generated bundle.
   'src/runner/repo-state-block.js',
-  'bin/terminal-mcp-server',
   // Ships to remote hosts, so it cannot import from the app bundle either —
   // and it resolves tickets/reviews for the scheduled agents running there.
   'src/main/remote-host-script.cjs',

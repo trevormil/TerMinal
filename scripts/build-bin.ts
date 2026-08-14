@@ -23,6 +23,7 @@ export const TARGETS: Record<string, string> = {
   'terminal-cron': 'runner',
   'terminal-monitor': 'monitor',
   'terminal-cli': 'cli',
+  'terminal-mcp-server': 'mcp',
 }
 
 export const entryFor = (name: string): string => join(ROOT, 'src', TARGETS[name], 'index.ts')

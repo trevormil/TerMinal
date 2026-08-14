@@ -71,7 +71,7 @@ const EXPECTED: Record<
     // suite below.
     'src/runner/config.ts': 'read-only',
     'src/cli/env.ts': 'read-only',
-    'bin/terminal-mcp-server': 'updateJsonListShared',
+    'src/mcp/env.ts': 'read-only',
   },
   'monitors.json': {
     'src/main/monitors.ts': 'updateJsonState',
@@ -85,7 +85,8 @@ const EXPECTED: Record<
     'src/main/agents.ts': 'read-only',
     'src/main/remote-host-script.cjs': 'updateJsonListShared',
     'src/runner/config.ts': 'read-only',
-    'bin/terminal-mcp-server': 'read-only',
+    'src/mcp/reads.ts': 'read-only',
+    'src/mcp/repo.ts': 'read-only',
   },
 }
 
@@ -131,26 +132,34 @@ describe('discipline — every mutator of shared state takes the lock (ticket 11
   }
 })
 
-describe('the standalone processes carry the inlined lock helper', () => {
-  // bin/ scripts are copied to remote hosts and baked into the agent image with
-  // no sibling modules, so they inline the helper instead of importing it.
-  // bin-state-lock.test.ts asserts the copies are byte-identical; this asserts
-  // that every bin script which mutates shared state has one at all.
-  const needsHelper = new Set<string>()
-  for (const file of SHARED_STATE) {
-    for (const [rel, how] of Object.entries(EXPECTED[file])) {
-      if (rel.startsWith('bin/') && how === 'updateJsonListShared') needsHelper.add(rel)
-    }
-  }
+describe('the last hand-copy of the lock helper, and no more (ticket 0132)', () => {
+  // src/main/remote-host-script.cjs is copied to a remote host on its own, with
+  // no sibling modules and no bundler, so it still inlines the helper — and
+  // src/main/remote-state-lock.test.ts drives THAT copy in real concurrent
+  // processes. Every other standalone process is now a bundle of typed sources
+  // that import src/runner/state-io.ts, whose own concurrency proof is
+  // src/runner/state-io.test.ts.
+  test('remote-host-script.cjs still carries one, and is exercised', () => {
+    const source = readFileSync(join(ROOT, 'src/main/remote-host-script.cjs'), 'utf8')
+    expect(source).toContain('// --- crash-safe shared-state writes')
+    expect(source).toContain('function withFileLockShared')
+    expect(source).toContain('function updateJsonListShared')
+    expect(readFileSync(join(ROOT, 'src/main/remote-state-lock.test.ts'), 'utf8')).toContain(
+      'REMOTE_SCRIPT inlines a working shared-state lock',
+    )
+  })
 
-  for (const rel of [...needsHelper].sort()) {
-    test(`${rel} inlines the shared-state helper block`, () => {
-      const source = readFileSync(join(ROOT, rel), 'utf8')
-      expect(source).toContain('// --- crash-safe shared-state writes')
-      expect(source).toContain('function withFileLockShared')
-      expect(source).toContain('function updateJsonListShared')
-    })
-  }
+  test('no bundled source re-inlines one', () => {
+    // Re-inlining would silently reintroduce the drift this ticket removed, and
+    // the concurrency proof would no longer cover what actually ships.
+    const offenders = SOURCES.filter(
+      (rel) =>
+        ['src/runner/', 'src/cli/', 'src/mcp/', 'src/monitor/'].some((d) => rel.startsWith(d)) &&
+        rel !== 'src/runner/state-io.ts' &&
+        readFileSync(join(ROOT, rel), 'utf8').includes('function withFileLockShared'),
+    )
+    expect(offenders).toEqual([])
+  })
 })
 
 describe('the bundled processes mutate shared state through the same lock (ticket 110)', () => {

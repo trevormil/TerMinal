@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { deriveCategories, normalizeCategory } from '../shared/inbox-categories'
 import { normalizeCategoryShared } from '../cli/hitl'
+import { normalizeCategoryShared as mcpNormalizeCategoryShared } from '../mcp/writes'
 import type { HitlItem as MainHitlItem } from './hitl'
 import type { HitlItem as RendererHitlItem } from '../renderer/src/lib/types'
 
@@ -75,31 +76,26 @@ describe('category survives every writer (ticket 120)', () => {
     }
   })
 
-  test('bin/terminal-mcp-server accepts it too', () => {
-    const mcp = read('bin/terminal-mcp-server')
-    expect(mcp).toMatch(/severity,\s*category\s*\}/)
+  test('terminal-mcp-server accepts it too', () => {
+    const mcp = read('src/mcp/writes.ts')
+    expect(mcp).toMatch(/severity,\s*category,?\s*\}/)
     expect(mcp).toContain('normalizeCategoryShared(category)')
   })
 
-  test('the MCP server still inlines the normalizer, since it cannot import it', () => {
-    // Same constraint as the file-lock helper: a standalone script copied to
-    // remote hosts with no sibling modules. terminal-cli no longer needs one —
-    // it is bundled from src/cli, so its copy is a real module.
-    expect(read('bin/terminal-mcp-server')).toContain('function normalizeCategoryShared')
+  test('both filing paths define their own normalizer, as real modules', () => {
+    // They used to be inlined blocks in two standalone scripts. Both scripts are
+    // bundles of typed sources now, so the copies are modules — still two of
+    // them, because the two verbs write subtly different shapes and collapsing
+    // them is a behaviour change, not a port.
     expect(read('src/cli/hitl.ts')).toContain('export function normalizeCategoryShared')
+    expect(read('src/mcp/writes.ts')).toContain('export function normalizeCategoryShared')
   })
 
   test('the copies agree with the canonical one', () => {
     // RUN, not eyeballed — a copy that has drifted is the whole risk of copying.
-    const mcp = read('bin/terminal-mcp-server')
-    const start = mcp.indexOf('function normalizeCategoryShared')
-    const body = mcp.slice(start, mcp.indexOf('\n}\n', start) + 3)
-    const mirrored = new Function(`${body}; return normalizeCategoryShared`)() as (
-      v: unknown,
-    ) => string | undefined
     for (const input of ['Monitoring', '  spaced  ', '', 'x'.repeat(80), 'a\nb', 42, null]) {
-      expect(mirrored(input)).toEqual(normalizeCategory(input))
       expect(normalizeCategoryShared(input)).toEqual(normalizeCategory(input))
+      expect(mcpNormalizeCategoryShared(input)).toEqual(normalizeCategory(input))
     }
   })
 })

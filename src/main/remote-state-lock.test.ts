@@ -10,11 +10,11 @@ import { REMOTE_SCRIPT } from './remote'
 // an advisory lock. A lock only works if every writer takes it, so this script
 // was quietly the writer that broke it for everyone else on that machine.
 //
-// This copy is CommonJS and therefore cannot be the byte-identical copy that
-// bin-state-lock.test.ts pins across the two bin scripts. A third variant that
-// nothing exercises is exactly how a "fixed" lock silently stops locking, so
-// these tests run the real block, out of the real shipped string, in real
-// concurrent processes.
+// This copy is CommonJS, and since ticket 0132 it is the LAST hand-copy of the
+// lock in the tree: every standalone bin/ script is now a bundle of typed
+// sources that import src/runner/state-io.ts. A copy that nothing exercises is
+// exactly how a "fixed" lock silently stops locking, so these tests run the real
+// block, out of the real shipped string, in real concurrent processes.
 
 /** Extract the locking block from the shipped script into a loadable module. */
 function extractHelpers(): string {
