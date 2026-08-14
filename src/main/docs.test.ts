@@ -14,7 +14,6 @@ import { INSIDE_MIGRATION_WINDOW, setMigrationClock } from '../shared/migration-
 beforeAll(() => setMigrationClock(INSIDE_MIGRATION_WINDOW))
 afterAll(() => setMigrationClock(null))
 
-
 describe('listDocs', () => {
   const roots: string[] = []
   const repo = () => {

@@ -300,9 +300,7 @@ describe('personal state files (SIDECAR_STATE_RELS)', () => {
     // legacy only → legacy (committed state stays visible, no migration needed)
     mkdirSync(join(repo, '.TerMinal'), { recursive: true })
     writeFileSync(join(repo, '.TerMinal', 'notes.md'), 'old')
-    expect(repoStatePathForRead(repo, 'notes.md', OPEN)).toBe(
-      join(repo, '.TerMinal', 'notes.md'),
-    )
+    expect(repoStatePathForRead(repo, 'notes.md', OPEN)).toBe(join(repo, '.TerMinal', 'notes.md'))
     // both → sidecar wins (writes went there; it is the live copy)
     mkdirSync(sidecar, { recursive: true })
     writeFileSync(join(sidecar, 'notes.md'), 'new')

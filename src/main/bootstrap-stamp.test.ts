@@ -15,7 +15,6 @@ import { INSIDE_MIGRATION_WINDOW, setMigrationClock } from '../shared/migration-
 beforeAll(() => setMigrationClock(INSIDE_MIGRATION_WINDOW))
 afterAll(() => setMigrationClock(null))
 
-
 const STAMP = { sha: 'abc1234def5678', stampedAt: '2026-07-17T12:00:00.000Z' }
 
 // The stamp is machine-local bookkeeping, so it lives in the repo's SIDECAR —

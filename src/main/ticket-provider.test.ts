@@ -30,7 +30,6 @@ import { INSIDE_MIGRATION_WINDOW, setMigrationClock } from '../shared/migration-
 beforeAll(() => setMigrationClock(INSIDE_MIGRATION_WINDOW))
 afterAll(() => setMigrationClock(null))
 
-
 function repoWithTicketConfig(config?: unknown) {
   const repo = mkdtempSync(join(tmpdir(), 'terminal-ticket-provider-'))
   mkdirSync(join(repo, '.TerMinal'), { recursive: true })

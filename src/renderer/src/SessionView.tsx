@@ -215,6 +215,12 @@ function BootstrapBanner({ repoRoot, active }: { repoRoot: string; active: boole
 // sidecar, and per-repo skill/bin/hook copies the global tm plugin now
 // serves. One click runs the same one-time move as Settings → Updates →
 // Project state. Dismissed state is per-repo + persisted.
+//
+// This is the AMBIENT half of the migration and it retires on
+// MIGRATION_SUNSET (src/shared/migration-sunset.ts): from that date the banner
+// never appears, the move is Settings-only, and a repo that still carries
+// state gets one Activity warning instead — filed by the status probe below,
+// which is why the probe outlives the banner.
 function MigrateBanner({ repoRoot, active }: { repoRoot: string; active: boolean }) {
   const [state, setState] = useState<'unknown' | 'needed' | 'ok' | 'running' | 'done' | 'error'>(
     'unknown',
@@ -229,10 +235,17 @@ function MigrateBanner({ repoRoot, active }: { repoRoot: string; active: boolean
     }
   })()
   useEffect(() => {
-    if (!active || !repoRoot || dismissed) return
+    if (!active || !repoRoot) return
     let cancelled = false
+    // Probed even when the banner is dismissed or retired: past the sunset
+    // this call is what files the one-per-repo warning, and a repo dismissed
+    // months ago is exactly the one that needs telling.
     void window.gt.repoState.status(repoRoot).then((r) => {
       if (cancelled) return
+      if (dismissed || !r.migrationOpen) {
+        setState('ok')
+        return
+      }
       const parts: string[] = []
       if (r.pending) parts.push(`${r.pending} workflow state file(s)`)
       if (r.legacyCopies) parts.push(`${r.legacyCopies} plugin-served skill/hook copies`)

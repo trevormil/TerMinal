@@ -3,8 +3,18 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { migrateRepoState, sidecarGitStatus } from './repo-state-migrate'
+import {
+  migrateRepoState,
+  resetLegacyStateWarnings,
+  sidecarGitStatus,
+  warnIfLegacyStateStranded,
+} from './repo-state-migrate'
 import { clearRepoStateCache, repoStateRoot } from './repo-state'
+import {
+  INSIDE_MIGRATION_WINDOW,
+  MIGRATION_SUNSET,
+  MIGRATION_SUNSET_AT,
+} from '../shared/migration-sunset'
 
 // Moving a user's tickets and reviews is the one irreversible-feeling step in
 // this migration, so it MOVES (never deletes), refuses to clobber, and is
@@ -195,5 +205,67 @@ describe('sidecar git history', () => {
     expect(r.moved).toBe(0)
     expect(existsSync(join(repo, '.TerMinal', 'template.json'))).toBe(true)
     expect(existsSync(join(repo, '.TerMinal', 'widgets.json'))).toBe(true)
+  })
+})
+
+describe('post-sunset warning', () => {
+  // Once the window closes, an unmigrated repo's tickets and reviews simply
+  // stop appearing — the state is intact on disk but nothing reads it. That
+  // must not be silent, and it must not nag: one event per repo, carrying the
+  // pointer to the migrate that still works.
+  type Emitted = { kind: string; title: string; detail?: string; repoRoot?: string }
+  const collector = () => {
+    const seen: Emitted[] = []
+    return { seen, emit: (e: Emitted) => seen.push(e) }
+  }
+
+  beforeEach(() => resetLegacyStateWarnings())
+  afterEach(() => resetLegacyStateWarnings())
+
+  test('says nothing while the migration window is still open', () => {
+    const c = collector()
+    expect(warnIfLegacyStateStranded(repo, 7, { now: INSIDE_MIGRATION_WINDOW, emit: c.emit })).toBe(
+      false,
+    )
+    expect(c.seen).toEqual([])
+  })
+
+  test('warns once past the sunset, naming the count and the manual migrate', () => {
+    const c = collector()
+    expect(warnIfLegacyStateStranded(repo, 7, { now: MIGRATION_SUNSET_AT, emit: c.emit })).toBe(
+      true,
+    )
+    expect(c.seen.length).toBe(1)
+    expect(c.seen[0].repoRoot).toBe(repo)
+    expect(c.seen[0].detail).toContain('7')
+    expect(c.seen[0].detail).toContain(MIGRATION_SUNSET)
+    // The escape hatch has to be IN the message — the banner that used to
+    // offer it is gone by now.
+    expect(c.seen[0].detail).toMatch(/Settings/)
+  })
+
+  test('is deduped per repo, however often the repo is reopened', () => {
+    const c = collector()
+    for (let i = 0; i < 5; i++)
+      warnIfLegacyStateStranded(repo, 7, { now: MIGRATION_SUNSET_AT, emit: c.emit })
+    expect(c.seen.length).toBe(1)
+  })
+
+  test('dedupes per repo, not globally — a second repo still gets its warning', () => {
+    const c = collector()
+    const other = join(tmp, 'other-repo')
+    mkdirSync(other, { recursive: true })
+    warnIfLegacyStateStranded(repo, 1, { now: MIGRATION_SUNSET_AT, emit: c.emit })
+    warnIfLegacyStateStranded(other, 2, { now: MIGRATION_SUNSET_AT, emit: c.emit })
+    expect(c.seen.map((e) => e.repoRoot)).toEqual([repo, other])
+  })
+
+  test('a fully migrated repo is never warned about', () => {
+    const c = collector()
+    expect(warnIfLegacyStateStranded(repo, 0, { now: MIGRATION_SUNSET_AT, emit: c.emit })).toBe(
+      false,
+    )
+    expect(warnIfLegacyStateStranded('', 9, { now: MIGRATION_SUNSET_AT, emit: c.emit })).toBe(false)
+    expect(c.seen).toEqual([])
   })
 })

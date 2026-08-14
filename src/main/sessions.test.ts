@@ -13,7 +13,6 @@ import { INSIDE_MIGRATION_WINDOW, setMigrationClock } from '../shared/migration-
 beforeAll(() => setMigrationClock(INSIDE_MIGRATION_WINDOW))
 afterAll(() => setMigrationClock(null))
 
-
 const sessionMd = (id: number, title: string) => `---
 id: ${id}
 title: "${title}"

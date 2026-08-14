@@ -24,7 +24,6 @@ import { INSIDE_MIGRATION_WINDOW, setMigrationClock } from '../shared/migration-
 beforeAll(() => setMigrationClock(INSIDE_MIGRATION_WINDOW))
 afterAll(() => setMigrationClock(null))
 
-
 const ticketMd = (id: number, title: string) =>
   `---\nid: ${id}\ntitle: "${title}"\nstatus: open\npriority: medium\ntype: feature\n---\n\nbody\n`
 

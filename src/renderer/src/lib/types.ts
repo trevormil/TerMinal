@@ -1879,6 +1879,12 @@ export type RepoStateStatus = {
   commits: number
   path: string
   pending: number
+  /**
+   * Is the gradual-migration window still open (src/shared/migration-sunset.ts)?
+   * False retires the AMBIENT half — the unprompted banner — while `pending`
+   * and the manual migrate stay available from Settings.
+   */
+  migrationOpen: boolean
   /** Per-repo skill/bin/hook copies the global tm plugin now serves. */
   legacyCopies: number
 }

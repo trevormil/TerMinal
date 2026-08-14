@@ -239,7 +239,13 @@ import {
 } from './agents'
 import { readSchedules } from './schedules'
 import { installTmPlugin, tmPluginStatus } from './plugin-install'
-import { migrateRepoState, pendingMigration, sidecarGitStatus } from './repo-state-migrate'
+import {
+  migrateRepoState,
+  pendingMigration,
+  sidecarGitStatus,
+  warnIfLegacyStateStranded,
+} from './repo-state-migrate'
+import { migrationWindowOpen } from '../shared/migration-sunset'
 import {
   legacyPluginCopies,
   legacySeedCandidates,
@@ -1934,12 +1940,20 @@ ipcMain.handle('plugin:status', () => tmPluginStatus())
 
 // Per-project sidecar: where this repo's tickets/reviews/sessions live, how
 // many files are still sitting in the repo, and the one-time move.
+// `migrationOpen` is the ambient half's on/off switch: it drives the banner
+// the renderer shows unprompted, which retires on MIGRATION_SUNSET. The
+// manual migrate below stays callable forever, so this probe keeps reporting
+// `pending` either way — and past the sunset it also files the one-per-repo
+// warning, since a repo that never migrated has just gone quiet.
 ipcMain.handle('repoState:status', (_e, repoRoot: string) => {
   const root = repoRoot || cur().cwd
   const pluginDir = join(terminalConfigDir(), 'plugin')
+  const pending = pendingMigration(root)
+  warnIfLegacyStateStranded(root, pending, { emit: emitActivity })
   return {
     ...sidecarGitStatus(root),
-    pending: pendingMigration(root),
+    pending,
+    migrationOpen: migrationWindowOpen(),
     legacyCopies:
       legacyPluginCopies(root, pluginDir).length + legacySeedCandidates(root, pluginDir).length,
   }
