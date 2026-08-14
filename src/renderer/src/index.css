@@ -121,6 +121,15 @@ body,
   border-radius: 4px;
 }
 
+/* Horizontal pill rows are ~30px tall; the global 8px scrollbar would eat a
+   quarter of that. Scroll, but without a visible track. */
+.gt-scroll-x-bare {
+  scrollbar-width: none;
+}
+.gt-scroll-x-bare::-webkit-scrollbar {
+  height: 0;
+}
+
 .xterm .xterm-viewport {
   scrollbar-gutter: stable;
 }
