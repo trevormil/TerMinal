@@ -9,7 +9,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { parseUsageFromOutput, writeAIRun } from './ai-runs'
-import { readJson, RUNS_DIR, WT_DIR } from './config'
+import { RUNS_DIR, WT_DIR } from './config'
 import { readDisabled } from './disabled'
 import {
   buildChildEnv,

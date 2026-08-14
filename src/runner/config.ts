@@ -29,7 +29,8 @@ export const MONITOR_LOG = (): string => join(CFG(), 'monitor.log')
 export const RETENTION_MARKER = (): string => join(CFG(), 'retention.last.json')
 export const REVIEW_PATTERNS_MARKER = (): string => join(CFG(), 'review-patterns.last.json')
 export const TERMINAL_BIN_DIR = (): string => join(CFG(), 'bin')
-export const LEGACY_TG_SCRIPT = (): string => join(homedir(), '.claude', 'bin', 'telegram-notify.sh')
+export const LEGACY_TG_SCRIPT = (): string =>
+  join(homedir(), '.claude', 'bin', 'telegram-notify.sh')
 
 /** Read a JSON file, or `null` when absent/unparseable. Never throws. */
 export function readJson<T>(file: string): T | null {

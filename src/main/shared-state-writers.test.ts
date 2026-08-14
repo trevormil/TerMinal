@@ -37,8 +37,11 @@ function sourceFiles(): string[] {
     }
   }
   walk(join(ROOT, 'src/main'))
+  walk(join(ROOT, 'src/runner'))
   for (const name of readdirSync(join(ROOT, 'bin'))) {
-    if (name.startsWith('terminal-')) out.push(join('bin', name))
+    // bin/terminal-cron is BUILT from src/runner (walked above); scanning the
+    // bundle would pin the bundler's quoting style, not a writer.
+    if (name.startsWith('terminal-') && name !== 'terminal-cron') out.push(join('bin', name))
   }
   return out.sort()
 }
@@ -62,7 +65,9 @@ const EXPECTED: Record<
     'src/main/hitl.ts': 'updateJsonState',
     'src/main/bridge/push.ts': 'read-only',
     'src/main/remote-host-script.cjs': 'updateJsonListShared',
-    'bin/terminal-cron': 'updateJsonListShared',
+    // The runner names each shared path exactly once, in its config seam; the
+    // modules that mutate them are pinned by the runner suite below.
+    'src/runner/config.ts': 'read-only',
     'bin/terminal-cli': 'updateJsonListShared',
     'bin/terminal-mcp-server': 'updateJsonListShared',
   },
@@ -75,7 +80,7 @@ const EXPECTED: Record<
     'src/main/schedules.ts': 'updateJsonState',
     'src/main/agents.ts': 'read-only',
     'src/main/remote-host-script.cjs': 'updateJsonListShared',
-    'bin/terminal-cron': 'updateJsonListShared',
+    'src/runner/config.ts': 'read-only',
     'bin/terminal-mcp-server': 'read-only',
   },
 }
@@ -140,6 +145,39 @@ describe('the standalone processes carry the inlined lock helper', () => {
       expect(source).toContain('// --- crash-safe shared-state writes')
       expect(source).toContain('function withFileLockShared')
       expect(source).toContain('function updateJsonListShared')
+    })
+  }
+})
+
+describe('the runner mutates shared state through the same lock (ticket 110)', () => {
+  // src/runner resolves every shared path through its config seam, so the
+  // literal-filename scan above cannot see its writers. Follow the CONSTANT
+  // instead: any runner line that names one and performs an unlocked write is
+  // the same bug the discipline suite exists to catch.
+  const CONST_FOR: Partial<Record<SharedFile, string>> = {
+    'hitl.json': 'HITL_FILE()',
+    'schedules.json': 'SCHED_FILE()',
+  }
+  const RAW = /\b(?:writeFileSync|appendFileSync|writeJsonAtomicShared)\s*\(/
+  const runnerSources = SOURCES.filter((rel) => rel.startsWith('src/runner/'))
+
+  test('the scan sees the runner at all', () => {
+    expect(runnerSources.length).toBeGreaterThan(5)
+  })
+
+  for (const [file, name] of Object.entries(CONST_FOR)) {
+    test(`every runner write of ${file} takes the lock`, () => {
+      const mentioning: string[] = []
+      for (const rel of runnerSources) {
+        for (const line of readFileSync(join(ROOT, rel), 'utf8').split('\n')) {
+          if (!line.includes(name)) continue
+          mentioning.push(`${rel}  ${line.trim()}`)
+          if (RAW.test(line)) expect(`${rel}  ${line.trim()}`).toContain('updateJsonListShared')
+        }
+      }
+      // A guard that matches nothing is not a guard.
+      expect(mentioning.length).toBeGreaterThan(0)
+      expect(mentioning.some((l) => l.includes('updateJsonListShared'))).toBe(true)
     })
   }
 })

@@ -74,8 +74,7 @@ export function effortFlag(sched: Pick<Schedule, 'effort' | 'engine'>): string {
   if (sched.engine === 'claude') return ` --effort ${level}`
   if (sched.engine === 'pi') return ` --thinking ${level}`
   if (sched.engine === 'opencode') return ` --variant ${level}`
-  if (sched.engine === 'openrouter' || sched.engine === 'openai-compat')
-    return ` --effort ${level}` // or-agent passthrough → codex model_reasoning_effort
+  if (sched.engine === 'openrouter' || sched.engine === 'openai-compat') return ` --effort ${level}` // or-agent passthrough → codex model_reasoning_effort
   return ` -c model_reasoning_effort=${level}` // codex (TUI and exec take -c)
 }
 
