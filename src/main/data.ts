@@ -28,8 +28,39 @@ import { createMetaCache } from './session-meta-cache'
 import { repoRootOf } from './repo'
 import { readStatusLine } from './statusline'
 import { configPath } from './config-dir'
-import type { ObservabilityAgentGraph, ObservabilityEventKind, ObservabilitySession, ObservabilitySessionDetail, ObservabilitySnapshot, ObservabilityTimelineEvent, ObservabilityTokenSnapshot, ObservabilityToolCall, ObservabilityToolCallPayload, ObservabilityTranscriptLine, ObservabilityTranscriptWindow, SessionMeta, TaskItem, TranscriptStats } from '../shared/types/observability'
-export type { ObservabilityAgentGraph, ObservabilityEventKind, ObservabilitySession, ObservabilitySessionDetail, ObservabilitySnapshot, ObservabilityTimelineEvent, ObservabilityTokenSnapshot, ObservabilityToolCall, ObservabilityToolCallPayload, ObservabilityTranscriptLine, ObservabilityTranscriptWindow, ObservabilityTurn, SessionMeta, TaskItem, TranscriptStats } from '../shared/types/observability'
+import type {
+  ObservabilityAgentGraph,
+  ObservabilityEventKind,
+  ObservabilitySession,
+  ObservabilitySessionDetail,
+  ObservabilitySnapshot,
+  ObservabilityTimelineEvent,
+  ObservabilityTokenSnapshot,
+  ObservabilityToolCall,
+  ObservabilityToolCallPayload,
+  ObservabilityTranscriptLine,
+  ObservabilityTranscriptWindow,
+  SessionMeta,
+  TaskItem,
+  TranscriptStats,
+} from '../shared/types/observability'
+export type {
+  ObservabilityAgentGraph,
+  ObservabilityEventKind,
+  ObservabilitySession,
+  ObservabilitySessionDetail,
+  ObservabilitySnapshot,
+  ObservabilityTimelineEvent,
+  ObservabilityTokenSnapshot,
+  ObservabilityToolCall,
+  ObservabilityToolCallPayload,
+  ObservabilityTranscriptLine,
+  ObservabilityTranscriptWindow,
+  ObservabilityTurn,
+  SessionMeta,
+  TaskItem,
+  TranscriptStats,
+} from '../shared/types/observability'
 
 // ---------------------------------------------------------------------------
 // Claude Code transcript reader

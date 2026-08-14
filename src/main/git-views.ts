@@ -1,6 +1,32 @@
 import { execFileSync } from 'node:child_process'
-import type { GitBranch, GitBranchesResult, GitCommit, GitCommitDetail, GitCommitFile, GitLogResult, GitOpResult, GitPatchResult, GitStash, GitStashesResult, GitTag, GitTagsResult } from '../shared/types/git'
-export type { GitBranch, GitBranchesResult, GitCommit, GitCommitDetail, GitCommitFile, GitLogResult, GitOpResult, GitPatchResult, GitStash, GitStashesResult, GitTag, GitTagsResult } from '../shared/types/git'
+import type {
+  GitBranch,
+  GitBranchesResult,
+  GitCommit,
+  GitCommitDetail,
+  GitCommitFile,
+  GitLogResult,
+  GitOpResult,
+  GitPatchResult,
+  GitStash,
+  GitStashesResult,
+  GitTag,
+  GitTagsResult,
+} from '../shared/types/git'
+export type {
+  GitBranch,
+  GitBranchesResult,
+  GitCommit,
+  GitCommitDetail,
+  GitCommitFile,
+  GitLogResult,
+  GitOpResult,
+  GitPatchResult,
+  GitStash,
+  GitStashesResult,
+  GitTag,
+  GitTagsResult,
+} from '../shared/types/git'
 
 // Read-mostly git views for the Files tab (history / branches / stashes /
 // tags) — thin typed parsers over git plumbing, VS Code-style. The only

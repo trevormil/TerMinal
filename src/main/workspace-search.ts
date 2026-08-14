@@ -8,8 +8,16 @@ import { listAllRuns } from './cron-runs'
 import { listPromptSnippets } from './snippets'
 import { listPersistentAgentArtifacts, listPersistentAgents } from './persistent-agents'
 import { listRepoTickets, repoTicketProvider } from './ticket-provider'
-import type { WorkspaceSearchKind, WorkspaceSearchResponse, WorkspaceSearchResult } from '../shared/types/workspace'
-export type { WorkspaceSearchKind, WorkspaceSearchResponse, WorkspaceSearchResult } from '../shared/types/workspace'
+import type {
+  WorkspaceSearchKind,
+  WorkspaceSearchResponse,
+  WorkspaceSearchResult,
+} from '../shared/types/workspace'
+export type {
+  WorkspaceSearchKind,
+  WorkspaceSearchResponse,
+  WorkspaceSearchResult,
+} from '../shared/types/workspace'
 
 const ALL_KINDS: WorkspaceSearchKind[] = [
   'file',

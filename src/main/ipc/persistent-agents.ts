@@ -24,9 +24,7 @@ import {
 export function registerPersistentAgentsIpc(deps: { activeRepoRoot(): string }): void {
   handle('persistent-agents:list', () => listPersistentAgents())
   handle('persistent-agents:get', (_e, id: string) => getPersistentAgent(id))
-  handle('persistent-agents:save', (_e, input: unknown) =>
-    savePersistentAgent(input as never),
-  )
+  handle('persistent-agents:save', (_e, input: unknown) => savePersistentAgent(input as never))
   handle('persistent-agents:remove', (_e, id: string) => removePersistentAgent(id))
   handle('persistent-agents:update-file', (_e, id: string, file: string, body: string) =>
     updatePersistentAgentFile(id, file as never, body),
@@ -40,10 +38,8 @@ export function registerPersistentAgentsIpc(deps: { activeRepoRoot(): string }):
         model,
       }),
   )
-  handle(
-    'persistent-agents:run',
-    (_e, id: string, task: string, engine?: Engine, model?: string) =>
-      runPersistentAgent(deps.activeRepoRoot(), id, task, engine, model),
+  handle('persistent-agents:run', (_e, id: string, task: string, engine?: Engine, model?: string) =>
+    runPersistentAgent(deps.activeRepoRoot(), id, task, engine, model),
   )
   handle('persistent-agents:design', (_e, text: string, engine: Engine, model?: string) =>
     runPersistentAgentDesignerSpawn(deps.activeRepoRoot(), text, engine, model),
@@ -63,9 +59,7 @@ export function registerPersistentAgentsIpc(deps: { activeRepoRoot(): string }):
   handle('persistent-agents:files-delete', (_e, id: string, rel: string) =>
     removePersistentAgentFile(id, rel),
   )
-  handle('persistent-agents:artifacts-list', (_e, id: string) =>
-    listPersistentAgentArtifacts(id),
-  )
+  handle('persistent-agents:artifacts-list', (_e, id: string) => listPersistentAgentArtifacts(id))
   handle('persistent-agents:artifacts-read', (_e, id: string, rel: string) =>
     readPersistentAgentArtifact(id, rel),
   )

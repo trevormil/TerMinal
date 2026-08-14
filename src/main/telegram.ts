@@ -688,10 +688,10 @@ function cmdHitl() {
   const open = readHitl()
     .filter((h) => h.status === 'open')
     .slice(0, 10)
-  if (!open.length) return reply('🟢 No open HITL items.')
+  if (!open.length) return reply('🟢 Inbox zero — nothing open.')
   lastHitlIds = open.map((h) => h.id)
   reply(
-    'HITL · open:\n' +
+    'Inbox · open:\n' +
       open
         .map(
           (h, i) =>
@@ -716,17 +716,17 @@ function cmdResolveHitl(args: string[], resolved: boolean) {
     lastHitlIds = []
     return reply(
       count
-        ? `☑️ Resolved ${count} open HITL item${count === 1 ? '' : 's'}.`
-        : '🟢 No open HITL items.',
+        ? `☑️ Resolved ${count} open Inbox item${count === 1 ? '' : 's'}.`
+        : '🟢 Inbox zero — nothing open.',
     )
   }
   const n = parseInt(args[0] || '', 10)
   if (!n || n < 1)
-    return reply(`Usage: /${resolved ? 'resolve <n|all>' : 'reopen <n>'} (from /hitl)`)
+    return reply(`Usage: /${resolved ? 'resolve <n|all>' : 'reopen <n>'} (from /inbox)`)
   const id = lastHitlIds[n - 1]
-  if (!id) return reply('No such #n — send /hitl first.')
+  if (!id) return reply('No such #n — send /inbox first.')
   resolveHitl(id, resolved)
-  reply(`${resolved ? '☑️ Resolved' : '↺ Reopened'} HITL #${n}.`)
+  reply(`${resolved ? '☑️ Resolved' : '↺ Reopened'} Inbox #${n}.`)
 }
 
 // --- MRs -------------------------------------------------------------------
@@ -1134,7 +1134,7 @@ Examples:
   "we should support CSV export in vellum" → /feature @vellum-project support CSV export
   "fix the flaky test in vellum" → /bg @vellum-project fix the flaky test
   "bump the eslint version" → /bg bump the eslint version
-  "show me what's blocked" → /hitl
+  "show me what's blocked" → /inbox
   "kill run 3" → /cancel 3
   "what's running" → /runs
   "how much have I spent today" → /spend
@@ -1206,6 +1206,8 @@ const HANDLERS: Record<string, (args: string[]) => unknown> = {
   '/pause': (a) => cmdPause(a, true),
   '/resume': (a) => cmdPause(a, false),
   '/runnow': (a) => cmdRunNow(a),
+  '/inbox': () => cmdHitl(),
+  // Pre-rename spelling, kept forever (ticket 0123).
   '/hitl': () => cmdHitl(),
   '/resolve': (a) => cmdResolveHitl(a, true),
   '/reopen': (a) => cmdResolveHitl(a, false),

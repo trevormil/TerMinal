@@ -138,6 +138,8 @@ export function generateChannelMapSource(preloadSource: string): string {
 
 if (import.meta.main) {
   const dir = import.meta.dir
-  const source = generateChannelMapSource(readFileSync(join(dir, '..', 'preload', 'index.ts'), 'utf8'))
+  const source = generateChannelMapSource(
+    readFileSync(join(dir, '..', 'preload', 'index.ts'), 'utf8'),
+  )
   writeFileSync(join(dir, 'ipc-channels.ts'), source)
 }

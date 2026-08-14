@@ -3,6 +3,7 @@ import {
   ALL,
   categoryDepth,
   categoryLeaf,
+  chipCategory,
   deriveCategories,
   filterByCategory,
   hasChildren,
@@ -33,6 +34,18 @@ import type { Tab, TabContext, HitlItem } from '../../lib/types'
 import { relativeTime } from '../../lib/time'
 import { ageColor, ageLabel, ageTierOf, untilLabel } from '../../lib/inboxAge'
 import { snoozePresets } from '../../../../shared/snooze'
+
+/** The row stamp. Derived from the item's own string — nothing to register. */
+function CategoryChip({ name }: { name: string }) {
+  return (
+    <span
+      title={name}
+      className="shrink-0 truncate rounded-full border border-[var(--gt-border)] px-1.5 py-px text-[9.5px] font-medium text-zinc-500"
+    >
+      {categoryLeaf(name)}
+    </span>
+  )
+}
 
 // Alert loudness, shown as a tag. Mirrors src/main/hitl-severity.ts; legacy
 // 'push' reads as urgent.
@@ -710,6 +723,7 @@ export function InboxDrawer({
                 const tier = ageTierOf(h.createdAt, now)
                 const tierColor = ageColor(tier)
                 const picked = selected.has(h.id)
+                const chip = chipCategory(h, activeCategory)
                 return (
                   <div
                     key={h.id}
@@ -747,6 +761,7 @@ export function InboxDrawer({
                           >
                             {h.title}
                           </span>
+                          {chip && <CategoryChip name={chip} />}
                           <SeverityTag sev={severityOf(h)} />
                           <Badge tone={SOURCE_TONE[h.source] || 'mute'}>{h.source}</Badge>
                           {(h.occurrenceCount || 1) > 1 && h.source !== 'completion-hook' && (

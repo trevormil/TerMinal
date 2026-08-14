@@ -2,8 +2,24 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { configPath } from './config-dir'
 import { repoStatePathForRead, repoStatePathForWrite } from './repo-state'
-import type { KnowledgeBase, KnowledgeCategory, KnowledgeItem, KnowledgeItemKind, KnowledgePreview, KnowledgeRagConfig, KnowledgeScope } from '../shared/types/knowledge'
-export type { KnowledgeBase, KnowledgeCategory, KnowledgeItem, KnowledgeItemKind, KnowledgePreview, KnowledgeRagConfig, KnowledgeScope } from '../shared/types/knowledge'
+import type {
+  KnowledgeBase,
+  KnowledgeCategory,
+  KnowledgeItem,
+  KnowledgeItemKind,
+  KnowledgePreview,
+  KnowledgeRagConfig,
+  KnowledgeScope,
+} from '../shared/types/knowledge'
+export type {
+  KnowledgeBase,
+  KnowledgeCategory,
+  KnowledgeItem,
+  KnowledgeItemKind,
+  KnowledgePreview,
+  KnowledgeRagConfig,
+  KnowledgeScope,
+} from '../shared/types/knowledge'
 
 const GLOBAL = (): string => configPath('knowledge.json')
 // Personal state — sidecar-resolved (legacy in-repo copies stay readable).

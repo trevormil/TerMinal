@@ -729,7 +729,7 @@ function fileHitl(item) {
     // [Resolve] / [Tail run] buttons so the chat ping is one-tap actionable;
     // the in-app poll loop dispatches callback_query taps back to
     // resolveHitl + tailRun.
-    const text = `⛔ HITL · ${rec.title}${rec.action ? ` — ${rec.action}` : ''}`
+    const text = `⛔ Inbox · ${rec.title}${rec.action ? ` — ${rec.action}` : ''}`
     const t = tgCreds()
     if (t) {
       const row = [{ text: '✅ Resolve', callback_data: `hitl:resolve:${rec.id}` }]

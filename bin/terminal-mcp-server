@@ -1284,7 +1284,7 @@ function fileHitlTool(args) {
   mirrorHitlToSlack(item, hitlFile)
   emitActivityRaw({
     kind: 'blocked',
-    title: `HITL · ${title}`,
+    title: `Inbox · ${title}`,
     detail: action || detail || '',
     repo,
     hitlId: item.id,
@@ -1294,7 +1294,7 @@ function fileHitlTool(args) {
   const row = [{ text: '✅ Resolve', callback_data: `hitl:resolve:${item.id}` }]
   if (runId) row.push({ text: '🪵 Tail run', callback_data: `run:tail:${runId}` })
   if (!slackQuietsTelegram())
-    pingTelegram(`⛔ HITL · ${title}${action ? ` — ${action}` : ''}`, [row])
+    pingTelegram(`⛔ Inbox · ${title}${action ? ` — ${action}` : ''}`, [row])
   return { id: item.id }
 }
 

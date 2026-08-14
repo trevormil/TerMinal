@@ -17,8 +17,22 @@ import {
 } from './backlog'
 import { commentHeader, type TicketComment } from './ticket-comments'
 import { run as runCli } from './forge'
-import type { NewTicketComment, ObsidianTicketConfig, TicketProviderKind, TicketProviderTestResult, TicketView, WebviewTicketConfig } from '../shared/types/tickets'
-export type { NewTicketComment, ObsidianTicketConfig, TicketProviderKind, TicketProviderTestResult, TicketView, WebviewTicketConfig } from '../shared/types/tickets'
+import type {
+  NewTicketComment,
+  ObsidianTicketConfig,
+  TicketProviderKind,
+  TicketProviderTestResult,
+  TicketView,
+  WebviewTicketConfig,
+} from '../shared/types/tickets'
+export type {
+  NewTicketComment,
+  ObsidianTicketConfig,
+  TicketProviderKind,
+  TicketProviderTestResult,
+  TicketView,
+  WebviewTicketConfig,
+} from '../shared/types/tickets'
 
 const PROVIDER_KINDS: TicketProviderKind[] = ['local', 'github', 'linear', 'obsidian', 'webview']
 // Normalize an unknown stored value to a known provider kind — anything

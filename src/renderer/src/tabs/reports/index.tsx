@@ -99,7 +99,7 @@ function metricChips(meta: ReportMeta): { label: string; tone?: BadgeTone }[] {
     chips.push({ label: `${meta.findings} findings`, tone: 'yellow' })
   if (typeof meta.benchmarks_run === 'number')
     chips.push({ label: `${meta.benchmarks_run} benches` })
-  if (meta.hitl_filed === true) chips.push({ label: 'HITL', tone: 'red' })
+  if (meta.hitl_filed === true) chips.push({ label: 'Inbox', tone: 'red' })
   return chips
 }
 

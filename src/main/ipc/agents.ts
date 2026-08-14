@@ -378,9 +378,7 @@ export function registerAgentsIpc(deps: AgentsIpcDeps): void {
       ? { error: 'remote rerun needs the remote daemon runner' }
       : rerunAgentRun(runId),
   )
-  handle('agents:cancel', (_e, runId: string) =>
-    deps.curRemote() ? false : cancelRun(runId),
-  )
+  handle('agents:cancel', (_e, runId: string) => (deps.curRemote() ? false : cancelRun(runId)))
   handle('agents:remove-worktree', (_e, runId: string) =>
     deps.curRemote() ? false : removeWorktree(runId),
   )

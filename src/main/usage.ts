@@ -14,7 +14,6 @@ export type { Usage } from '../shared/types/app'
 // serve the last good value (and back off) on 429.
 // ---------------------------------------------------------------------------
 
-
 const TTL = 30_000
 let cache: Usage | null = null
 let backoffUntil = 0

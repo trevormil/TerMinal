@@ -26,7 +26,15 @@ import {
 
 export type { CiJob, CiInfo } from './forge'
 import type { DigestArtifact, Finding, Mr, MrDetail, MrListResult } from '../shared/types/mrs'
-export type { DigestArtifact, DigestChunk, DigestDecision, Finding, Mr, MrDetail, MrListResult } from '../shared/types/mrs'
+export type {
+  DigestArtifact,
+  DigestChunk,
+  DigestDecision,
+  Finding,
+  Mr,
+  MrDetail,
+  MrListResult,
+} from '../shared/types/mrs'
 
 // Live MRs/PRs for the repo, each enriched with its harness review/test verdict.
 export async function listMrs(repoRoot: string): Promise<MrListResult> {

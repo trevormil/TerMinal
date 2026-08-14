@@ -20,8 +20,22 @@ import {
   removeEntry,
   writeFile as writeScopedFile,
 } from './files'
-import type { PersistentAgent, PersistentAgentDetail, PersistentAgentFiles, PersistentArtifact, PersistentArtifactFile, PersistentArtifactRead } from '../shared/types/persistent-agents'
-export type { PersistentAgent, PersistentAgentDetail, PersistentAgentFiles, PersistentArtifact, PersistentArtifactFile, PersistentArtifactRead } from '../shared/types/persistent-agents'
+import type {
+  PersistentAgent,
+  PersistentAgentDetail,
+  PersistentAgentFiles,
+  PersistentArtifact,
+  PersistentArtifactFile,
+  PersistentArtifactRead,
+} from '../shared/types/persistent-agents'
+export type {
+  PersistentAgent,
+  PersistentAgentDetail,
+  PersistentAgentFiles,
+  PersistentArtifact,
+  PersistentArtifactFile,
+  PersistentArtifactRead,
+} from '../shared/types/persistent-agents'
 
 /** Resolved per call (not at module load) through the one config-dir seam, so a
  *  test can point this at a temp dir. See src/main/config-dir.ts. */

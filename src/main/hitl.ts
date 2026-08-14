@@ -203,7 +203,7 @@ export function fileHitl(input: Omit<HitlItem, 'id' | 'status' | 'createdAt'>): 
     emitActivity(
       {
         kind: hitlActivityKind(input.source),
-        title: `${input.source === 'completion-hook' ? 'Done recur' : 'HITL recur'} · ${input.title}`,
+        title: `${input.source === 'completion-hook' ? 'Done recur' : 'Inbox recur'} · ${input.title}`,
         detail: `duplicate filing collapsed (${duplicate.occurrenceCount} occurrences within 1h window)`,
         repo: input.repo,
         repoRoot: input.repoRoot,
@@ -232,7 +232,7 @@ export function fileHitl(input: Omit<HitlItem, 'id' | 'status' | 'createdAt'>): 
   emitActivity(
     {
       kind: hitlActivityKind(item.source),
-      title: `${item.source === 'completion-hook' ? 'Done' : 'HITL'} · ${item.title}`,
+      title: `${item.source === 'completion-hook' ? 'Done' : 'Inbox'} · ${item.title}`,
       detail: item.action || item.detail,
       repo: item.repo,
       repoRoot: item.repoRoot,

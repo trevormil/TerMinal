@@ -183,3 +183,38 @@ describe('bulk actions mean what the visible list says (ticket 120)', () => {
     expect(tab).toContain('const unread = unsnoozed.filter(isUnread)')
   })
 })
+
+describe('a row says which category it is in, when that is not obvious (ticket 0123)', () => {
+  const tab = read('src/renderer/src/tabs/hitl/index.tsx')
+  const row = tab.slice(tab.indexOf('{shown.map((h) => {'), tab.indexOf('{snoozedItems.length > 0'))
+
+  test('the chip is rendered from the item, not from a lookup table', () => {
+    // Same derived-not-declared rule as the sidebar: a brand-new category must
+    // render without anyone adding it to a map of labels or colours.
+    expect(row).toContain('<CategoryChip')
+    const chip = tab.slice(
+      tab.indexOf('function CategoryChip'),
+      tab.indexOf('export type InboxTerminalRef'),
+    )
+    expect(chip).toContain('categoryLeaf(')
+    expect(chip).not.toMatch(/(CATEGORY_LIST|KNOWN_CATEGORIES|Record<string, )/)
+  })
+
+  test('it is suppressed when the active filter already says it', () => {
+    // Under "Monitoring", stamping "Monitoring" on all twelve rows is noise —
+    // the chip only earns its width where the row's folder is not implied.
+    expect(row).toContain('activeCategory')
+    expect(row).toMatch(/chipCategory\(h,\s*activeCategory\)/)
+  })
+
+  test('the rule itself lives in the shared module, where it is unit-tested', () => {
+    // Deciding what to stamp is pure logic about categories, so it sits beside
+    // filterByCategory rather than inside a 900-line component — that is what
+    // lets inbox-categories.test.ts exercise the parent/child case for real
+    // instead of grepping a JSX file for it.
+    expect(tab).toMatch(
+      /chipCategory,[\s\S]{0,400}from '\.\.\/\.\.\/\.\.\/\.\.\/shared\/inbox-categories'/,
+    )
+    expect(read('src/shared/inbox-categories.ts')).toContain('export function chipCategory')
+  })
+})

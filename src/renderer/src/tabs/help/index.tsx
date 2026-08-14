@@ -384,7 +384,7 @@ function HelpTab(_props: { ctx: TabContext }) {
               Build the whole stack without per-PR review, then run one batch review pass that
               reviews every PR in parallel (each in its own worktree).
             </Rule>
-            <Rule icon={TicketIcon} title="Horizons & HITL">
+            <Rule icon={TicketIcon} title="Horizons & human-needed">
               Tickets carry a horizon (<span className="text-zinc-300">now / next / future</span>);
               flag <code className="font-mono">hitl: true</code> when something genuinely needs a
               human — it surfaces in the Inbox drawer.

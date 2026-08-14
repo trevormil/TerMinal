@@ -648,7 +648,7 @@ function AgentDesigner({
                   },
                   {
                     label: 'Pure deterministic',
-                    text: 'A pure shell agent (no LLM) that runs … (fill in the check), files a HITL via terminal-cli only if a probe fails, and emits an activity event with the summary on success.',
+                    text: 'A pure shell agent (no LLM) that runs … (fill in the check), files an Inbox item via terminal-cli only if a probe fails, and emits an activity event with the summary on success.',
                   },
                 ] as const
               ).map((t) => (

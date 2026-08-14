@@ -29,6 +29,8 @@ describe('COMMAND_SPECS is internally sound', () => {
     expect(idx.get('/pr')).toBe(idx.get('/mr'))
     expect(idx.get('/start')).toBe(idx.get('/help'))
     expect(idx.get('/whoami')).toBe(idx.get('/about'))
+    // Ticket 0123: the Inbox rebrand must not strand anyone typing /hitl.
+    expect(idx.get('/hitl')).toBe(idx.get('/inbox'))
   })
 })
 

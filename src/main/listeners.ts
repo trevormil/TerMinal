@@ -30,7 +30,13 @@ const CFG = (): string => terminalConfigDir()
 const ROOT = (): string => join(CFG(), 'automation-inbox')
 const SETTINGS = (): string => join(ROOT(), 'settings.json')
 const PROCESSED = (): string => join(ROOT(), 'processed.json')
-const DIRS = ['new', 'processing', 'done', 'failed', 'dead-letter'] as const satisfies readonly ListenerDir[]
+const DIRS = [
+  'new',
+  'processing',
+  'done',
+  'failed',
+  'dead-letter',
+] as const satisfies readonly ListenerDir[]
 
 export type ListenerAction =
   | { kind: 'activity'; activityKind?: ActivityKind; title?: string; detail?: string }

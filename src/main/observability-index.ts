@@ -9,8 +9,20 @@ import {
   readObservabilitySnapshot,
 } from './data'
 import { configPath } from './config-dir'
-import type { ObservabilityIndexBuildResult, ObservabilityIndexQueryId, ObservabilityIndexQueryResult, ObservabilityIndexStatus, ObservabilityQueryFilter } from '../shared/types/observability'
-export type { ObservabilityIndexBuildResult, ObservabilityIndexQueryId, ObservabilityIndexQueryResult, ObservabilityIndexStatus, ObservabilityQueryFilter } from '../shared/types/observability'
+import type {
+  ObservabilityIndexBuildResult,
+  ObservabilityIndexQueryId,
+  ObservabilityIndexQueryResult,
+  ObservabilityIndexStatus,
+  ObservabilityQueryFilter,
+} from '../shared/types/observability'
+export type {
+  ObservabilityIndexBuildResult,
+  ObservabilityIndexQueryId,
+  ObservabilityIndexQueryResult,
+  ObservabilityIndexStatus,
+  ObservabilityQueryFilter,
+} from '../shared/types/observability'
 
 const DB_PATH = (): string => configPath('observability.sqlite')
 

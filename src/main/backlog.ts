@@ -11,8 +11,21 @@ import {
   projectAreaRelForPath,
 } from './project-layout'
 import { localDay } from './local-day'
-import type { NewTicket, Ticket, TicketAgent, TicketAgentRecommendation, TicketRunLink } from '../shared/types/tickets'
-export type { LinearMeta, NewTicket, Ticket, TicketAgent, TicketAgentRecommendation, TicketRunLink } from '../shared/types/tickets'
+import type {
+  NewTicket,
+  Ticket,
+  TicketAgent,
+  TicketAgentRecommendation,
+  TicketRunLink,
+} from '../shared/types/tickets'
+export type {
+  LinearMeta,
+  NewTicket,
+  Ticket,
+  TicketAgent,
+  TicketAgentRecommendation,
+  TicketRunLink,
+} from '../shared/types/tickets'
 
 // Per-repo backlog. v2 repos store tickets in .TerMinal/backlog; v1 repos
 // store them in backlog/. Reads check both layouts so old repos keep working.

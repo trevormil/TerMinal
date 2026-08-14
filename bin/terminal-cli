@@ -595,7 +595,7 @@ function fileHitl(title, action, opts = {}) {
   }
   updateJsonListShared(HITL_FILE, (cur) => [item, ...cur])
   mirrorHitlToSlack(item)
-  emitActivity('blocked', `HITL · ${item.title}`, item.action, { suppressTelegram: true })
+  emitActivity('blocked', `Inbox · ${item.title}`, item.action, { suppressTelegram: true })
   // Without an explicit severity, HITL always pings Telegram (legacy policy).
   // With one, the ping honors the same inbox.notifyThreshold gate the desktop
   // applies, so e.g. a 'normal' digest lands in the inbox without a ping.
@@ -603,7 +603,7 @@ function fileHitl(title, action, opts = {}) {
   const loud = !severity || (SEVERITY_RANK[severity] || 3) >= (SEVERITY_RANK[threshold] || 3)
   if (loud && !slackQuietsTelegram())
     pingTelegram(
-      `⛔ HITL · ${item.title}${item.action ? ` — ${item.action}` : ''}`,
+      `⛔ Inbox · ${item.title}${item.action ? ` — ${item.action}` : ''}`,
       hitlButtons(item),
     )
   console.log(item.id)
@@ -834,7 +834,7 @@ function completionHitl(engine) {
   emitActivity('blocked', `Inbox · ${item.title}`, item.action, { suppressTelegram: true })
   if (!slackQuietsTelegram())
     pingTelegram(
-      `⛔ HITL · ${item.title}${item.action ? ` — ${item.action}` : ''}`,
+      `⛔ Inbox · ${item.title}${item.action ? ` — ${item.action}` : ''}`,
       hitlButtons(item),
     )
   console.log(id)

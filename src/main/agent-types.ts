@@ -17,7 +17,19 @@ import type { Persona } from './personas'
 
 export type AgentRunContext = Persona
 
-export type { Agent, AgentCheck, AgentDefinition, AgentJudge, AgentModelPolicy, AgentQuality, AgentRun, AgentRunEvaluation, AgentRunEvaluationCheck, AgentRunStatus, AgentRunTrace, Engine } from '../shared/types/agents'
+export type {
+  Agent,
+  AgentCheck,
+  AgentDefinition,
+  AgentJudge,
+  AgentModelPolicy,
+  AgentQuality,
+  AgentRun,
+  AgentRunEvaluation,
+  AgentRunEvaluationCheck,
+  AgentRunStatus,
+  AgentRunTrace,
+  Engine,
+} from '../shared/types/agents'
 export type { RerunSpec } from '../shared/types/agents'
 export type { PrAgentKind } from '../shared/types/agents'
-

@@ -329,17 +329,14 @@ export function registerSchedulesIpc(deps: SchedulesIpcDeps): void {
     if (!ok) return { ok: false, reason: 'refused', error: `no such schedule: ${id}` }
     return warning ? { ok: true, warning } : { ok: true }
   })
-  handle(
-    'schedules:toggle',
-    async (_e, id: string, enabled: boolean): Promise<MutationResult> => {
-      const remote = deps.curRemote()
-      if (remote)
-        return remoteMutation(remote.label || remote.sshTarget, () =>
-          remoteSchedules.toggle(remote, id, enabled),
-        )
-      return toggleLocal(id, enabled)
-    },
-  )
+  handle('schedules:toggle', async (_e, id: string, enabled: boolean): Promise<MutationResult> => {
+    const remote = deps.curRemote()
+    if (remote)
+      return remoteMutation(remote.label || remote.sshTarget, () =>
+        remoteSchedules.toggle(remote, id, enabled),
+      )
+    return toggleLocal(id, enabled)
+  })
   async function toggleLocal(id: string, enabled: boolean): Promise<MutationResult> {
     const ok = toggleSchedule(id, enabled)
     const s = getSchedule(id)

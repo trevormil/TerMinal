@@ -481,7 +481,7 @@ export function TicketDetail({
           {selected.hitl && (
             <Badge tone="red">
               <Hand size={10} strokeWidth={2.25} />
-              HITL
+              Needs human
             </Badge>
           )}
           {selected.url && (

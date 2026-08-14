@@ -6,8 +6,18 @@ import { readJsonState, updateJsonState, writeFileAtomic, writeJsonAtomic } from
 import { resolvedWorktreesDir } from './settings'
 import { promisify } from 'node:util'
 import { terminalConfigDir } from './config-dir'
-import type { ScratchClearReport, StorageEntry, TerminalStateSweepReport, WorktreeStoreReport } from '../shared/types/runs'
-export type { ScratchClearReport, StorageEntry, TerminalStateSweepReport, WorktreeStoreReport } from '../shared/types/runs'
+import type {
+  ScratchClearReport,
+  StorageEntry,
+  TerminalStateSweepReport,
+  WorktreeStoreReport,
+} from '../shared/types/runs'
+export type {
+  ScratchClearReport,
+  StorageEntry,
+  TerminalStateSweepReport,
+  WorktreeStoreReport,
+} from '../shared/types/runs'
 import type { CheckpointGcEntry } from '../shared/types/runs'
 export type { CheckpointGcEntry } from '../shared/types/runs'
 
