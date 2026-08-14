@@ -118,7 +118,6 @@ import type {
   ObservabilitySnapshot,
   ObservabilityToolCallPayload,
   ObservabilityTranscriptWindow,
-  ObsidianTicketConfig,
   PersistentAgent,
   PersistentAgentDetail,
   PersistentAgentFiles,
@@ -134,6 +133,7 @@ import type {
   RemoteDirList,
   RemotePlatform,
   RemoteSession,
+  RepoTicketsConfig,
   RunArtifact,
   ScheduleSpec,
   ScratchClearReport,
@@ -154,12 +154,10 @@ import type {
   TicketProviderKind,
   TicketProviderTestResult,
   TicketRunLink,
-  TicketView,
   TranscriptStats,
   UnifiedRun,
   UpdateCheckResult,
   Usage,
-  WebviewTicketConfig,
   WorkingDiff,
   WorkspaceSearchKind,
   WorkspaceSearchResponse,
@@ -174,30 +172,6 @@ export type RepoTrustStatus = {
   commands: string[]
 }
 
-import type { SavedTicketView } from './ticketViews'
-
-export type TicketProviderConfig = {
-  provider?: TicketProviderKind
-  github?: {
-    statusLabels?: Record<string, string>
-    priorityLabels?: Record<string, string>
-    typeLabels?: Record<string, string>
-  }
-  linear?: {
-    mcp?: { command?: string; args?: string[]; env?: Record<string, string> }
-    tools?: { list?: string; get?: string; create?: string; update?: string }
-    team?: string
-    teamKey?: string
-    listArgs?: Record<string, unknown>
-    /** linear.app workspace URL for the auto-synthesized embedded view. */
-    workspace?: string
-  }
-  obsidian?: ObsidianTicketConfig
-  webview?: WebviewTicketConfig
-  views?: TicketView[]
-  /** Named filter/group/sort lenses. See SavedTicketView in ticketViews.ts. */
-  savedViews?: SavedTicketView[]
-}
 export type AlertChannelId = 'telegram' | 'desktop' | 'webhook'
 
 export type RemoteSettingsProbe = {
@@ -746,12 +720,10 @@ export type GtApi = {
   tickets: {
     list: () => Promise<Ticket[]>
     get: (slug: string) => Promise<Ticket | null>
-    providerGet: () => Promise<TicketProviderConfig | { error: string }>
-    providerSave: (cfg: TicketProviderConfig) => Promise<TicketProviderConfig | { error: string }>
-    providerTest: (cfg: TicketProviderConfig, smoke?: boolean) => Promise<TicketProviderTestResult>
-    linearTeams: (
-      cfg?: TicketProviderConfig,
-    ) => Promise<{ id: string; name: string; key?: string }[]>
+    providerGet: () => Promise<RepoTicketsConfig | { error: string }>
+    providerSave: (cfg: RepoTicketsConfig) => Promise<RepoTicketsConfig | { error: string }>
+    providerTest: (cfg: RepoTicketsConfig, smoke?: boolean) => Promise<TicketProviderTestResult>
+    linearTeams: (cfg?: RepoTicketsConfig) => Promise<{ id: string; name: string; key?: string }[]>
     openInObsidian: (slug: string) => Promise<boolean>
     create: (input: NewTicket) => Promise<Ticket>
     recommendAgent: (input: {

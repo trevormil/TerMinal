@@ -18,16 +18,26 @@ import {
 import { commentHeader, type TicketComment } from './ticket-comments'
 import { run as runCli } from './forge'
 import type {
+  GithubTicketConfig,
+  LinearTicketConfig,
   NewTicketComment,
   ObsidianTicketConfig,
+  RepoTicketsConfig,
+  SavedTicketView,
+  TicketGroupBy,
   TicketProviderKind,
   TicketProviderTestResult,
+  TicketSortBy,
   TicketView,
   WebviewTicketConfig,
 } from '../shared/types/tickets'
 export type {
+  GithubTicketConfig,
+  LinearTicketConfig,
   NewTicketComment,
   ObsidianTicketConfig,
+  RepoTicketsConfig,
+  SavedTicketView,
   TicketProviderKind,
   TicketProviderTestResult,
   TicketView,
@@ -45,56 +55,6 @@ export type RepoTicketProvider = {
   kind: TicketProviderKind
   label: string
   configPath?: string
-}
-
-type GithubConfig = {
-  statusLabels?: Record<string, string>
-  priorityLabels?: Record<string, string>
-  typeLabels?: Record<string, string>
-}
-
-export type LinearTicketConfig = {
-  mcp?: { command?: string; args?: string[]; env?: Record<string, string> }
-  tools?: {
-    list?: string
-    get?: string
-    create?: string
-    update?: string
-    /** Defaults to Linear's `save_comment`. */
-    comment?: string
-  }
-  team?: string
-  teamKey?: string
-  listArgs?: Record<string, unknown>
-  /** linear.app workspace URL (e.g. https://linear.app/acme) — used for the
-   *  auto-synthesized embedded Linear view. Falls back to https://linear.app,
-   *  which redirects to the logged-in workspace. */
-  workspace?: string
-}
-
-/** A named filter/group/sort lens over this repo's tickets. Distinct from
- *  `TicketView`, which embeds an external platform's own web UI. Mirrors
- *  SavedTicketView in src/renderer/src/lib/ticketViews.ts. */
-export type SavedTicketView = {
-  name: string
-  type: string
-  horizon: string
-  priority: string
-  status: string
-  hitl: boolean
-  q: string
-  groupBy: string
-  sortBy: string
-}
-
-export type RepoTicketsConfig = {
-  provider?: TicketProviderKind
-  github?: GithubConfig
-  linear?: LinearTicketConfig
-  obsidian?: ObsidianTicketConfig
-  webview?: WebviewTicketConfig
-  views?: TicketView[]
-  savedViews?: SavedTicketView[]
 }
 
 const DEFAULT_STATUS_LABELS: Record<string, string> = {
@@ -217,8 +177,8 @@ export function scaffoldObsidianVault(cfg: ObsidianTicketConfig | undefined): vo
 // Views are loaded into a real <webview>, so the url is a capability, not a
 // label: anything but http(s) (javascript:, file:, data:) is dropped here at the
 // config boundary rather than trusted downstream.
-const GROUP_BYS = ['status', 'priority', 'type', 'horizon', 'agent', 'none']
-const SORT_BYS = ['id-desc', 'id-asc', 'updated-desc', 'priority']
+const GROUP_BYS: TicketGroupBy[] = ['status', 'priority', 'type', 'horizon', 'agent', 'none']
+const SORT_BYS: TicketSortBy[] = ['id-desc', 'id-asc', 'updated-desc', 'priority']
 
 // A stored view is user data that ends up driving list rendering, so every axis
 // is normalized to a known value and an unnamed view is dropped — a nameless
@@ -235,8 +195,10 @@ function sanitizeSavedViews(raw: unknown): SavedTicketView[] {
       const value = String(r[k] ?? '').trim()
       return value || fallback
     }
-    const oneOf = (k: string, allowed: string[], fallback: string) => {
-      const value = String(r[k] ?? '').trim()
+    // Generic over the allowed literals so the narrowed union survives — the
+    // stored axes are `TicketGroupBy`/`TicketSortBy`, not free strings.
+    const oneOf = <T extends string>(k: string, allowed: T[], fallback: T): T => {
+      const value = String(r[k] ?? '').trim() as T
       return allowed.includes(value) ? value : fallback
     }
     out.push({
@@ -453,7 +415,7 @@ function externalComments(raw: unknown): TicketComment[] {
   return out
 }
 
-export function githubIssueToTicket(issue: any, cfg: GithubConfig = {}): Ticket {
+export function githubIssueToTicket(issue: any, cfg: GithubTicketConfig = {}): Ticket {
   const labels = normLabels(issue.labels)
   const statusLabels = { ...DEFAULT_STATUS_LABELS, ...(cfg.statusLabels || {}) }
   const priorityLabels = { ...DEFAULT_PRIORITY_LABELS, ...(cfg.priorityLabels || {}) }
@@ -531,7 +493,7 @@ async function ensureGithubLabel(repoRoot: string, label: string) {
 
 async function getGithubTicket(
   repoRoot: string,
-  cfg: GithubConfig,
+  cfg: GithubTicketConfig,
   number: string,
 ): Promise<Ticket | null> {
   if (!/^\d+$/.test(number)) return null
@@ -547,7 +509,7 @@ async function getGithubTicket(
   return issue ? githubIssueToTicket(issue, cfg) : null
 }
 
-async function listGithubTickets(repoRoot: string, cfg: GithubConfig): Promise<Ticket[]> {
+async function listGithubTickets(repoRoot: string, cfg: GithubTicketConfig): Promise<Ticket[]> {
   const issues = await ghJson(repoRoot, [
     'issue',
     'list',
@@ -569,7 +531,7 @@ function labelMapValues(map: Record<string, string>): string[] {
 
 async function updateGithubTicket(
   repoRoot: string,
-  cfg: GithubConfig,
+  cfg: GithubTicketConfig,
   slug: string,
   patch: { status?: string; priority?: string; agent?: Partial<TicketAgent> },
 ): Promise<boolean> {
@@ -626,7 +588,7 @@ async function updateGithubTicket(
 
 async function createGithubTicket(
   repoRoot: string,
-  cfg: GithubConfig,
+  cfg: GithubTicketConfig,
   input: NewTicket,
 ): Promise<Ticket> {
   const statusLabels = { ...DEFAULT_STATUS_LABELS, ...(cfg.statusLabels || {}) }

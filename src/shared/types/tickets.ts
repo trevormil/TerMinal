@@ -142,6 +142,67 @@ export type TicketView = {
   default?: boolean
 }
 
+export type TicketGroupBy = 'status' | 'priority' | 'type' | 'horizon' | 'agent' | 'none'
+export type TicketSortBy = 'id-desc' | 'id-asc' | 'updated-desc' | 'priority'
+
+// Filtering, grouping, and sorting for the Tickets tab. Pure data, so the same
+// spec drives the live toolbar and anything persisted in `.TerMinal/tickets.json`.
+export type TicketViewSpec = {
+  /** 'all' means no constraint on that axis. */
+  type: string
+  horizon: string
+  priority: string
+  status: string
+  hitl: boolean
+  /** Free text over title, id, and body. */
+  q: string
+  groupBy: TicketGroupBy
+  sortBy: TicketSortBy
+}
+
+/** A named TicketViewSpec, persisted per repo. Distinct from `TicketView`,
+ *  which is an embedded webview of an external platform. */
+export type SavedTicketView = TicketViewSpec & { name: string }
+
+export type GithubTicketConfig = {
+  statusLabels?: Record<string, string>
+  priorityLabels?: Record<string, string>
+  typeLabels?: Record<string, string>
+}
+
+export type LinearTicketConfig = {
+  mcp?: { command?: string; args?: string[]; env?: Record<string, string> }
+  tools?: {
+    list?: string
+    get?: string
+    create?: string
+    update?: string
+    /** The Linear MCP tool that appends a comment. Defaults to `save_comment`. */
+    comment?: string
+  }
+  team?: string
+  teamKey?: string
+  listArgs?: Record<string, unknown>
+  /** linear.app workspace URL (e.g. https://linear.app/acme) — used for the
+   *  auto-synthesized embedded Linear view. Falls back to https://linear.app,
+   *  which redirects to the logged-in workspace. */
+  workspace?: string
+}
+
+/** The whole per-repo tickets config, as stored in `.TerMinal/tickets.json`:
+ *  the provider and its settings, plus the lenses (`views`, `savedViews`) that
+ *  are independent of it. Travels verbatim over `tickets:provider-get`/`-save`,
+ *  so it is declared once here rather than once per side of that wire. */
+export type RepoTicketsConfig = {
+  provider?: TicketProviderKind
+  github?: GithubTicketConfig
+  linear?: LinearTicketConfig
+  obsidian?: ObsidianTicketConfig
+  webview?: WebviewTicketConfig
+  views?: TicketView[]
+  savedViews?: SavedTicketView[]
+}
+
 export type TicketProviderTestResult = {
   ok: boolean
   provider: TicketProviderKind
