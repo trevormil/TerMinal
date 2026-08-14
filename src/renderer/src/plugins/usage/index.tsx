@@ -44,7 +44,6 @@ const plugin: Plugin<Usage> = {
   poll: (gt) => gt.usage(),
   render: (d) => {
     if (!d) return null
-    const planLabel = [d.plan, d.tier].filter(Boolean).join(' · ')
     if (!d.ok && !d.fiveHour && !d.sevenDay)
       return (
         <Card icon={GaugeIcon} title="Plan Usage">
@@ -55,13 +54,7 @@ const plugin: Plugin<Usage> = {
       <Card
         icon={GaugeIcon}
         title="Plan Usage"
-        right={
-          d.stale ? (
-            <Badge tone="mute">Cached</Badge>
-          ) : planLabel ? (
-            <Badge tone="mute">{planLabel}</Badge>
-          ) : undefined
-        }
+        right={d.stale ? <Badge tone="mute">Cached</Badge> : undefined}
       >
         <WindowRow label="5-hour" w={d.fiveHour} />
         <WindowRow label="Weekly" w={d.sevenDay} />

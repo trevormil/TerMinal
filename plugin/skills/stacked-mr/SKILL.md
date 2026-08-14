@@ -82,7 +82,7 @@ draft + `do-not-merge`; a future `merge-sync` extension can automate this).
 ## Continue Conditions
 
 - Runnable scoped tickets remain: keep building.
-- True human-only blocker: file HITL and continue another lane.
+- True human-only blocker: file an Inbox item and continue another lane.
 - PR/MR cannot reach the bar after reasonable cycles: mark the ticket `stuck`
   with the artifact path and continue independent work.
 - Scoped backlog exhausted: finish batch review and summarize.

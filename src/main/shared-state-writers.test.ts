@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
+import { TARGETS as BUILT } from '../../scripts/build-bin'
 
 // Ticket 110. `withFileLock` is ADVISORY: it protects a file only if every
 // process that writes it takes it. Three writers cooperating while a fourth
@@ -37,8 +38,11 @@ function sourceFiles(): string[] {
     }
   }
   walk(join(ROOT, 'src/main'))
+  for (const dir of new Set(Object.values(BUILT))) walk(join(ROOT, 'src', dir))
   for (const name of readdirSync(join(ROOT, 'bin'))) {
-    if (name.startsWith('terminal-')) out.push(join('bin', name))
+    // The BUILT artifacts are bundles of the src/ dirs walked above; scanning
+    // one would pin the bundler's quoting style, not a writer.
+    if (name.startsWith('terminal-') && !BUILT[name]) out.push(join('bin', name))
   }
   return out.sort()
 }
@@ -62,21 +66,27 @@ const EXPECTED: Record<
     'src/main/hitl.ts': 'updateJsonState',
     'src/main/bridge/push.ts': 'read-only',
     'src/main/remote-host-script.cjs': 'updateJsonListShared',
-    'bin/terminal-cron': 'updateJsonListShared',
-    'bin/terminal-cli': 'updateJsonListShared',
-    'bin/terminal-mcp-server': 'updateJsonListShared',
+    // The bundled processes name each shared path exactly once, in their path
+    // seam; the modules that mutate them are pinned by the constant-following
+    // suite below.
+    'src/runner/config.ts': 'read-only',
+    'src/cli/env.ts': 'read-only',
+    'src/mcp/env.ts': 'read-only',
   },
   'monitors.json': {
     'src/main/monitors.ts': 'updateJsonState',
-    'bin/terminal-cli': 'updateJsonListShared',
-    'bin/terminal-monitor': 'read-only',
+    // The daemon and the CLI each name the path once, in their own path module;
+    // the writes are pinned by the constant-following suite below.
+    'src/monitor/paths.ts': 'read-only',
+    'src/cli/env.ts': 'read-only',
   },
   'schedules.json': {
     'src/main/schedules.ts': 'updateJsonState',
     'src/main/agents.ts': 'read-only',
     'src/main/remote-host-script.cjs': 'updateJsonListShared',
-    'bin/terminal-cron': 'updateJsonListShared',
-    'bin/terminal-mcp-server': 'read-only',
+    'src/runner/config.ts': 'read-only',
+    'src/mcp/reads.ts': 'read-only',
+    'src/mcp/repo.ts': 'read-only',
   },
 }
 
@@ -122,24 +132,67 @@ describe('discipline — every mutator of shared state takes the lock (ticket 11
   }
 })
 
-describe('the standalone processes carry the inlined lock helper', () => {
-  // bin/ scripts are copied to remote hosts and baked into the agent image with
-  // no sibling modules, so they inline the helper instead of importing it.
-  // bin-state-lock.test.ts asserts the copies are byte-identical; this asserts
-  // that every bin script which mutates shared state has one at all.
-  const needsHelper = new Set<string>()
-  for (const file of SHARED_STATE) {
-    for (const [rel, how] of Object.entries(EXPECTED[file])) {
-      if (rel.startsWith('bin/') && how === 'updateJsonListShared') needsHelper.add(rel)
-    }
-  }
+describe('the last hand-copy of the lock helper, and no more (ticket 0132)', () => {
+  // src/main/remote-host-script.cjs is copied to a remote host on its own, with
+  // no sibling modules and no bundler, so it still inlines the helper — and
+  // src/main/remote-state-lock.test.ts drives THAT copy in real concurrent
+  // processes. Every other standalone process is now a bundle of typed sources
+  // that import src/runner/state-io.ts, whose own concurrency proof is
+  // src/runner/state-io.test.ts.
+  test('remote-host-script.cjs still carries one, and is exercised', () => {
+    const source = readFileSync(join(ROOT, 'src/main/remote-host-script.cjs'), 'utf8')
+    expect(source).toContain('// --- crash-safe shared-state writes')
+    expect(source).toContain('function withFileLockShared')
+    expect(source).toContain('function updateJsonListShared')
+    expect(readFileSync(join(ROOT, 'src/main/remote-state-lock.test.ts'), 'utf8')).toContain(
+      'REMOTE_SCRIPT inlines a working shared-state lock',
+    )
+  })
 
-  for (const rel of [...needsHelper].sort()) {
-    test(`${rel} inlines the shared-state helper block`, () => {
-      const source = readFileSync(join(ROOT, rel), 'utf8')
-      expect(source).toContain('// --- crash-safe shared-state writes')
-      expect(source).toContain('function withFileLockShared')
-      expect(source).toContain('function updateJsonListShared')
+  test('no bundled source re-inlines one', () => {
+    // Re-inlining would silently reintroduce the drift this ticket removed, and
+    // the concurrency proof would no longer cover what actually ships.
+    const offenders = SOURCES.filter(
+      (rel) =>
+        ['src/runner/', 'src/cli/', 'src/mcp/', 'src/monitor/'].some((d) => rel.startsWith(d)) &&
+        rel !== 'src/runner/state-io.ts' &&
+        readFileSync(join(ROOT, rel), 'utf8').includes('function withFileLockShared'),
+    )
+    expect(offenders).toEqual([])
+  })
+})
+
+describe('the bundled processes mutate shared state through the same lock (ticket 110)', () => {
+  // src/runner, src/cli and src/monitor resolve every shared path through a
+  // path seam, so the literal-filename scan above cannot see their writers.
+  // Follow the CONSTANT instead: any line that names one and performs an
+  // unlocked write is the same bug the discipline suite exists to catch.
+  const CONST_FOR: Partial<Record<SharedFile, string>> = {
+    'hitl.json': 'HITL_FILE()',
+    'schedules.json': 'SCHED_FILE()',
+    'monitors.json': 'MONITORS_FILE()',
+  }
+  const RAW = /\b(?:writeFileSync|appendFileSync|writeJsonAtomicShared)\s*\(/
+  const BUNDLED = ['src/runner/', 'src/cli/', 'src/monitor/']
+  const runnerSources = SOURCES.filter((rel) => BUNDLED.some((d) => rel.startsWith(d)))
+
+  test('the scan sees the bundled sources at all', () => {
+    expect(runnerSources.length).toBeGreaterThan(15)
+  })
+
+  for (const [file, name] of Object.entries(CONST_FOR)) {
+    test(`every runner write of ${file} takes the lock`, () => {
+      const mentioning: string[] = []
+      for (const rel of runnerSources) {
+        for (const line of readFileSync(join(ROOT, rel), 'utf8').split('\n')) {
+          if (!line.includes(name)) continue
+          mentioning.push(`${rel}  ${line.trim()}`)
+          if (RAW.test(line)) expect(`${rel}  ${line.trim()}`).toContain('updateJsonListShared')
+        }
+      }
+      // A guard that matches nothing is not a guard.
+      expect(mentioning.length).toBeGreaterThan(0)
+      expect(mentioning.some((l) => l.includes('updateJsonListShared'))).toBe(true)
     })
   }
 })

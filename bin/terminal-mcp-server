@@ -1,757 +1,828 @@
 #!/usr/bin/env bun
-// terminal-mcp-server — Model Context Protocol server exposing TerMinal's
-// cross-session state to in-session Claude/Codex agents.
-//
-// READ tools: cross-session views (tickets, PRs, schedules, runs, spend).
-// WRITE tools: deterministic data filing (ticket, hitl, activity, state)
-// so agents skip reading ~5-7k tokens of skill files every time they file
-// data. Schema decisions stay with the model; schema formatting is done here.
+// @bun
+// GENERATED — do not edit. Built from src/mcp/ by scripts/build-bin.ts.
+// Edit the TypeScript modules there, then run `bun run build:bin`.
 
-import {
-  readFileSync,
-  readdirSync,
-  existsSync,
-  statSync,
-  writeFileSync,
-  mkdirSync,
-  appendFileSync,
-  openSync,
-  closeSync,
-  renameSync,
-  unlinkSync,
-} from 'node:fs'
-import { join, basename, dirname } from 'node:path'
-import { randomUUID, createHash } from 'node:crypto'
-import { homedir } from 'node:os'
-import { spawn, spawnSync, execFileSync } from 'node:child_process'
+// src/mcp/agents.ts
+import { spawnSync } from "child_process";
+import { existsSync as existsSync7, mkdirSync as mkdirSync3, readFileSync as readFileSync7, readdirSync as readdirSync5, writeFileSync as writeFileSync3 } from "fs";
+import { basename as basename5, join as join8 } from "path";
 
-// Single resolution point for the config dir, honouring TERMINAL_CONFIG_DIR the
-// same way src/main/config-dir.ts does. These are SEPARATE PROCESSES writing the
-// same files as the app, so a sandboxed run that only redirected the app would
-// still have this script clobbering real state — which is precisely how an agent
-// script would do it (ticket 108). Eager is fine here and not in the app: each
-// invocation is a fresh short-lived process that reads the env at startup.
-const CFG =
-  process.env.TERMINAL_CONFIG_DIR?.trim() || join(homedir(), '.config', 'TerMinal')
-const SETTINGS_FILE = join(CFG, 'settings.json')
-const TG_SIDECAR = join(CFG, 'telegram.local.json')
-const LEGACY_TG_SCRIPT = join(homedir(), '.claude', 'bin', 'telegram-notify.sh')
+// src/runner/repo-state.ts
+import { existsSync as existsSync2 } from "fs";
+import { join as join3 } from "path";
 
-// ── slack inbox destination ──────────────────────────────────────────────
-// Canonical impl + tests: src/shared/slack.ts + src/main/slack-mirror.ts —
-// keep in sync (inlined: standalone script, no sibling modules). The app
-// mirrors the decrypted bot token + channel config to a 0600 sidecar
-// (slack.local.json) whenever inbox.destination posts to Slack; no sidecar
-// means Slack is off and everything below is a no-op.
-const SLACK_SIDECAR = join(CFG, 'slack.local.json')
-function slackCfg() {
-  try {
-    const c = JSON.parse(readFileSync(SLACK_SIDECAR, 'utf8'))
-    return typeof c?.botToken === 'string' && c.botToken ? c : null
-  } catch {
-    return null
+// src/runner/config.ts
+import { homedir } from "os";
+import { join } from "path";
+function CFG() {
+  return process.env.TERMINAL_CONFIG_DIR?.trim() || join(homedir(), ".config", "TerMinal");
+}
+
+// src/runner/repo-state-block.js
+import { execFileSync } from "child_process";
+import { createHash } from "crypto";
+import { existsSync, readdirSync } from "fs";
+import { basename, join as join2 } from "path";
+function makeRepoState(CFG2) {
+  const SIDECAR_AREAS = ["backlog", "sessions", "reviews", "checks", "reports"];
+  const repoStateKeyCache = new Map;
+  const MIGRATION_SUNSET_MS = Date.parse("2026-10-13T00:00:00Z");
+  function migrationWindowOpen() {
+    return Date.now() < MIGRATION_SUNSET_MS;
   }
-}
-// In 'slack' mode Slack is the sole nag surface — the Telegram ping goes quiet.
-function slackQuietsTelegram() {
-  return slackCfg()?.destination === 'slack'
-}
-function slackSlug(raw) {
-  return String(raw || '')
-    .toLowerCase()
-    .replace(/[/\s]+/g, '-')
-    .replace(/[^a-z0-9_-]+/g, '')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-}
-function slackChannelFor(category, cfg) {
-  const fallback = slackSlug(cfg.defaultChannel).slice(0, 80) || 'terminal-inbox'
-  const slug = category && category !== 'Uncategorized' ? slackSlug(category) : ''
-  if (!slug) return fallback
-  const prefix = slackSlug(cfg.channelPrefix)
-  return (prefix ? `${prefix}-${slug}` : slug).slice(0, 80)
-}
-function slackApi(token, method, body) {
-  return fetch(`https://slack.com/api/${method}`, {
-    method: 'POST',
-    headers: {
-      authorization: `Bearer ${token}`,
-      'content-type': 'application/json; charset=utf-8',
-    },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(8000),
-  }).then((r) => r.json())
-}
-// Post a filing to its category's channel (create-on-miss, default-channel
-// fallback), then stamp the message ref back onto the stored item so the app
-// can thread recurrences + react on resolve. Best-effort, never blocks filing.
-// Slack effects still in flight — drained by the stdin-end handler below.
-const pendingEffects = new Set()
-function trackEffect(promise) {
-  pendingEffects.add(promise)
-  promise.catch(() => {}).finally(() => pendingEffects.delete(promise))
-  return promise
-}
-
-function mirrorHitlToSlack(item, hitlFile) {
-  const cfg = slackCfg()
-  if (!cfg) return
-  trackEffect(
-    (async () => {
-    const channel = slackChannelFor(item.category, cfg)
-    const fallback = slackChannelFor(undefined, cfg)
-    const marker = item.source === 'completion-hook' ? '✅' : '⛔'
-    const text = `${marker} ${item.title}${item.action ? ` — ${item.action}` : ''}`
-    const post = (to) => slackApi(cfg.botToken, 'chat.postMessage', { channel: to, text })
-    let res = await post(`#${channel}`)
-    if (!res?.ok && res?.error === 'channel_not_found' && cfg.autoCreateChannels) {
-      const created = await slackApi(cfg.botToken, 'conversations.create', { name: channel })
-      if (created?.ok && created.channel?.id) {
-        // Invite the operator: a bot-created channel appears in nobody's
-        // sidebar until joined. Best-effort — never blocks the post.
-        if (cfg.inviteUserId)
-          await slackApi(cfg.botToken, 'conversations.invite', {
-            channel: created.channel.id,
-            users: cfg.inviteUserId,
-          }).catch(() => {})
-        res = await post(created.channel.id)
-      }
-    }
-    if (!res?.ok && channel !== fallback) res = await post(`#${fallback}`)
-    if (res?.ok && typeof res.channel === 'string' && typeof res.ts === 'string') {
-      updateJsonListShared(hitlFile, (list) =>
-        list.map((h) =>
-          h.id === item.id ? { ...h, slackChannel: res.channel, slackTs: res.ts } : h,
-        ),
-      )
-    }
-    })().catch(() => {}),
-  )
-}
-
-// --- crash-safe shared-state writes (ticket 0068) ----------------------------
-//
-// Canonical implementation + tests: src/main/atomic-write.ts. This is inlined
-// rather than imported because host-provision.ts copies this file to remote
-// hosts on its own and docker/build-agent-image.sh bakes it into an image with
-// no sibling modules — keep the two in sync.
-//
-// Why it matters here: this process and the desktop app both read-modify-write
-// schedules.json and hitl.json. Without a lock, stamping lastRun from a snapshot
-// read before the user disabled a schedule writes `enabled: true` back and the
-// job keeps firing.
-function writeJsonAtomicShared(file, value) {
-  mkdirSync(dirname(file), { recursive: true })
-  const tmp = `${file}.${process.pid}.tmp`
-  try {
-    writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`)
-    renameSync(tmp, file)
-  } catch (e) {
+  function repoStateDir() {
+    return process.env.TERMINAL_REPO_STATE_DIR?.trim() || join2(CFG2, "repos");
+  }
+  function gitOut(root, args) {
     try {
-      unlinkSync(tmp)
-    } catch {}
-    throw e
-  }
-}
-function sleepSyncShared(ms) {
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
-}
-function readLockShared(lockPath) {
-  try {
-    const p = JSON.parse(readFileSync(lockPath, 'utf8'))
-    return typeof p?.token === 'string' ? p : null
-  } catch {
-    return null
-  }
-}
-function pidAliveShared(pid) {
-  if (!Number.isInteger(pid) || pid <= 0) return false
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch (e) {
-    return e?.code === 'EPERM'
-  }
-}
-/** Advisory cross-process lock. Crash-safe: a lock whose owner died, or that
- *  outlives staleMs, is stolen; the acquire itself times out rather than wedge. */
-function withFileLockShared(file, fn, { timeoutMs = 5000, staleMs = 30000 } = {}) {
-  const lockPath = `${file}.lock`
-  const token = randomUUID()
-  mkdirSync(dirname(file), { recursive: true })
-  const deadline = Date.now() + timeoutMs
-  for (;;) {
-    let took = false
-    try {
-      const fd = openSync(lockPath, 'wx')
-      try {
-        writeFileSync(fd, JSON.stringify({ pid: process.pid, at: Date.now(), token }))
-      } finally {
-        closeSync(fd)
-      }
-      sleepSyncShared(2)
-      took = readLockShared(lockPath)?.token === token
-    } catch {}
-    if (took) break
-    const held = readLockShared(lockPath)
-    if (
-      held === null ||
-      !pidAliveShared(held.pid) ||
-      Date.now() - held.at > staleMs ||
-      Date.now() > deadline
-    ) {
-      try {
-        unlinkSync(lockPath)
-      } catch {}
-      continue
-    }
-    sleepSyncShared(10)
-  }
-  try {
-    return fn()
-  } finally {
-    if (readLockShared(lockPath)?.token === token) {
-      try {
-        unlinkSync(lockPath)
-      } catch {}
-    }
-  }
-}
-/** Locked read-modify-write of a JSON list. `update` receives the value as it is
- *  on disk AT LOCK TIME. A present-but-unparseable file is quarantined to
- *  <name>.corrupt-<ts> and the write is REFUSED — returning [] and writing that
- *  back is how a torn file silently deletes every entry. Returns true if written. */
-function updateJsonListShared(file, update) {
-  return withFileLockShared(file, () => {
-    let raw = null
-    try {
-      raw = readFileSync(file, 'utf8')
-    } catch {}
-    let cur = []
-    if (raw !== null && raw.trim() !== '') {
-      let parsed
-      try {
-        parsed = JSON.parse(raw)
-      } catch {
-        parsed = undefined
-      }
-      if (!Array.isArray(parsed)) {
-        const dest = `${file}.corrupt-${Date.now()}`
-        renameSync(file, dest)
-        throw new Error(`corrupt state file ${file}; moved aside to ${dest}`)
-      }
-      cur = parsed
-    }
-    const next = update(cur)
-    if (next === undefined) return false
-    writeJsonAtomicShared(file, next)
-    return true
-  })
-}
-
-
-// Resolve usable Telegram creds: the app seals its token in settings.json via
-// Electron safeStorage, which this plain Bun process can't decrypt — so the app
-// mirrors decrypted creds to a 0600 sidecar we read here. A sealed
-// {__terminalSecret} object is skipped (not a usable string token). Canonical
-// impl + tests: src/main/settings.ts:resolveTelegramCreds — keep in sync.
-function tgCreds() {
-  const pick = (o) => {
-    const bt = o?.botToken
-    const ci = o?.chatId
-    return typeof bt === 'string' && bt && typeof ci === 'string' && ci
-      ? { botToken: bt, chatId: ci }
-      : null
-  }
-  let sc = null
-  try {
-    sc = JSON.parse(readFileSync(TG_SIDECAR, 'utf8'))
-  } catch {}
-  return pick(sc) ?? pick(readSettings()?.telegram)
-}
-
-function readSettings() {
-  try {
-    const s = JSON.parse(readFileSync(SETTINGS_FILE, 'utf8'))
-    return s && typeof s === 'object' ? s : {}
-  } catch {
-    return {}
-  }
-}
-
-function configuredProjectsDir() {
-  const s = readSettings()
-  return typeof s.projectsDir === 'string' && s.projectsDir ? s.projectsDir : homedir()
-}
-
-function configuredHarnessDir() {
-  if (process.env.GT_HARNESS_DIR) return process.env.GT_HARNESS_DIR
-  const s = readSettings()
-  return typeof s.harnessDir === 'string' ? s.harnessDir : ''
-}
-
-// --- BEGIN repo-state (canonical: src/main/repo-state-inline.ts — do not edit by hand) ---
-/* eslint-disable @typescript-eslint/no-unused-vars -- one shared block; not every
-   script uses every helper, and the copies must stay byte-identical. */
-const SIDECAR_AREAS = ['backlog', 'sessions', 'reviews', 'checks', 'reports']
-const repoStateKeyCache = new Map()
-function repoStateDir() {
-  return process.env.TERMINAL_REPO_STATE_DIR?.trim() || join(CFG, 'repos')
-}
-function gitOut(root, args) {
-  try {
-    return execFileSync('git', ['-C', root, ...args], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim()
-  } catch {
-    return ''
-  }
-}
-// URL → host/path, mirroring src/main/repo.ts parseRemote: any scheme with an
-// optional port (stripped — ssh://git@ssh.github.com:443/owner/repo must not
-// yield "443/owner/repo"), else scp-like. Trailing slashes and .git dropped.
-function parseRemoteKey(url) {
-  const u = (url || '')
-    .trim()
-    .replace(/\/+$/, '')
-    .replace(/\.git$/, '')
-  const m =
-    u.match(/^[a-z][a-z0-9+.-]*:\/\/(?:[^@/]+@)?([^/:]+)(?::\d+)?\/(.+)$/i) ||
-    u.match(/^[\w.-]+@([^:/]+)[:/](.+)$/)
-  return m ? m[1] + '/' + m[2] : ''
-}
-// The key becomes a filesystem path under <config>/repos — a crafted origin
-// URL must not traverse out of it.
-function safeStateKey(key) {
-  if (!key) return ''
-  const parts = key.split('/')
-  if (parts.some((p) => p === '' || p === '.' || p === '..')) return ''
-  return key
-}
-function repoStateKey(root) {
-  if (!root) return ''
-  const hit = repoStateKeyCache.get(root)
-  if (hit !== undefined) return hit
-  // Raw configured URL first, exactly like src/main/repo.ts repoForCwd:
-  // "remote get-url" applies url.<base>.insteadOf, which can rewrite a real
-  // forge URL into an ssh alias or local mirror path that keys differently
-  // (or not at all). The rewritten form stays as the fallback for the
-  // opposite setup, where only the expanded URL names a repo.
-  let key = safeStateKey(parseRemoteKey(gitOut(root, ['config', '--get', 'remote.origin.url'])))
-  if (!key) key = safeStateKey(parseRemoteKey(gitOut(root, ['remote', 'get-url', 'origin'])))
-  if (!key) {
-    // No (usable) origin → hash the MAIN checkout's path, not the worktree's:
-    // rev-parse --git-common-dir names the shared .git so every worktree of a
-    // local-only repo lands on one sidecar, matching the origin-keyed case.
-    let canonical = gitOut(root, ['rev-parse', '--show-toplevel']) || root
-    const common = gitOut(root, ['rev-parse', '--path-format=absolute', '--git-common-dir'])
-    if (common && common.endsWith('/.git')) canonical = common.slice(0, -'/.git'.length)
-    const hash = createHash('sha256').update(canonical).digest('hex').slice(0, 12)
-    key = 'local/' + basename(canonical) + '-' + hash
-  }
-  repoStateKeyCache.set(root, key)
-  return key
-}
-function sidecarAreaPath(root, area) {
-  if (!root || !SIDECAR_AREAS.includes(area)) return ''
-  const key = repoStateKey(root)
-  return key ? join(repoStateDir(), key, area) : ''
-}
-// Reads merge sidecar + in-repo so state already committed stays visible;
-// writes always go to the sidecar so a shared repo stops accreting state.
-function areaPathsFor(root, area, candidates) {
-  const out = []
-  const sidecar = sidecarAreaPath(root, area)
-  if (sidecar && existsSync(sidecar)) out.push(sidecar)
-  for (const rel of candidates) {
-    const p = join(root, rel)
-    if (existsSync(p)) out.push(p)
-  }
-  return out
-}
-function areaWritePath(root, area, candidates, isV2) {
-  const sidecar = sidecarAreaPath(root, area)
-  if (sidecar) return sidecar
-  const existing = areaPathsFor(root, area, candidates)
-  if (existing.length) return existing[0]
-  // candidates[1] is the canonical v1 rel (e.g. checks has a third, bare
-  // legacy variant that must never become a write target).
-  return join(root, isV2 ? candidates[0] : candidates[1] || candidates[0])
-}
-// IDs must be unique across EVERY dir an area reads from. A fresh sidecar
-// beside a repo that still holds 0001-0042 would otherwise restart at 0001,
-// producing two tickets with the same id and shadowing the originals.
-function maxAreaId(dirs) {
-  let max = 0
-  for (const dir of dirs) {
-    if (!dir) continue
-    let entries = []
-    try {
-      entries = readdirSync(dir)
+      return execFileSync("git", ["-C", root, ...args], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"]
+      }).trim();
     } catch {
-      continue
-    }
-    for (const f of entries) {
-      const m = /^(\d{4})-/.exec(f)
-      if (m) max = Math.max(max, parseInt(m[1], 10))
+      return "";
     }
   }
-  return max
+  function parseRemoteKey(url) {
+    const u = (url || "").trim().replace(/\/+$/, "").replace(/\.git$/, "");
+    const m = u.match(/^[a-z][a-z0-9+.-]*:\/\/(?:[^@/]+@)?([^/:]+)(?::\d+)?\/(.+)$/i) || u.match(/^[\w.-]+@([^:/]+)[:/](.+)$/);
+    return m ? m[1] + "/" + m[2] : "";
+  }
+  function safeStateKey(key) {
+    if (!key)
+      return "";
+    const parts = key.split("/");
+    if (parts.some((p) => p === "" || p === "." || p === ".."))
+      return "";
+    return key;
+  }
+  function repoStateKey(root) {
+    if (!root)
+      return "";
+    const hit = repoStateKeyCache.get(root);
+    if (hit !== undefined)
+      return hit;
+    let key = safeStateKey(parseRemoteKey(gitOut(root, ["config", "--get", "remote.origin.url"])));
+    if (!key)
+      key = safeStateKey(parseRemoteKey(gitOut(root, ["remote", "get-url", "origin"])));
+    if (!key) {
+      let canonical = gitOut(root, ["rev-parse", "--show-toplevel"]) || root;
+      const common = gitOut(root, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+      if (common && common.endsWith("/.git"))
+        canonical = common.slice(0, -"/.git".length);
+      const hash = createHash("sha256").update(canonical).digest("hex").slice(0, 12);
+      key = "local/" + basename(canonical) + "-" + hash;
+    }
+    repoStateKeyCache.set(root, key);
+    return key;
+  }
+  function sidecarAreaPath(root, area) {
+    if (!root || !SIDECAR_AREAS.includes(area))
+      return "";
+    const key = repoStateKey(root);
+    return key ? join2(repoStateDir(), key, area) : "";
+  }
+  function areaPathsFor(root, area, candidates) {
+    const out = [];
+    const sidecar = sidecarAreaPath(root, area);
+    if (sidecar && existsSync(sidecar))
+      out.push(sidecar);
+    if (migrationWindowOpen())
+      for (const rel of candidates) {
+        const p = join2(root, rel);
+        if (existsSync(p))
+          out.push(p);
+      }
+    return out;
+  }
+  function areaWritePath(root, area, candidates, isV2) {
+    const sidecar = sidecarAreaPath(root, area);
+    if (sidecar)
+      return sidecar;
+    const existing = areaPathsFor(root, area, candidates);
+    if (existing.length)
+      return existing[0];
+    return join2(root, isV2 ? candidates[0] : candidates[1] || candidates[0]);
+  }
+  function maxAreaId(dirs) {
+    let max = 0;
+    for (const dir of dirs) {
+      if (!dir)
+        continue;
+      let entries = [];
+      try {
+        entries = readdirSync(dir);
+      } catch {
+        continue;
+      }
+      for (const f of entries) {
+        const m = /^(\d{4})-/.exec(f);
+        if (m)
+          max = Math.max(max, parseInt(m[1], 10));
+      }
+    }
+    return max;
+  }
+  function statePathForWrite(root, rel) {
+    if (!root)
+      return "";
+    const key = repoStateKey(root);
+    return key ? join2(repoStateDir(), key, rel) : "";
+  }
+  function statePathForRead(root, rel) {
+    const sidecar = statePathForWrite(root, rel);
+    if (sidecar && existsSync(sidecar))
+      return sidecar;
+    const legacy = join2(root, ".TerMinal", rel);
+    if (migrationWindowOpen() && existsSync(legacy))
+      return legacy;
+    return sidecar || legacy;
+  }
+  function statePathSticky(root, rel) {
+    const legacy = join2(root, ".TerMinal", rel);
+    if (migrationWindowOpen() && existsSync(legacy))
+      return legacy;
+    return statePathForWrite(root, rel) || legacy;
+  }
+  function repoStateEnv(root) {
+    const out = {};
+    if (!root)
+      return out;
+    const key = repoStateKey(root);
+    if (!key)
+      return out;
+    const base = join2(repoStateDir(), key);
+    out.TERMINAL_STATE_DIR = base;
+    for (const area of SIDECAR_AREAS) {
+      out["TERMINAL_" + area.toUpperCase() + "_DIR"] = join2(base, area);
+    }
+    return out;
+  }
+  return {
+    SIDECAR_AREAS,
+    repoStateKey,
+    sidecarAreaPath,
+    areaPathsFor,
+    areaWritePath,
+    maxAreaId,
+    statePathForWrite,
+    statePathForRead,
+    statePathSticky,
+    repoStateEnv
+  };
 }
-// Personal state files/dirs formerly at <repo>/.TerMinal/<rel>, now at the
-// sidecar ROOT. Reads prefer the sidecar, fall back to the legacy in-repo
-// copy; writes always target the sidecar. Mirrors repoStatePathForRead/Write.
-function statePathForWrite(root, rel) {
-  if (!root) return ''
-  const key = repoStateKey(root)
-  return key ? join(repoStateDir(), key, rel) : ''
+
+// src/runner/repo-state.ts
+var cached = null;
+function repoState() {
+  const cfg = CFG();
+  if (!cached || cached.cfg !== cfg)
+    cached = { cfg, api: makeRepoState(cfg) };
+  return cached.api;
+}
+function areaCandidates(area) {
+  return {
+    backlog: [".TerMinal/backlog", "backlog"],
+    sessions: [".TerMinal/sessions", "sessions"],
+    reviews: [".TerMinal/reviews", ".reviews"],
+    checks: [".TerMinal/checks", ".checks", "checks"],
+    reports: [".TerMinal/reports", "reports"]
+  }[area] || [area];
+}
+function hasV2Layout(root) {
+  const areas = ["backlog", "sessions", "reviews", "checks", "reports"];
+  if (existsSync2(join3(root, ".TerMinal", "template.json")))
+    return true;
+  if (areas.some((area) => existsSync2(join3(root, areaCandidates(area)[0]))))
+    return true;
+  return !areas.some((area) => {
+    const rels = areaCandidates(area);
+    return rels.length > 1 && existsSync2(join3(root, rels[1]));
+  });
+}
+function areaPath(root, area) {
+  return repoState().areaWritePath(root, area, areaCandidates(area), hasV2Layout(root));
+}
+function areaPathsFor(root, area) {
+  return repoState().areaPathsFor(root, area, areaCandidates(area));
 }
 function statePathForRead(root, rel) {
-  const sidecar = statePathForWrite(root, rel)
-  if (sidecar && existsSync(sidecar)) return sidecar
-  const legacy = join(root, '.TerMinal', rel)
-  if (existsSync(legacy)) return legacy
-  return sidecar || legacy
+  return repoState().statePathForRead(root, rel);
 }
-// STICKY variant for live runtime dirs (loops/<id>): legacy wins while it
-// exists, so an in-flight legacy loop never flips to a half-written sidecar
-// copy mid-run. Mirrors repoStatePathSticky in src/main/repo-state.ts.
-function statePathSticky(root, rel) {
-  const legacy = join(root, '.TerMinal', rel)
-  if (existsSync(legacy)) return legacy
-  return statePathForWrite(root, rel) || legacy
+function statePathForWrite(root, rel) {
+  return repoState().statePathForWrite(root, rel);
 }
-// Env handed to a spawned agent/script: the same TERMINAL_<AREA>_DIR values
-// the app injects, so a scheduled run resolves state identically to an
-// interactive one. Scripts reference these instead of literal paths.
-function repoStateEnv(root) {
-  const out = {}
-  if (!root) return out
-  const key = repoStateKey(root)
-  if (!key) return out
-  const base = join(repoStateDir(), key)
-  out.TERMINAL_STATE_DIR = base
-  for (const area of SIDECAR_AREAS) {
-    out['TERMINAL_' + area.toUpperCase() + '_DIR'] = join(base, area)
+function maxAreaId(dirs) {
+  return repoState().maxAreaId(dirs);
+}
+
+// src/mcp/env.ts
+import { readFileSync } from "fs";
+import { homedir as homedir2 } from "os";
+import { join as join4 } from "path";
+var SETTINGS_FILE = () => join4(CFG(), "settings.json");
+var TG_SIDECAR = () => join4(CFG(), "telegram.local.json");
+var SLACK_SIDECAR = () => join4(CFG(), "slack.local.json");
+var HITL_FILE = () => join4(CFG(), "hitl.json");
+var ACTIVITY_FILE = () => join4(CFG(), "activity.jsonl");
+var LEGACY_TG_SCRIPT = () => join4(homedir2(), ".claude", "bin", "telegram-notify.sh");
+function readSettings() {
+  try {
+    const s = JSON.parse(readFileSync(SETTINGS_FILE(), "utf8"));
+    return s && typeof s === "object" ? s : {};
+  } catch {
+    return {};
   }
-  return out
 }
-/* eslint-enable @typescript-eslint/no-unused-vars */
-// --- END repo-state ---
-
-function areaCandidates(area) {
-  return (
-    {
-      backlog: ['.TerMinal/backlog', 'backlog'],
-      sessions: ['.TerMinal/sessions', 'sessions'],
-      reviews: ['.TerMinal/reviews', '.reviews'],
-      checks: ['.TerMinal/checks', '.checks', 'checks'],
-      reports: ['.TerMinal/reports', 'reports'],
-    }[area] || [area]
-  )
+function configuredProjectsDir() {
+  const s = readSettings();
+  return typeof s.projectsDir === "string" && s.projectsDir ? s.projectsDir : homedir2();
 }
-
-// v2 by default: v1 only on positive evidence of root-level v1 state dirs
-// (mirrors src/main/project-layout.ts detectProjectLayout).
-function hasV2Layout(root) {
-  const areas = ['backlog', 'sessions', 'reviews', 'checks', 'reports']
-  if (existsSync(join(root, '.TerMinal', 'template.json'))) return true
-  if (areas.some((area) => existsSync(join(root, areaCandidates(area)[0])))) return true
-  return !areas.some((area) => {
-    const rels = areaCandidates(area)
-    return rels.length > 1 && existsSync(join(root, rels[1]))
-  })
+function configuredHarnessDir() {
+  if (process.env.GT_HARNESS_DIR)
+    return process.env.GT_HARNESS_DIR;
+  const s = readSettings();
+  return typeof s.harnessDir === "string" ? s.harnessDir : "";
+}
+function prsRoot() {
+  const dir = configuredHarnessDir();
+  return dir ? join4(dir, "prs") : "";
 }
 
-function areaPaths(root, area) {
-  return areaPathsFor(root, area, areaCandidates(area))
-}
-
-function areaPath(root, area) {
-  return areaWritePath(root, area, areaCandidates(area), hasV2Layout(root))
-}
-
-// Ticket-provider config (.TerMinal/tickets.json). Obsidian repos store tickets
-// in an external vault; every ticket op below resolves its dir through these so
-// list/get/file/update all hit the vault, not the repo's local backlog.
+// src/mcp/repo.ts
+import { existsSync as existsSync3, readFileSync as readFileSync2, readdirSync as readdirSync2 } from "fs";
+import { basename as basename2, join as join5 } from "path";
 function readTicketConfig(root) {
   try {
-    // Personal config — sidecar first, legacy in-repo copy as fallback.
-    const p = statePathForRead(root, 'tickets.json')
-    if (!existsSync(p)) return {}
-    const parsed = JSON.parse(readFileSync(p, 'utf8'))
-    return parsed && typeof parsed === 'object' ? parsed : {}
+    const p = statePathForRead(root, "tickets.json");
+    if (!existsSync3(p))
+      return {};
+    const parsed = JSON.parse(readFileSync2(p, "utf8"));
+    return parsed && typeof parsed === "object" ? parsed : {};
   } catch {
-    return {}
+    return {};
   }
 }
 function obsidianTicketsDir(cfg) {
-  if (!cfg || cfg.provider !== 'obsidian' || !cfg.obsidian || !cfg.obsidian.vaultPath) return null
-  const sub = String(cfg.obsidian.ticketsSubdir || 'tickets').replace(/^\/+|\/+$/g, '') || 'tickets'
-  return join(cfg.obsidian.vaultPath, sub)
+  if (!cfg || cfg.provider !== "obsidian" || !cfg.obsidian || !cfg.obsidian.vaultPath)
+    return null;
+  const sub = String(cfg.obsidian.ticketsSubdir || "tickets").replace(/^\/+|\/+$/g, "") || "tickets";
+  return join5(cfg.obsidian.vaultPath, sub);
 }
-// Read dirs (obsidian → the vault only; else the repo's backlog layouts).
-// An obsidian repo with a missing vault path exposes nothing — never the repo
-// backlog, which would leak/accept tickets the provider contract routes away.
 function backlogReadDirs(root) {
-  const cfg = readTicketConfig(root)
-  if (cfg.provider === 'obsidian') {
-    const dir = obsidianTicketsDir(cfg)
-    return dir && existsSync(dir) ? [dir] : []
+  const cfg = readTicketConfig(root);
+  if (cfg.provider === "obsidian") {
+    const dir = obsidianTicketsDir(cfg);
+    return dir && existsSync3(dir) ? [dir] : [];
   }
-  return areaPaths(root, 'backlog')
+  return areaPathsFor(root, "backlog");
 }
-// Write dir (obsidian → the vault, failing closed when unconfigured; else the
-// repo's canonical backlog).
 function backlogWriteDir(root) {
-  const cfg = readTicketConfig(root)
-  if (cfg.provider === 'obsidian') {
-    const dir = obsidianTicketsDir(cfg)
+  const cfg = readTicketConfig(root);
+  if (cfg.provider === "obsidian") {
+    const dir = obsidianTicketsDir(cfg);
     if (!dir)
-      throw new Error(
-        'Obsidian vault path is not configured for this repo (.TerMinal/tickets.json)',
-      )
-    return dir
+      throw new Error("Obsidian vault path is not configured for this repo (.TerMinal/tickets.json)");
+    return dir;
   }
-  return areaPath(root, 'backlog')
+  return areaPath(root, "backlog");
 }
-
-function pingTelegram(text, inlineKeyboard) {
-  const telegram = tgCreds()
-  if (telegram) {
-    fetch(`https://api.telegram.org/bot${telegram.botToken}/sendMessage`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: telegram.chatId,
-        text,
-        ...(inlineKeyboard ? { reply_markup: { inline_keyboard: inlineKeyboard } } : {}),
-      }),
-      signal: AbortSignal.timeout(8000),
-    }).catch(() => {})
-    return
-  }
-  if (existsSync(LEGACY_TG_SCRIPT)) {
-    try {
-      const child = spawn(LEGACY_TG_SCRIPT, ['--kind=blocked', text], { stdio: 'ignore' })
-      child.on('error', () => {})
-      child.unref()
-    } catch {
-      /* best effort — missing/broken Telegram must not block HITL */
-    }
-  }
-}
-
-function prsRoot() {
-  const dir = configuredHarnessDir()
-  return dir ? join(dir, 'prs') : ''
-}
-
-// ---------------------------------------------------------------------------
-// Frontmatter parser (mirrors the renderer-side parser; minimal, regex-only)
-// ---------------------------------------------------------------------------
 function parseFrontmatter(md) {
-  const m = md.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/)
-  if (!m) return { meta: {}, body: md }
-  const meta = {}
+  const m = md.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+  if (!m)
+    return { meta: {}, body: md };
+  const meta = {};
   for (const line of m[1].split(/\r?\n/)) {
-    const lm = line.match(/^([A-Za-z_][\w-]*):\s*(.*)$/)
-    if (!lm) continue
-    const raw = lm[2].trim()
-    if (!raw) continue
-    let val = raw
-    if (raw === 'true' || raw === 'false') val = raw === 'true'
-    else if (/^-?\d+(\.\d+)?$/.test(raw)) val = Number(raw)
-    else if (raw.startsWith('"') && raw.endsWith('"')) val = raw.slice(1, -1)
-    else if (raw.startsWith('[') && raw.endsWith(']')) {
-      val = raw
-        .slice(1, -1)
-        .split(',')
-        .map((s) => s.trim().replace(/^["']|["']$/g, ''))
-        .filter(Boolean)
+    const lm = line.match(/^([A-Za-z_][\w-]*):\s*(.*)$/);
+    if (!lm)
+      continue;
+    const raw = lm[2].trim();
+    if (!raw)
+      continue;
+    let val = raw;
+    if (raw === "true" || raw === "false")
+      val = raw === "true";
+    else if (/^-?\d+(\.\d+)?$/.test(raw))
+      val = Number(raw);
+    else if (raw.startsWith('"') && raw.endsWith('"'))
+      val = raw.slice(1, -1);
+    else if (raw.startsWith("[") && raw.endsWith("]")) {
+      val = raw.slice(1, -1).split(",").map((s) => s.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
     }
-    meta[lm[1]] = val
+    meta[lm[1]] = val;
   }
-  return { meta, body: m[2] || '' }
+  return { meta, body: m[2] || "" };
 }
-
-// ---------------------------------------------------------------------------
-// Resource readers — each delegates to existing on-disk shapes
-// ---------------------------------------------------------------------------
-
 function knownRepoRoots() {
-  // Repos known to the harness: anything with a schedule, anything in
-  // prs/cache.json, anything in the workspaces persisted state, anything in
-  // bg-tasks.json.
-  const roots = new Set()
-  // schedules.json
+  const roots = new Set;
   try {
-    const sf = join(CFG, 'schedules.json')
-    if (existsSync(sf)) {
-      const arr = JSON.parse(readFileSync(sf, 'utf8'))
-      for (const s of arr) if (s.repoRoot) roots.add(s.repoRoot)
+    const sf = join5(CFG(), "schedules.json");
+    if (existsSync3(sf)) {
+      const arr = JSON.parse(readFileSync2(sf, "utf8"));
+      for (const s of arr)
+        if (s.repoRoot)
+          roots.add(s.repoRoot);
     }
   } catch {}
-  // bg-tasks.json
   try {
-    const bf = join(CFG, 'bg-tasks.json')
-    if (existsSync(bf)) {
-      const arr = JSON.parse(readFileSync(bf, 'utf8'))
-      for (const t of arr) if (t.repoRoot) roots.add(t.repoRoot)
+    const bf = join5(CFG(), "bg-tasks.json");
+    if (existsSync3(bf)) {
+      const arr = JSON.parse(readFileSync2(bf, "utf8"));
+      for (const t of arr)
+        if (t.repoRoot)
+          roots.add(t.repoRoot);
     }
   } catch {}
-  // Walk common parent dir to find any repo not yet known
-  const parent = configuredProjectsDir()
-  if (existsSync(parent)) {
+  const parent = configuredProjectsDir();
+  if (existsSync3(parent)) {
     try {
-      for (const name of readdirSync(parent)) {
-        const p = join(parent, name)
-        if (name.startsWith('.')) continue
-        if (existsSync(join(p, '.git'))) roots.add(p)
+      for (const name of readdirSync2(parent)) {
+        const p = join5(parent, name);
+        if (name.startsWith("."))
+          continue;
+        if (existsSync3(join5(p, ".git")))
+          roots.add(p);
       }
     } catch {}
   }
-  return [...roots]
+  return [...roots];
 }
-
 function findRepoRoot(repoArg) {
-  if (!repoArg) return null
-  const target = repoArg.toLowerCase()
+  if (!repoArg)
+    return null;
+  const target = repoArg.toLowerCase();
   for (const root of knownRepoRoots()) {
-    const b = basename(root).toLowerCase()
-    if (b === target || root.toLowerCase().endsWith(target)) return root
+    const b = basename2(root).toLowerCase();
+    if (b === target || root.toLowerCase().endsWith(target))
+      return root;
   }
-  return null
+  return null;
 }
 
-// --- tickets ---------------------------------------------------------------
+// src/mcp/ticket-agents.ts
+var localDay = (at = new Date) => `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(at.getDate()).padStart(2, "0")}`;
+var todayStr = () => localDay();
+var slugify = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 50) || "untitled";
+var TICKET_AGENT_ROUTES = [
+  {
+    agent: { id: "security-sweep", scope: "global", kind: "classic" },
+    type: ["security"],
+    keywords: [
+      "security",
+      "auth",
+      "authorization",
+      "permission",
+      "xss",
+      "csrf",
+      "ssrf",
+      "injection",
+      "secret",
+      "token",
+      "cve",
+      "vulnerability"
+    ]
+  },
+  {
+    agent: { id: "test-coverage", scope: "global", kind: "classic" },
+    type: ["testing"],
+    keywords: ["test", "tests", "testing", "coverage", "spec", "flaky", "assertion", "tdd"]
+  },
+  {
+    agent: { id: "docs", scope: "global", kind: "classic" },
+    type: ["docs"],
+    keywords: ["docs", "documentation", "readme", "runbook", "adr", "changelog", "guide"]
+  },
+  {
+    agent: { id: "perf-pass", scope: "global", kind: "classic" },
+    type: ["performance"],
+    keywords: [
+      "performance",
+      "perf",
+      "latency",
+      "slow",
+      "memory",
+      "n+1",
+      "cache",
+      "optimize",
+      "profiling"
+    ]
+  },
+  {
+    agent: { id: "ci-improver", scope: "global", kind: "classic" },
+    type: ["dx"],
+    keywords: [
+      "ci",
+      "lint",
+      "typecheck",
+      "build failure",
+      "workflow",
+      "developer",
+      "devex",
+      "tooling",
+      "script"
+    ]
+  }
+];
+function recommendTicketAgent(input = {}) {
+  const type = String(input.type || "feature").toLowerCase();
+  const text = `${input.title || ""}
+${input.body || ""}`.toLowerCase();
+  const scored = TICKET_AGENT_ROUTES.map((route) => {
+    const signals = [];
+    if (route.type?.includes(type))
+      signals.push(`type:${type}`);
+    for (const keyword of route.keywords) {
+      const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      if (new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, "i").test(text))
+        signals.push(keyword);
+    }
+    return { route, signals };
+  }).filter((x) => x.signals.length > 0);
+  if (scored.length) {
+    scored.sort((a, b) => b.signals.length - a.signals.length);
+    return { agent: scored[0].route.agent, signals: scored[0].signals.slice(0, 5) };
+  }
+  return {
+    agent: { id: "1000x-ai-engineer", scope: "global", kind: "classic" },
+    signals: type ? [`type:${type}`] : []
+  };
+}
+function defaultTicketAgent(type = "feature") {
+  return recommendTicketAgent({ type }).agent;
+}
+function normalizeTicketAgent(args, type = "feature", recommendation) {
+  const fallback = recommendation?.agent || defaultTicketAgent(type);
+  const id = typeof args?.agentId === "string" && args.agentId.trim() ? args.agentId.trim() : fallback.id;
+  const scope = args?.agentScope === "repo" || args?.agentScope === "global" ? args.agentScope : fallback.scope;
+  const kind = args?.agentKind === "persistent" || args?.agentKind === "classic" ? args.agentKind : fallback.kind;
+  return { id, scope, kind };
+}
+function ticketAgentFromMeta(meta) {
+  return normalizeTicketAgent({
+    agentId: meta.agent_id,
+    agentScope: meta.agent_scope,
+    agentKind: meta.agent_kind
+  }, meta.type || "feature");
+}
+var MODEL_TIERS = ["auto", "top", "cheap-agentic", "cheap-raw"];
+var normalizeModelTier = (value) => MODEL_TIERS.includes(value) ? value : "auto";
 
-function listTicketsForRoot(repoRoot, filter, includeBody) {
-  const out = []
-  for (const dir of backlogReadDirs(repoRoot)) {
-    let files
+// src/mcp/writes.ts
+import {
+  appendFileSync,
+  existsSync as existsSync6,
+  mkdirSync as mkdirSync2,
+  readFileSync as readFileSync6,
+  readdirSync as readdirSync4,
+  writeFileSync as writeFileSync2
+} from "fs";
+import { basename as basename4, dirname as dirname2, join as join7 } from "path";
+import { randomUUID as randomUUID2 } from "crypto";
+
+// src/runner/state-io.ts
+import {
+  closeSync,
+  mkdirSync,
+  openSync,
+  readFileSync as readFileSync3,
+  renameSync,
+  unlinkSync,
+  writeFileSync
+} from "fs";
+import { dirname } from "path";
+import { randomUUID } from "crypto";
+function writeJsonAtomicShared(file, value) {
+  mkdirSync(dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  try {
+    writeFileSync(tmp, `${JSON.stringify(value, null, 2)}
+`);
+    renameSync(tmp, file);
+  } catch (e) {
     try {
-      files = readdirSync(dir)
+      unlinkSync(tmp);
+    } catch {}
+    throw e;
+  }
+}
+function sleepSyncShared(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+function readLockShared(lockPath) {
+  try {
+    const p = JSON.parse(readFileSync3(lockPath, "utf8"));
+    return typeof p?.token === "string" ? p : null;
+  } catch {
+    return null;
+  }
+}
+function pidAliveShared(pid) {
+  if (!Number.isInteger(pid) || pid <= 0)
+    return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return e?.code === "EPERM";
+  }
+}
+function withFileLockShared(file, fn, { timeoutMs = 5000, staleMs = 30000 } = {}) {
+  const lockPath = `${file}.lock`;
+  const token = randomUUID();
+  mkdirSync(dirname(file), { recursive: true });
+  const deadline = Date.now() + timeoutMs;
+  for (;; ) {
+    let took = false;
+    try {
+      const fd = openSync(lockPath, "wx");
+      try {
+        writeFileSync(fd, JSON.stringify({ pid: process.pid, at: Date.now(), token }));
+      } finally {
+        closeSync(fd);
+      }
+      sleepSyncShared(2);
+      took = readLockShared(lockPath)?.token === token;
+    } catch {}
+    if (took)
+      break;
+    const held = readLockShared(lockPath);
+    if (held === null || !pidAliveShared(held.pid) || Date.now() - held.at > staleMs || Date.now() > deadline) {
+      try {
+        unlinkSync(lockPath);
+      } catch {}
+      continue;
+    }
+    sleepSyncShared(10);
+  }
+  try {
+    return fn();
+  } finally {
+    if (readLockShared(lockPath)?.token === token) {
+      try {
+        unlinkSync(lockPath);
+      } catch {}
+    }
+  }
+}
+function updateJsonListShared(file, update) {
+  return withFileLockShared(file, () => {
+    let raw = null;
+    try {
+      raw = readFileSync3(file, "utf8");
+    } catch {}
+    let cur = [];
+    if (raw !== null && raw.trim() !== "") {
+      let parsed;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        parsed = undefined;
+      }
+      if (!Array.isArray(parsed)) {
+        const dest = `${file}.corrupt-${Date.now()}`;
+        renameSync(file, dest);
+        throw new Error(`corrupt state file ${file}; moved aside to ${dest}`);
+      }
+      cur = parsed;
+    }
+    const next = update(cur);
+    if (next === undefined)
+      return false;
+    writeJsonAtomicShared(file, next);
+    return true;
+  });
+}
+
+// src/mcp/notify.ts
+import { spawn } from "child_process";
+import { existsSync as existsSync4, readFileSync as readFileSync4 } from "fs";
+function slackCfg() {
+  try {
+    const c = JSON.parse(readFileSync4(SLACK_SIDECAR(), "utf8"));
+    return typeof c?.botToken === "string" && c.botToken ? c : null;
+  } catch {
+    return null;
+  }
+}
+function slackQuietsTelegram() {
+  return slackCfg()?.destination === "slack";
+}
+function slackSlug(raw) {
+  return String(raw || "").toLowerCase().replace(/[/\s]+/g, "-").replace(/[^a-z0-9_-]+/g, "").replace(/-+/g, "-").replace(/^-|-$/g, "");
+}
+function slackChannelFor(category, cfg) {
+  const fallback = slackSlug(cfg.defaultChannel).slice(0, 80) || "terminal-inbox";
+  const slug = category && category !== "Uncategorized" ? slackSlug(category) : "";
+  if (!slug)
+    return fallback;
+  const prefix = slackSlug(cfg.channelPrefix);
+  return (prefix ? `${prefix}-${slug}` : slug).slice(0, 80);
+}
+function slackApi(token, method, body) {
+  return fetch(`https://slack.com/api/${method}`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json; charset=utf-8"
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(8000)
+  }).then((r) => r.json());
+}
+var pendingEffects = new Set;
+function trackEffect(promise) {
+  pendingEffects.add(promise);
+  promise.catch(() => {}).finally(() => pendingEffects.delete(promise));
+  return promise;
+}
+function mirrorHitlToSlack(item, hitlFile) {
+  const cfg = slackCfg();
+  if (!cfg)
+    return;
+  trackEffect((async () => {
+    const channel = slackChannelFor(item.category, cfg);
+    const fallback = slackChannelFor(undefined, cfg);
+    const marker = item.source === "completion-hook" ? "\u2705" : "\u26D4";
+    const text = `${marker} ${item.title}${item.action ? ` \u2014 ${item.action}` : ""}`;
+    const post = (to) => slackApi(cfg.botToken, "chat.postMessage", { channel: to, text });
+    let res = await post(`#${channel}`);
+    if (!res?.ok && res?.error === "channel_not_found" && cfg.autoCreateChannels) {
+      const created = await slackApi(cfg.botToken, "conversations.create", { name: channel });
+      if (created?.ok && created.channel?.id) {
+        if (cfg.inviteUserId)
+          await slackApi(cfg.botToken, "conversations.invite", {
+            channel: created.channel.id,
+            users: cfg.inviteUserId
+          }).catch(() => {});
+        res = await post(created.channel.id);
+      }
+    }
+    if (!res?.ok && channel !== fallback)
+      res = await post(`#${fallback}`);
+    if (res?.ok && typeof res.channel === "string" && typeof res.ts === "string") {
+      updateJsonListShared(hitlFile, (list) => list.map((h) => h.id === item.id ? { ...h, slackChannel: res.channel, slackTs: res.ts } : h));
+    }
+  })().catch(() => {}));
+}
+function tgCreds() {
+  const pick = (o) => {
+    const bt = o?.botToken;
+    const ci = o?.chatId;
+    return typeof bt === "string" && bt && typeof ci === "string" && ci ? { botToken: bt, chatId: ci } : null;
+  };
+  let sc = null;
+  try {
+    sc = JSON.parse(readFileSync4(TG_SIDECAR(), "utf8"));
+  } catch {}
+  return pick(sc) ?? pick(readSettings()?.telegram);
+}
+function pingTelegram(text, inlineKeyboard) {
+  const telegram = tgCreds();
+  if (telegram) {
+    fetch(`https://api.telegram.org/bot${telegram.botToken}/sendMessage`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        chat_id: telegram.chatId,
+        text,
+        ...inlineKeyboard ? { reply_markup: { inline_keyboard: inlineKeyboard } } : {}
+      }),
+      signal: AbortSignal.timeout(8000)
+    }).catch(() => {});
+    return;
+  }
+  if (existsSync4(LEGACY_TG_SCRIPT())) {
+    try {
+      const child = spawn(LEGACY_TG_SCRIPT(), ["--kind=blocked", text], { stdio: "ignore" });
+      child.on("error", () => {});
+      child.unref();
+    } catch {}
+  }
+}
+
+// src/mcp/reads.ts
+import { existsSync as existsSync5, readFileSync as readFileSync5, readdirSync as readdirSync3, statSync } from "fs";
+import { basename as basename3, join as join6 } from "path";
+function listTicketsForRoot(repoRoot, filter, includeBody) {
+  const out = [];
+  for (const dir of backlogReadDirs(repoRoot)) {
+    let files;
+    try {
+      files = readdirSync3(dir);
     } catch {
-      continue
+      continue;
     }
     for (const f of files) {
-      if (!/^\d{4}-.*\.md$/.test(f)) continue
-      let raw
+      if (!/^\d{4}-.*\.md$/.test(f))
+        continue;
+      let raw;
       try {
-        raw = readFileSync(join(dir, f), 'utf8')
+        raw = readFileSync5(join6(dir, f), "utf8");
       } catch {
-        continue
+        continue;
       }
-      const { meta, body } = parseFrontmatter(raw)
-      const slug = f.replace(/\.md$/, '')
-      const runId = String(meta.agent_run_id || '').trim()
+      const { meta, body } = parseFrontmatter(raw);
+      const slug = f.replace(/\.md$/, "");
+      const runId = String(meta.agent_run_id || "").trim();
       const ticket = {
         slug,
-        id: typeof meta.id === 'number' ? meta.id : parseInt(slug.slice(0, 4), 10),
+        id: typeof meta.id === "number" ? meta.id : parseInt(slug.slice(0, 4), 10),
         title: meta.title || slug,
-        status: meta.status || 'open',
-        priority: meta.priority || 'medium',
-        type: meta.type || 'feature',
-        horizon: meta.horizon || 'now',
+        status: meta.status || "open",
+        priority: meta.priority || "medium",
+        type: meta.type || "feature",
+        horizon: meta.horizon || "now",
         hitl: meta.hitl === true,
         created: meta.created,
         updated: meta.updated,
         prs: meta.prs || [],
         agent: ticketAgentFromMeta(meta),
-        run: runId
-          ? {
-              id: runId,
-              source: meta.agent_run_source || 'agent',
-              sessionId: meta.agent_session_id || undefined,
-              startedAt: meta.agent_run_started_at || undefined,
-              status: meta.agent_run_status || undefined,
-            }
-          : undefined,
-        repo: basename(repoRoot),
-      }
-      // Index view by default — body is omitted to keep list responses small;
-      // fetch the full body on demand via get_ticket. include_body opts into a
-      // short preview for callers that genuinely need it.
-      if (includeBody) ticket.body = body.slice(0, 600)
-      if (filter?.excludeClosed && ticket.status === 'closed') continue
-      if (filter?.status && ticket.status !== filter.status) continue
-      if (filter?.type && ticket.type !== filter.type) continue
-      out.push(ticket)
+        run: runId ? {
+          id: runId,
+          source: meta.agent_run_source || "agent",
+          sessionId: meta.agent_session_id || undefined,
+          startedAt: meta.agent_run_started_at || undefined,
+          status: meta.agent_run_status || undefined
+        } : undefined,
+        repo: basename3(repoRoot)
+      };
+      if (includeBody)
+        ticket.body = body.slice(0, 600);
+      if (filter?.excludeClosed && ticket.status === "closed")
+        continue;
+      if (filter?.status && ticket.status !== filter.status)
+        continue;
+      if (filter?.type && ticket.type !== filter.type)
+        continue;
+      out.push(ticket);
     }
   }
-  return out.sort((a, b) => a.id - b.id)
+  return out.sort((a, b) => a.id - b.id);
 }
-
 function listTicketsTool(args) {
-  const repo = args.repo
-  const roots = repo ? [findRepoRoot(repo)].filter(Boolean) : knownRepoRoots()
-  // Default to ACTIVE tickets (exclude closed — the workflow rarely needs
-  // history, and closed is usually the bulk). status:'all' returns everything;
-  // a specific status filters exactly to it.
-  const statusArg = args.status
+  const repo = args.repo;
+  const roots = repo ? [findRepoRoot(repo)].filter(Boolean) : knownRepoRoots();
+  const statusArg = args.status;
   const filter = {
     type: args.type,
-    status: statusArg && statusArg !== 'all' ? statusArg : undefined,
-    excludeClosed: !statusArg,
-  }
-  const all = roots.flatMap((r) => listTicketsForRoot(r, filter, args.include_body === true))
-  return typeof args.limit === 'number' && args.limit > 0 ? all.slice(0, args.limit) : all
+    status: statusArg && statusArg !== "all" ? statusArg : undefined,
+    excludeClosed: !statusArg
+  };
+  const all = roots.flatMap((r) => listTicketsForRoot(r, filter, args.include_body === true));
+  return typeof args.limit === "number" && args.limit > 0 ? all.slice(0, args.limit) : all;
 }
-
 function getTicketTool(args) {
-  const slug = args.slug
-  if (!slug) return null
-  // Try every known repo until we find it
+  const slug = args.slug;
+  if (!slug)
+    return null;
   for (const root of knownRepoRoots()) {
-    const f = backlogReadDirs(root)
-      .map((dir) => join(dir, `${slug}.md`))
-      .find((p) => existsSync(p))
+    const f = backlogReadDirs(root).map((dir) => join6(dir, `${slug}.md`)).find((p) => existsSync5(p));
     if (f) {
-      const raw = readFileSync(f, 'utf8')
-      const { meta, body } = parseFrontmatter(raw)
+      const raw = readFileSync5(f, "utf8");
+      const { meta, body } = parseFrontmatter(raw);
       return {
         slug,
-        repo: basename(root),
+        repo: basename3(root),
         repoRoot: root,
         ...meta,
-        body,
-      }
+        body
+      };
     }
   }
-  return null
+  return null;
 }
-
-// --- PRs / MRs (from optional harness prs/ artifact store) -----------------
-
 function listPrs(args) {
-  const root = prsRoot()
-  if (!root || !existsSync(root)) return []
-  const out = []
-  // prs/<host>/<owner>/<name>/<num>/meta.json
+  const root = prsRoot();
+  if (!root || !existsSync5(root))
+    return [];
+  const out = [];
   const walk = (dir, depth = 0) => {
-    if (depth > 4) return
-    let names
+    if (depth > 4)
+      return;
+    let names;
     try {
-      names = readdirSync(dir)
+      names = readdirSync3(dir);
     } catch {
-      return
+      return;
     }
     for (const name of names) {
-      const p = join(dir, name)
-      let st
+      const p = join6(dir, name);
+      let st;
       try {
-        st = statSync(p)
+        st = statSync(p);
       } catch {
-        continue
+        continue;
       }
-      if (st.isDirectory()) walk(p, depth + 1)
-      else if (name === 'meta.json') {
+      if (st.isDirectory())
+        walk(p, depth + 1);
+      else if (name === "meta.json") {
         try {
-          const meta = JSON.parse(readFileSync(p, 'utf8'))
-          if (args.repo && !meta.repo?.toLowerCase().includes(args.repo.toLowerCase())) continue
-          if (args.status && meta.state !== args.status) continue
+          const meta = JSON.parse(readFileSync5(p, "utf8"));
+          if (args.repo && !meta.repo?.toLowerCase().includes(args.repo.toLowerCase()))
+            continue;
+          if (args.status && meta.state !== args.status)
+            continue;
           out.push({
             host: meta.host,
             repo: meta.repo,
@@ -761,84 +832,77 @@ function listPrs(args) {
             webUrl: meta.webUrl,
             author: meta.author,
             updatedAt: meta.updatedAt,
-            commits: (meta.commits || []).length,
-          })
+            commits: (meta.commits || []).length
+          });
         } catch {}
       }
     }
-  }
-  walk(root)
-  return out.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt))).slice(0, 50)
+  };
+  walk(root);
+  return out.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt))).slice(0, 50);
 }
-
 function getPrArtifact(args) {
-  const { host, repo, number, sha } = args
-  if (!host || !repo || !number) return null
-  const root = prsRoot()
-  if (!root) return null
-  const dir = join(root, host, ...repo.split('/'), String(number))
-  if (!existsSync(dir)) return null
-  // Default sha = first commit in meta.json (newest)
-  let targetSha = sha
+  const { host, repo, number, sha } = args;
+  if (!host || !repo || !number)
+    return null;
+  const root = prsRoot();
+  if (!root)
+    return null;
+  const dir = join6(root, host, ...repo.split("/"), String(number));
+  if (!existsSync5(dir))
+    return null;
+  let targetSha = sha;
   if (!targetSha) {
     try {
-      const meta = JSON.parse(readFileSync(join(dir, 'meta.json'), 'utf8'))
-      targetSha = meta.commits?.[0]?.slice(0, 7)
+      const meta2 = JSON.parse(readFileSync5(join6(dir, "meta.json"), "utf8"));
+      targetSha = meta2.commits?.[0]?.slice(0, 7);
     } catch {}
   }
-  if (!targetSha) return null
-  const file = join(dir, `${targetSha}.md`)
-  if (!existsSync(file)) return null
-  const raw = readFileSync(file, 'utf8')
-  const { meta, body } = parseFrontmatter(raw)
-  return { host, repo, number, sha: targetSha, meta, body }
+  if (!targetSha)
+    return null;
+  const file = join6(dir, `${targetSha}.md`);
+  if (!existsSync5(file))
+    return null;
+  const raw = readFileSync5(file, "utf8");
+  const { meta, body } = parseFrontmatter(raw);
+  return { host, repo, number, sha: targetSha, meta, body };
 }
-
-// --- schedules + agent runs -----------------------------------------------
-
 function listSchedules(args) {
-  const sf = join(CFG, 'schedules.json')
-  if (!existsSync(sf)) return []
+  const sf = join6(CFG(), "schedules.json");
+  if (!existsSync5(sf))
+    return [];
   try {
-    const arr = JSON.parse(readFileSync(sf, 'utf8'))
-    return (
-      arr
-        .filter((s) => !args.repo || s.repoLabel?.toLowerCase().includes(args.repo.toLowerCase()))
-        // Drop the full prompt (often >1.5k chars) — keep a short preview; the
-        // model rarely needs the whole prompt just to list schedules.
-        .map((s) => ({
-          id: s.id,
-          agentId: s.agentId,
-          agentTitle: s.agentTitle,
-          repoLabel: s.repoLabel,
-          spec: s.spec,
-          engine: s.engine,
-          enabled: s.enabled,
-          lastStatus: s.lastStatus,
-          lastRun: s.lastRun,
-          promptPreview: typeof s.prompt === 'string' ? s.prompt.slice(0, 120) : undefined,
-        }))
-    )
+    const arr = JSON.parse(readFileSync5(sf, "utf8"));
+    return arr.filter((s) => !args.repo || s.repoLabel?.toLowerCase().includes(args.repo.toLowerCase())).map((s) => ({
+      id: s.id,
+      agentId: s.agentId,
+      agentTitle: s.agentTitle,
+      repoLabel: s.repoLabel,
+      spec: s.spec,
+      engine: s.engine,
+      enabled: s.enabled,
+      lastStatus: s.lastStatus,
+      lastRun: s.lastRun,
+      promptPreview: typeof s.prompt === "string" ? s.prompt.slice(0, 120) : undefined
+    }));
   } catch {
-    return []
+    return [];
   }
 }
-
 function recentAgentRuns(args) {
-  const out = []
-  // cron-runs/
-  const cronDir = join(CFG, 'cron-runs')
-  if (existsSync(cronDir)) {
+  const out = [];
+  const cronDir = join6(CFG(), "cron-runs");
+  if (existsSync5(cronDir)) {
     try {
-      for (const f of readdirSync(cronDir)) {
-        if (!f.endsWith('.json')) continue
+      for (const f of readdirSync3(cronDir)) {
+        if (!f.endsWith(".json"))
+          continue;
         try {
-          const r = JSON.parse(readFileSync(join(cronDir, f), 'utf8'))
-          if (args.repo && !r.repoLabel?.toLowerCase().includes(args.repo.toLowerCase())) continue
-          if (args.status && r.status !== args.status) continue
-          // Project to a summary — never spread the whole run record (the
-          // error field can be a large stack/log). Truncate error to a preview;
-          // detail lives in the run file on disk.
+          const r = JSON.parse(readFileSync5(join6(cronDir, f), "utf8"));
+          if (args.repo && !r.repoLabel?.toLowerCase().includes(args.repo.toLowerCase()))
+            continue;
+          if (args.status && r.status !== args.status)
+            continue;
           out.push({
             id: r.id,
             agentId: r.agentId,
@@ -850,223 +914,87 @@ function recentAgentRuns(args) {
             endedAt: r.endedAt,
             engine: r.engine,
             scheduleId: r.scheduleId,
-            error: typeof r.error === 'string' ? r.error.slice(0, 200) : r.error,
-            source: 'cron',
-          })
+            error: typeof r.error === "string" ? r.error.slice(0, 200) : r.error,
+            source: "cron"
+          });
         } catch {}
       }
     } catch {}
   }
-  return out.sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0)).slice(0, args.limit || 50)
+  return out.sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0)).slice(0, args.limit || 50);
 }
-
 function aiSpendToday(args) {
-  // Read ai-runs/ and roll up for today
-  const dir = join(CFG, 'ai-runs')
-  if (!existsSync(dir)) return { totalUsd: 0, totalRuns: 0, byModel: {}, byAgent: {} }
+  const dir = join6(CFG(), "ai-runs");
+  if (!existsSync5(dir))
+    return { totalUsd: 0, totalRuns: 0, byModel: {}, byAgent: {} };
   const dayStart = (() => {
-    const d = new Date()
-    d.setHours(0, 0, 0, 0)
-    return d.getTime()
-  })()
-  let totalUsd = 0
-  let totalRuns = 0
-  const byModel = {}
-  const byAgent = {}
+    const d = new Date;
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
+  })();
+  let totalUsd = 0;
+  let totalRuns = 0;
+  const byModel = {};
+  const byAgent = {};
   try {
-    for (const f of readdirSync(dir)) {
-      if (!f.endsWith('.json')) continue
+    for (const f of readdirSync3(dir)) {
+      if (!f.endsWith(".json"))
+        continue;
       try {
-        const r = JSON.parse(readFileSync(join(dir, f), 'utf8'))
-        if ((r.startedAt || 0) < dayStart) continue
+        const r = JSON.parse(readFileSync5(join6(dir, f), "utf8"));
+        if ((r.startedAt || 0) < dayStart)
+          continue;
         if (args.repo) {
-          const b = basename(r.repoRoot || '')
-          if (!b.toLowerCase().includes(args.repo.toLowerCase())) continue
+          const b = basename3(r.repoRoot || "");
+          if (!b.toLowerCase().includes(args.repo.toLowerCase()))
+            continue;
         }
-        if (args.agent && r.agentId !== args.agent) continue
-        totalUsd += r.costUsd || 0
-        totalRuns++
-        byModel[r.model] = (byModel[r.model] || 0) + (r.costUsd || 0)
-        if (r.agentId) byAgent[r.agentId] = (byAgent[r.agentId] || 0) + (r.costUsd || 0)
+        if (args.agent && r.agentId !== args.agent)
+          continue;
+        totalUsd += r.costUsd || 0;
+        totalRuns++;
+        byModel[r.model] = (byModel[r.model] || 0) + (r.costUsd || 0);
+        if (r.agentId)
+          byAgent[r.agentId] = (byAgent[r.agentId] || 0) + (r.costUsd || 0);
       } catch {}
     }
   } catch {}
-  return { totalUsd, totalRuns, byModel, byAgent }
+  return { totalUsd, totalRuns, byModel, byAgent };
 }
 
-// ===========================================================================
-// WRITE TOOLS — deterministic data filing. Agents skip reading SKILL.md.
-// ===========================================================================
-
-// The user's LOCAL calendar day, not UTC. `toISOString().slice(0,10)` is the UTC
-// date, so any evening edit west of UTC stamps TOMORROW. Must agree with
-// src/main/local-day.ts: the app and this script write the same ticket
-// `updated:` field, and a mismatch made them disagree by a day every evening.
-const localDay = (at = new Date()) =>
-  `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}-${String(at.getDate()).padStart(2, '0')}`
-const todayStr = () => localDay()
-const slugify = (s) =>
-  s
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 50) || 'untitled'
-
-function defaultTicketAgent(type = 'feature') {
-  return recommendTicketAgent({ type }).agent
-}
-
-const TICKET_AGENT_ROUTES = [
-  {
-    agent: { id: 'security-sweep', scope: 'global', kind: 'classic' },
-    type: ['security'],
-    keywords: [
-      'security',
-      'auth',
-      'authorization',
-      'permission',
-      'xss',
-      'csrf',
-      'ssrf',
-      'injection',
-      'secret',
-      'token',
-      'cve',
-      'vulnerability',
-    ],
-  },
-  {
-    agent: { id: 'test-coverage', scope: 'global', kind: 'classic' },
-    type: ['testing'],
-    keywords: ['test', 'tests', 'testing', 'coverage', 'spec', 'flaky', 'assertion', 'tdd'],
-  },
-  {
-    agent: { id: 'docs', scope: 'global', kind: 'classic' },
-    type: ['docs'],
-    keywords: ['docs', 'documentation', 'readme', 'runbook', 'adr', 'changelog', 'guide'],
-  },
-  {
-    agent: { id: 'perf-pass', scope: 'global', kind: 'classic' },
-    type: ['performance'],
-    keywords: [
-      'performance',
-      'perf',
-      'latency',
-      'slow',
-      'memory',
-      'n+1',
-      'cache',
-      'optimize',
-      'profiling',
-    ],
-  },
-  {
-    agent: { id: 'ci-improver', scope: 'global', kind: 'classic' },
-    type: ['dx'],
-    keywords: [
-      'ci',
-      'lint',
-      'typecheck',
-      'build failure',
-      'workflow',
-      'developer',
-      'devex',
-      'tooling',
-      'script',
-    ],
-  },
-]
-
-function recommendTicketAgent(input = {}) {
-  const type = String(input.type || 'feature').toLowerCase()
-  const text = `${input.title || ''}\n${input.body || ''}`.toLowerCase()
-  const scored = TICKET_AGENT_ROUTES.map((route) => {
-    const signals = []
-    if (route.type?.includes(type)) signals.push(`type:${type}`)
-    for (const keyword of route.keywords) {
-      const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      if (new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i').test(text)) signals.push(keyword)
-    }
-    return { route, signals }
-  }).filter((x) => x.signals.length > 0)
-  if (scored.length) {
-    scored.sort((a, b) => b.signals.length - a.signals.length)
-    return { agent: scored[0].route.agent, signals: scored[0].signals.slice(0, 5) }
-  }
-  return {
-    agent: { id: '1000x-ai-engineer', scope: 'global', kind: 'classic' },
-    signals: type ? [`type:${type}`] : [],
-  }
-}
-
-function normalizeTicketAgent(args, type = 'feature', recommendation) {
-  const fallback = recommendation?.agent || defaultTicketAgent(type)
-  const id =
-    typeof args?.agentId === 'string' && args.agentId.trim() ? args.agentId.trim() : fallback.id
-  const scope =
-    args?.agentScope === 'repo' || args?.agentScope === 'global' ? args.agentScope : fallback.scope
-  const kind =
-    args?.agentKind === 'persistent' || args?.agentKind === 'classic'
-      ? args.agentKind
-      : fallback.kind
-  return { id, scope, kind }
-}
-
-function ticketAgentFromMeta(meta) {
-  return normalizeTicketAgent(
-    {
-      agentId: meta.agent_id,
-      agentScope: meta.agent_scope,
-      agentKind: meta.agent_kind,
-    },
-    meta.type || 'feature',
-  )
-}
-
-// --- file_ticket ----------------------------------------------------------
-
-// Mirrors ModelTier in src/main/resolve-model.ts. The tool schema's `enum` is
-// advisory — MCP clients are not obliged to enforce it — so the server
-// validates too. An unroutable tier resolves through the default (expensive)
-// policy slot, so a typo would silently bill at top rate while the ticket
-// claimed to be cheap.
-const MODEL_TIERS = ['auto', 'top', 'cheap-agentic', 'cheap-raw']
-const normalizeModelTier = (value) => (MODEL_TIERS.includes(value) ? value : 'auto')
-
+// src/mcp/writes.ts
 function fileTicket(args) {
   const {
     repo,
     title,
-    body = '',
-    type = 'feature',
-    priority = 'medium',
-    status = 'open',
-    source = 'mcp',
-    modelTier = 'auto',
-  } = args
-  if (!title) throw new Error('title is required')
-  const repoRoot = findRepoRoot(repo)
-  if (!repoRoot) throw new Error(`no repo matching "${repo}"`)
-  const backlogDir = backlogWriteDir(repoRoot)
-  mkdirSync(backlogDir, { recursive: true })
-  // Atomic-ish ID allocation via .next-id (matches bin/next-backlog-id semantics)
-  const nextIdFile = join(backlogDir, '.next-id')
-  let nextId = 1
-  if (existsSync(nextIdFile)) {
+    body = "",
+    type = "feature",
+    priority = "medium",
+    status = "open",
+    source = "mcp",
+    modelTier = "auto"
+  } = args;
+  if (!title)
+    throw new Error("title is required");
+  const repoRoot = findRepoRoot(repo);
+  if (!repoRoot)
+    throw new Error(`no repo matching "${repo}"`);
+  const backlogDir = backlogWriteDir(repoRoot);
+  mkdirSync2(backlogDir, { recursive: true });
+  const nextIdFile = join7(backlogDir, ".next-id");
+  let nextId = 1;
+  if (existsSync6(nextIdFile)) {
     try {
-      nextId = parseInt(readFileSync(nextIdFile, 'utf8').trim(), 10) || 1
+      nextId = parseInt(readFileSync6(nextIdFile, "utf8").trim(), 10) || 1;
     } catch {}
   }
-  // Never below the highest id that already exists ANYWHERE this repo reads
-  // from: a fresh sidecar has no counter, and its neighbouring repo may still
-  // hold 0001-0042 — allocating 0001 again would duplicate and shadow them.
-  const highest = maxAreaId(backlogReadDirs(repoRoot).concat(backlogDir))
-  nextId = Math.max(nextId, highest + 1)
-  const id = String(nextId).padStart(4, '0')
-  const slug = `${id}-${slugify(title)}`
-  const today = todayStr()
-  const recommendation = recommendTicketAgent({ title, type, body })
-  const agent = normalizeTicketAgent(args, type, recommendation)
+  const highest = maxAreaId(backlogReadDirs(repoRoot).concat(backlogDir));
+  nextId = Math.max(nextId, highest + 1);
+  const id = String(nextId).padStart(4, "0");
+  const slug = `${id}-${slugify(title)}`;
+  const today = todayStr();
+  const recommendation = recommendTicketAgent({ title, type, body });
+  const agent = normalizeTicketAgent(args, type, recommendation);
   const frontmatter = `---
 id: ${nextId}
 title: ${JSON.stringify(title)}
@@ -1088,755 +1016,721 @@ agent_kind: ${agent.kind}
 ---
 
 ${body}
-`
-  const path = join(backlogDir, `${slug}.md`)
-  writeFileSync(path, frontmatter)
-  // Bump .next-id
+`;
+  const path = join7(backlogDir, `${slug}.md`);
+  writeFileSync2(path, frontmatter);
   try {
-    writeFileSync(nextIdFile, String(nextId + 1) + '\n')
+    writeFileSync2(nextIdFile, String(nextId + 1) + `
+`);
   } catch {}
-  // Emit activity event so the harness picks it up
   emitActivityRaw({
-    kind: 'ticket-filed',
-    title: `Ticket filed · #${id}`,
+    kind: "ticket-filed",
+    title: `Ticket filed \xB7 #${id}`,
     detail: title,
-    repo: basename(repoRoot),
-    repoRoot,
-  })
-  return { slug, id, path }
+    repo: basename4(repoRoot),
+    repoRoot
+  });
+  return { slug, id, path };
 }
-
-// --- update_ticket --------------------------------------------------------
-
 function locateTicket(slug) {
-  let path = null
-  let repoRoot = null
+  let path = null;
+  let repoRoot = null;
   for (const root of knownRepoRoots()) {
-    const p = backlogReadDirs(root)
-      .map((dir) => join(dir, `${slug}.md`))
-      .find((candidate) => existsSync(candidate))
+    const p = backlogReadDirs(root).map((dir) => join7(dir, `${slug}.md`)).find((candidate) => existsSync6(candidate));
     if (p) {
-      path = p
-      repoRoot = root
-      break
+      path = p;
+      repoRoot = root;
+      break;
     }
   }
-  return path ? { path, repoRoot } : null
+  return path ? { path, repoRoot } : null;
 }
-
-// Append to a ticket's `## Log`. This is how a run leaves context for the next
-// one - findings, dead ends, decisions - without editing the ticket's prose.
-// Mirrors appendComment in src/main/ticket-comments.ts.
 function commentTicket(args) {
-  const { slug } = args
-  if (!slug) throw new Error('slug is required')
-  const body = String(args.body || '').trim()
-  if (!body) throw new Error('body is required and cannot be empty')
-  const located = locateTicket(slug)
-  if (!located) throw new Error(`ticket ${slug} not found in any known repo`)
-  const raw = readFileSync(located.path, 'utf8')
-  const m = raw.match(/^(---\n[\s\S]*?\n---\n?)([\s\S]*)$/)
-  if (!m) throw new Error(`malformed frontmatter in ${located.path}`)
-  const via = String(args.via || '').trim()
-  const header = `### ${new Date().toISOString()} \u00b7 agent:${String(args.author || 'agent').trim()}${
-    via ? ` (${via})` : ''
-  }`
-  // Appending only needs to know whether a log has been opened, never to parse
-  // one - so the parser stays in exactly one place.
-  const prose = m[2].trim()
-  const head = m[1].replace(/^(updated:[ \t]*).*$/m, `$1${todayStr()}`)
-  const next = /^## Log$/m.test(m[2])
-    ? `${head}\n${prose}\n\n${header}\n${body}\n`
-    : `${head}\n${prose ? `${prose}\n\n` : ''}## Log\n\n${header}\n${body}\n`
-  writeFileSync(located.path, next)
-  return { ok: true, slug, path: located.path, repoRoot: located.repoRoot }
-}
+  const { slug } = args;
+  if (!slug)
+    throw new Error("slug is required");
+  const body = String(args.body || "").trim();
+  if (!body)
+    throw new Error("body is required and cannot be empty");
+  const located = locateTicket(slug);
+  if (!located)
+    throw new Error(`ticket ${slug} not found in any known repo`);
+  const raw = readFileSync6(located.path, "utf8");
+  const m = raw.match(/^(---\n[\s\S]*?\n---\n?)([\s\S]*)$/);
+  if (!m)
+    throw new Error(`malformed frontmatter in ${located.path}`);
+  const via = String(args.via || "").trim();
+  const header = `### ${new Date().toISOString()} \xB7 agent:${String(args.author || "agent").trim()}${via ? ` (${via})` : ""}`;
+  const prose = m[2].trim();
+  const head = m[1].replace(/^(updated:[ \t]*).*$/m, `$1${todayStr()}`);
+  const next = /^## Log$/m.test(m[2]) ? `${head}
+${prose}
 
+${header}
+${body}
+` : `${head}
+${prose ? `${prose}
+
+` : ""}## Log
+
+${header}
+${body}
+`;
+  writeFileSync2(located.path, next);
+  return { ok: true, slug, path: located.path, repoRoot: located.repoRoot };
+}
 function updateTicket(args) {
-  const { slug, status, priority, appendPrUrl, removePrUrl } = args
-  if (!slug) throw new Error('slug is required')
-  const located = locateTicket(slug)
-  if (!located) throw new Error(`ticket ${slug} not found in any known repo`)
-  const { path, repoRoot } = located
-  let raw = readFileSync(path, 'utf8')
-  const m = raw.match(/^(---\n[\s\S]*?\n---)([\s\S]*)$/)
-  if (!m) throw new Error(`malformed frontmatter in ${path}`)
-  let fm = m[1]
-  const currentStatus = (fm.match(/^status:\s*(.*)$/m)?.[1] || '').trim()
-  const currentTitle = (fm.match(/^title:\s*(.*)$/m)?.[1] || slug)
-    .trim()
-    .replace(/^["']|["']$/g, '')
-  const ticketLabel = (fm.match(/^id:\s*(\d+)/m)?.[1] || slug).trim()
+  const { slug, status, priority, appendPrUrl, removePrUrl } = args;
+  if (!slug)
+    throw new Error("slug is required");
+  const located = locateTicket(slug);
+  if (!located)
+    throw new Error(`ticket ${slug} not found in any known repo`);
+  const { path, repoRoot } = located;
+  const raw = readFileSync6(path, "utf8");
+  const m = raw.match(/^(---\n[\s\S]*?\n---)([\s\S]*)$/);
+  if (!m)
+    throw new Error(`malformed frontmatter in ${path}`);
+  let fm = m[1];
+  const currentStatus = (fm.match(/^status:\s*(.*)$/m)?.[1] || "").trim();
+  const currentTitle = (fm.match(/^title:\s*(.*)$/m)?.[1] || slug).trim().replace(/^["']|["']$/g, "");
+  const ticketLabel = (fm.match(/^id:\s*(\d+)/m)?.[1] || slug).trim();
   const setField = (key, val) => {
-    const re = new RegExp(`^(${key}:[ \\t]*).*$`, 'm')
-    if (re.test(fm)) fm = fm.replace(re, `$1${val}`)
-    else fm = fm.replace(/\n---$/, `\n${key}: ${val}\n---`)
-  }
-  if (status) setField('status', status)
-  if (priority) setField('priority', priority)
-  if (args.modelTier) setField('model_tier', normalizeModelTier(args.modelTier))
-  if (Array.isArray(args.related)) setField('related', `[${args.related.join(', ')}]`)
-  // 0 clears the link; anything else sets it. `undefined` leaves it untouched.
+    const re = new RegExp(`^(${key}:[ \\t]*).*$`, "m");
+    if (re.test(fm))
+      fm = fm.replace(re, `$1${val}`);
+    else
+      fm = fm.replace(/\n---$/, `
+${key}: ${val}
+---`);
+  };
+  if (status)
+    setField("status", status);
+  if (priority)
+    setField("priority", priority);
+  if (args.modelTier)
+    setField("model_tier", normalizeModelTier(args.modelTier));
+  if (Array.isArray(args.related))
+    setField("related", `[${args.related.join(", ")}]`);
   if (args.duplicateOf !== undefined)
-    setField('duplicate_of', Number(args.duplicateOf) > 0 ? String(args.duplicateOf) : '')
+    setField("duplicate_of", Number(args.duplicateOf) > 0 ? String(args.duplicateOf) : "");
   if (args.agentId || args.agentScope || args.agentKind) {
-    const agent = normalizeTicketAgent(args, (fm.match(/^type:\s*(.*)$/m)?.[1] || 'feature').trim())
-    setField('agent_id', agent.id)
-    setField('agent_scope', agent.scope)
-    setField('agent_kind', agent.kind)
+    const agent = normalizeTicketAgent(args, (fm.match(/^type:\s*(.*)$/m)?.[1] || "feature").trim());
+    setField("agent_id", agent.id);
+    setField("agent_scope", agent.scope);
+    setField("agent_kind", agent.kind);
   }
   if (args.runId) {
-    setField('agent_run_id', args.runId)
-    setField('agent_run_source', args.runSource || 'agent')
-    if (args.sessionId) setField('agent_session_id', args.sessionId)
-    if (args.runStartedAt) setField('agent_run_started_at', args.runStartedAt)
-    if (args.runStatus) setField('agent_run_status', args.runStatus)
+    setField("agent_run_id", args.runId);
+    setField("agent_run_source", args.runSource || "agent");
+    if (args.sessionId)
+      setField("agent_session_id", args.sessionId);
+    if (args.runStartedAt)
+      setField("agent_run_started_at", args.runStartedAt);
+    if (args.runStatus)
+      setField("agent_run_status", args.runStatus);
   }
-  setField('updated', todayStr())
-  // PR URL list manipulation — `prs:` is a YAML inline list
+  setField("updated", todayStr());
   if (appendPrUrl || removePrUrl) {
-    const prsMatch = fm.match(/^prs:\s*(.*)$/m)
-    let prs = []
+    const prsMatch = fm.match(/^prs:\s*(.*)$/m);
+    let prs = [];
     if (prsMatch) {
-      const raw = prsMatch[1].trim()
-      if (raw.startsWith('[') && raw.endsWith(']')) {
-        prs = raw
-          .slice(1, -1)
-          .split(',')
-          .map((s) => s.trim().replace(/^["']|["']$/g, ''))
-          .filter(Boolean)
+      const rawPrs = prsMatch[1].trim();
+      if (rawPrs.startsWith("[") && rawPrs.endsWith("]")) {
+        prs = rawPrs.slice(1, -1).split(",").map((s) => s.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
       }
     }
-    if (appendPrUrl && !prs.includes(appendPrUrl)) prs.push(appendPrUrl)
-    if (removePrUrl) prs = prs.filter((p) => p !== removePrUrl)
-    const formatted = `[${prs.map((p) => JSON.stringify(p)).join(', ')}]`
-    if (prsMatch) fm = fm.replace(/^prs:\s*.*$/m, `prs: ${formatted}`)
-    else fm = fm.replace(/\n---$/, `\nprs: ${formatted}\n---`)
+    if (appendPrUrl && !prs.includes(appendPrUrl))
+      prs.push(appendPrUrl);
+    if (removePrUrl)
+      prs = prs.filter((p) => p !== removePrUrl);
+    const formatted = `[${prs.map((p) => JSON.stringify(p)).join(", ")}]`;
+    if (prsMatch)
+      fm = fm.replace(/^prs:\s*.*$/m, `prs: ${formatted}`);
+    else
+      fm = fm.replace(/\n---$/, `
+prs: ${formatted}
+---`);
   }
-  writeFileSync(path, fm + m[2])
+  writeFileSync2(path, fm + m[2]);
   if (status) {
-    const unblocked = currentStatus === 'stuck' && status !== 'stuck'
+    const unblocked = currentStatus === "stuck" && status !== "stuck";
     emitActivityRaw({
-      kind: status === 'closed' ? 'ticket-closed' : 'info',
-      title: unblocked
-        ? `Ticket unblocked · #${ticketLabel}`
-        : `Ticket ${status} · #${ticketLabel}`,
-      detail: unblocked ? `${currentTitle} · ${status}` : currentTitle,
-      repo: basename(repoRoot),
-      repoRoot,
-    })
+      kind: status === "closed" ? "ticket-closed" : "info",
+      title: unblocked ? `Ticket unblocked \xB7 #${ticketLabel}` : `Ticket ${status} \xB7 #${ticketLabel}`,
+      detail: unblocked ? `${currentTitle} \xB7 ${status}` : currentTitle,
+      repo: basename4(repoRoot),
+      repoRoot
+    });
   }
-  return { ok: true, path }
+  return { ok: true, path };
 }
-
 function updateTicketAgent(args) {
-  const { slug } = args
-  if (!slug) throw new Error('slug is required')
-  if (!args.agentId) throw new Error('agentId is required')
-  return updateTicket(args)
+  const { slug } = args;
+  if (!slug)
+    throw new Error("slug is required");
+  if (!args.agentId)
+    throw new Error("agentId is required");
+  return updateTicket(args);
 }
-
 function updateTicketRun(args) {
-  if (!args.slug) throw new Error('slug is required')
-  if (!args.runId) throw new Error('runId is required')
-  return updateTicket(args)
+  if (!args.slug)
+    throw new Error("slug is required");
+  if (!args.runId)
+    throw new Error("runId is required");
+  return updateTicket(args);
 }
-
-// Category normalization (ticket 120). Inlined rather than imported: these are
-// standalone Bun scripts copied to remote hosts with no sibling modules.
-// Canonical impl + tests: src/shared/inbox-categories.ts — keep in sync.
 function normalizeCategoryShared(raw) {
-  if (typeof raw !== 'string') return undefined
-  const clean = raw.replace(/[\x00-\x1f\x7f]/g, '').trim()
-  return clean ? clean.slice(0, 40) : undefined
+  if (typeof raw !== "string")
+    return;
+  const clean = raw.replace(/[\x00-\x1f\x7f]/g, "").trim();
+  return clean ? clean.slice(0, 40) : undefined;
 }
-
-// --- file_hitl ------------------------------------------------------------
-
 function fileHitlTool(args) {
-  const { title, action, detail, repo, source = 'agent', runId, ticketPath, severity, category } =
-    args
-  if (!title) throw new Error('title is required')
-  const cfg = CFG
-  mkdirSync(cfg, { recursive: true })
-  const hitlFile = join(cfg, 'hitl.json')
+  const {
+    title,
+    action,
+    detail,
+    repo,
+    source = "agent",
+    runId,
+    ticketPath,
+    severity,
+    category
+  } = args;
+  if (!title)
+    throw new Error("title is required");
+  mkdirSync2(CFG(), { recursive: true });
+  const hitlFile = HITL_FILE();
   const item = {
-    id: randomUUID(),
+    id: randomUUID2(),
     title,
     action,
     detail,
     repo,
     source,
-    status: 'open',
+    status: "open",
     createdAt: Date.now(),
-    ...(normalizeCategoryShared(category) ? { category: normalizeCategoryShared(category) } : {}),
-    ...(severity === 'urgent' || severity === 'normal' || severity === 'low'
-      ? { severity }
-      : {}),
+    ...normalizeCategoryShared(category) ? { category: normalizeCategoryShared(category) } : {},
+    ...severity === "urgent" || severity === "normal" || severity === "low" ? { severity } : {},
     runId,
     ticketPath,
     sessionId: process.env.GT_TERMINAL_SESSION_ID || undefined,
     terminalKey: process.env.GT_TERMINAL_SESSION_KEY || undefined,
-    terminalCwd: process.env.GT_TERMINAL_CWD || undefined,
-  }
-  // Locked read-modify-write: the app, cron and the CLI all mutate this file
-  // and take the same advisory lock. Writing through them is what manufactures
-  // the torn read that makes THEM quarantine the inbox and refuse (ticket 110).
-  updateJsonListShared(hitlFile, (cur) => [item, ...cur])
-  mirrorHitlToSlack(item, hitlFile)
+    terminalCwd: process.env.GT_TERMINAL_CWD || undefined
+  };
+  updateJsonListShared(hitlFile, (cur) => [item, ...cur]);
+  mirrorHitlToSlack(item, hitlFile);
   emitActivityRaw({
-    kind: 'blocked',
-    title: `HITL · ${title}`,
-    detail: action || detail || '',
+    kind: "blocked",
+    title: `Inbox \xB7 ${title}`,
+    detail: action || detail || "",
     repo,
     hitlId: item.id,
     runId,
-    suppressTelegram: true,
-  })
-  const row = [{ text: '✅ Resolve', callback_data: `hitl:resolve:${item.id}` }]
-  if (runId) row.push({ text: '🪵 Tail run', callback_data: `run:tail:${runId}` })
+    suppressTelegram: true
+  });
+  const row = [{ text: "\u2705 Resolve", callback_data: `hitl:resolve:${item.id}` }];
+  if (runId)
+    row.push({ text: "\uD83E\uDEB5 Tail run", callback_data: `run:tail:${runId}` });
   if (!slackQuietsTelegram())
-    pingTelegram(`⛔ HITL · ${title}${action ? ` — ${action}` : ''}`, [row])
-  return { id: item.id }
+    pingTelegram(`\u26D4 Inbox \xB7 ${title}${action ? ` \u2014 ${action}` : ""}`, [row]);
+  return { id: item.id };
 }
-
-// --- resolve_hitl ---------------------------------------------------------
-
 function resolveHitlTool(args) {
-  const { id, resolved = true } = args
-  if (!id) throw new Error('id is required')
-  const hitlFile = join(CFG, 'hitl.json')
-  // The find and the write must happen under ONE lock, or the index found here
-  // can address a different item by the time we write it back.
-  let updated = null
-  let wasOpen = false
+  const { id, resolved = true } = args;
+  if (!id)
+    throw new Error("id is required");
+  const hitlFile = HITL_FILE();
+  let updated = null;
+  let wasOpen = false;
   const wrote = updateJsonListShared(hitlFile, (cur) => {
-    const idx = cur.findIndex((h) => h.id === id)
-    if (idx < 0) return undefined
-    wasOpen = cur[idx].status === 'open'
+    const idx = cur.findIndex((h) => h.id === id);
+    if (idx < 0)
+      return;
+    wasOpen = cur[idx].status === "open";
     updated = {
       ...cur[idx],
-      status: resolved ? 'resolved' : 'open',
-      resolvedAt: resolved ? Date.now() : undefined,
-    }
-    const next = cur.slice()
-    next[idx] = updated
-    return next
-  })
-  if (!wrote || !updated) return { ok: false }
+      status: resolved ? "resolved" : "open",
+      resolvedAt: resolved ? Date.now() : undefined
+    };
+    const next = cur.slice();
+    next[idx] = updated;
+    return next;
+  });
+  if (!wrote || !updated)
+    return { ok: false };
+  const item = updated;
   if (resolved && wasOpen) {
-    // Mirror the app's resolveHitl: a resolve stamps the checkmark on the
-    // item's Slack message, whichever surface the resolve came from. Slack's
-    // already_reacted error is success for our purposes; all best-effort.
-    if (updated.slackChannel && updated.slackTs) {
-      const cfg = slackCfg()
+    if (item.slackChannel && item.slackTs) {
+      const cfg = slackCfg();
       if (cfg)
-        trackEffect(
-          slackApi(cfg.botToken, 'reactions.add', {
-            channel: updated.slackChannel,
-            timestamp: updated.slackTs,
-            name: 'white_check_mark',
-          }).catch(() => {}),
-        )
+        trackEffect(slackApi(cfg.botToken, "reactions.add", {
+          channel: item.slackChannel,
+          timestamp: item.slackTs,
+          name: "white_check_mark"
+        }).catch(() => {}));
     }
     emitActivityRaw({
-      kind: 'task-complete',
-      title: `Inbox resolved · ${updated.title || 'Untitled'}`,
-      detail: updated.action || updated.detail || '',
-      repo: updated.repo,
-      repoRoot: updated.repoRoot,
-      hitlId: updated.id,
-      runId: updated.runId,
-    })
+      kind: "task-complete",
+      title: `Inbox resolved \xB7 ${item.title || "Untitled"}`,
+      detail: item.action || item.detail || "",
+      repo: item.repo,
+      repoRoot: item.repoRoot,
+      hitlId: item.id,
+      runId: item.runId
+    });
   }
-  return { ok: true }
+  return { ok: true };
 }
-
-// --- emit_activity --------------------------------------------------------
-
-function emitActivityRaw({ kind, title, detail, repo, repoRoot, hitlId, runId, suppressTelegram }) {
-  const cfg = CFG
-  mkdirSync(cfg, { recursive: true })
-  const file = join(cfg, 'activity.jsonl')
+function emitActivityRaw({
+  kind,
+  title,
+  detail,
+  repo,
+  repoRoot,
+  hitlId,
+  runId,
+  suppressTelegram
+}) {
+  mkdirSync2(CFG(), { recursive: true });
+  const file = ACTIVITY_FILE();
   const ev = {
-    id: randomUUID(),
+    id: randomUUID2(),
     ts: Date.now(),
-    kind: kind || 'info',
-    title: title || '',
-    detail: detail || '',
-    repo: repo || '',
-    repoRoot: repoRoot || '',
-    ...(hitlId ? { hitlId } : {}),
-    ...(runId ? { runId, runSource: 'agent' } : {}),
-    ...(suppressTelegram ? { suppressTelegram: true } : {}),
-  }
+    kind: kind || "info",
+    title: title || "",
+    detail: detail || "",
+    repo: repo || "",
+    repoRoot: repoRoot || "",
+    ...hitlId ? { hitlId } : {},
+    ...runId ? { runId, runSource: "agent" } : {},
+    ...suppressTelegram ? { suppressTelegram: true } : {}
+  };
   try {
-    appendFileSync(file, JSON.stringify(ev) + '\n')
+    appendFileSync(file, JSON.stringify(ev) + `
+`);
   } catch {}
-  return ev
+  return ev;
 }
-
 function emitActivityTool(args) {
-  emitActivityRaw(args)
-  return { ok: true }
+  emitActivityRaw(args);
+  return { ok: true };
 }
-
-// --- set_agent_state / get_agent_state -----------------------------------
-
 function stateFilePath(repoArg, agentId) {
-  if (!repoArg) throw new Error('repo is required')
-  if (!agentId) throw new Error('agent is required')
-  const root = findRepoRoot(repoArg)
-  const slug = root ? basename(root) : repoArg
-  return join(CFG, 'agent-state', slug, `${agentId}.json`)
+  if (!repoArg)
+    throw new Error("repo is required");
+  if (!agentId)
+    throw new Error("agent is required");
+  const root = findRepoRoot(repoArg);
+  const slug = root ? basename4(root) : repoArg;
+  return join7(CFG(), "agent-state", slug, `${agentId}.json`);
 }
-
 function setAgentStateTool(args) {
-  const { repo, agent, key, value } = args
-  if (!key) throw new Error('key is required')
-  const file = stateFilePath(repo, agent)
-  mkdirSync(dirname(file), { recursive: true })
-  let state = {}
+  const { repo, agent, key, value } = args;
+  if (!key)
+    throw new Error("key is required");
+  const file = stateFilePath(repo, agent);
+  mkdirSync2(dirname2(file), { recursive: true });
+  let state = {};
   try {
-    if (existsSync(file)) state = JSON.parse(readFileSync(file, 'utf8'))
+    if (existsSync6(file))
+      state = JSON.parse(readFileSync6(file, "utf8"));
   } catch {}
-  state[key] = value
-  state.lastRunAt = Date.now()
-  writeFileSync(file, JSON.stringify(state, null, 2) + '\n')
-  return { ok: true }
+  state[key] = value;
+  state.lastRunAt = Date.now();
+  writeFileSync2(file, JSON.stringify(state, null, 2) + `
+`);
+  return { ok: true };
 }
-
 function getAgentStateTool(args) {
-  const { repo, agent, key } = args
-  const file = stateFilePath(repo, agent)
-  if (!existsSync(file)) return key ? { value: null } : { state: {} }
+  const { repo, agent, key } = args;
+  const file = stateFilePath(repo, agent);
+  if (!existsSync6(file))
+    return key ? { value: null } : { state: {} };
   try {
-    const s = JSON.parse(readFileSync(file, 'utf8'))
-    return key ? { value: s[key] ?? null } : { state: s }
+    const s = JSON.parse(readFileSync6(file, "utf8"));
+    return key ? { value: s[key] ?? null } : { state: s };
   } catch {
-    return key ? { value: null } : { state: {} }
+    return key ? { value: null } : { state: {} };
   }
 }
-
-// --- list_activity --------------------------------------------------------
-
 function listActivityTool(args) {
-  const { kind, repo, sinceMs, limit = 50 } = args || {}
-  const file = join(CFG, 'activity.jsonl')
-  if (!existsSync(file)) return []
-  let raw = ''
+  const { kind, repo, sinceMs, limit = 50 } = args || {};
+  const file = ACTIVITY_FILE();
+  if (!existsSync6(file))
+    return [];
+  let raw = "";
   try {
-    raw = readFileSync(file, 'utf8')
+    raw = readFileSync6(file, "utf8");
   } catch {
-    return []
+    return [];
   }
-  const events = []
-  for (const line of raw.split('\n')) {
-    if (!line.trim()) continue
+  const events = [];
+  for (const line of raw.split(`
+`)) {
+    if (!line.trim())
+      continue;
     try {
-      const ev = JSON.parse(line)
-      if (kind && ev.kind !== kind) continue
-      if (repo && !(ev.repo || '').toLowerCase().includes(repo.toLowerCase())) continue
-      if (sinceMs && ev.ts < sinceMs) continue
-      events.push(ev)
+      const ev = JSON.parse(line);
+      if (kind && ev.kind !== kind)
+        continue;
+      if (repo && !(ev.repo || "").toLowerCase().includes(repo.toLowerCase()))
+        continue;
+      if (sinceMs && ev.ts < sinceMs)
+        continue;
+      events.push(ev);
     } catch {}
   }
-  return (
-    events
-      .slice(-limit)
-      .reverse()
-      // Drop internal fields (repoRoot, suppressTelegram); truncate detail.
-      .map((ev) => ({
-        id: ev.id,
-        ts: ev.ts,
-        kind: ev.kind,
-        title: ev.title,
-        detail: typeof ev.detail === 'string' ? ev.detail.slice(0, 200) : ev.detail,
-        repo: ev.repo,
-      }))
-  )
+  return events.slice(-limit).reverse().map((ev) => ({
+    id: ev.id,
+    ts: ev.ts,
+    kind: ev.kind,
+    title: ev.title,
+    detail: typeof ev.detail === "string" ? ev.detail.slice(0, 200) : ev.detail,
+    repo: ev.repo
+  }));
 }
-
-// --- list_hitl ------------------------------------------------------------
-
 function listHitlTool(args) {
-  const { status = 'open', repo, limit = 50 } = args || {}
-  const file = join(CFG, 'hitl.json')
-  if (!existsSync(file)) return []
+  const { status = "open", repo, limit = 50 } = args || {};
+  const file = HITL_FILE();
+  if (!existsSync6(file))
+    return [];
   try {
-    const arr = JSON.parse(readFileSync(file, 'utf8'))
-    return (
-      arr
-        .filter((h) => (status === 'all' ? true : h.status === status))
-        .filter((h) => !repo || (h.repo || '').toLowerCase().includes(repo.toLowerCase()))
-        .slice(0, limit)
-        // Project to what an agent needs — drop session/terminal plumbing
-        // (sessionId, terminalKey, terminalCwd, transcriptPath, repoRoot).
-        .map((h) => ({
-          id: h.id,
-          title: h.title,
-          action: h.action,
-          detail: typeof h.detail === 'string' ? h.detail.slice(0, 300) : h.detail,
-          repo: h.repo,
-          source: h.source,
-          status: h.status,
-          createdAt: h.createdAt,
-          resolvedAt: h.resolvedAt,
-        }))
-    )
+    const arr = JSON.parse(readFileSync6(file, "utf8"));
+    return arr.filter((h) => status === "all" ? true : h.status === status).filter((h) => !repo || (h.repo || "").toLowerCase().includes(repo.toLowerCase())).slice(0, limit).map((h) => ({
+      id: h.id,
+      title: h.title,
+      action: h.action,
+      detail: typeof h.detail === "string" ? h.detail.slice(0, 300) : h.detail,
+      repo: h.repo,
+      source: h.source,
+      status: h.status,
+      createdAt: h.createdAt,
+      resolvedAt: h.resolvedAt
+    }));
   } catch {
-    return []
+    return [];
   }
 }
-
-// --- list_bg_tasks --------------------------------------------------------
-
 function listBgTasksTool(args) {
-  const { status, repo, limit = 20 } = args || {}
-  const file = join(CFG, 'bg-tasks.json')
-  if (!existsSync(file)) return []
+  const { status, repo, limit = 20 } = args || {};
+  const file = join7(CFG(), "bg-tasks.json");
+  if (!existsSync6(file))
+    return [];
   try {
-    const arr = JSON.parse(readFileSync(file, 'utf8'))
-    return arr
-      .filter((t) => !status || t.status === status)
-      .filter((t) => !repo || (t.repo || '').toLowerCase().includes(repo.toLowerCase()))
-      .slice(0, limit)
+    const arr = JSON.parse(readFileSync6(file, "utf8"));
+    return arr.filter((t) => !status || t.status === status).filter((t) => !repo || (t.repo || "").toLowerCase().includes(repo.toLowerCase())).slice(0, limit);
   } catch {
-    return []
+    return [];
   }
 }
-
-// --- harness_status -------------------------------------------------------
-
 function harnessStatusTool() {
-  const cfg = CFG
-  const hitlFile = join(cfg, 'hitl.json')
-  let hitlOpen = 0
+  const hitlFile = HITL_FILE();
+  let hitlOpen = 0;
   try {
-    if (existsSync(hitlFile)) {
-      const arr = JSON.parse(readFileSync(hitlFile, 'utf8'))
-      hitlOpen = arr.filter((h) => h.status === 'open').length
+    if (existsSync6(hitlFile)) {
+      const arr = JSON.parse(readFileSync6(hitlFile, "utf8"));
+      hitlOpen = arr.filter((h) => h.status === "open").length;
     }
   } catch {}
-  const cronDir = join(cfg, 'cron-runs')
-  let cronRunning = 0
-  let cronFailed24h = 0
-  if (existsSync(cronDir)) {
-    const dayAgo = Date.now() - 86_400_000
+  const cronDir = join7(CFG(), "cron-runs");
+  let cronRunning = 0;
+  let cronFailed24h = 0;
+  if (existsSync6(cronDir)) {
+    const dayAgo = Date.now() - 86400000;
     try {
-      for (const f of readdirSync(cronDir)) {
-        if (!f.endsWith('.json')) continue
+      for (const f of readdirSync4(cronDir)) {
+        if (!f.endsWith(".json"))
+          continue;
         try {
-          const r = JSON.parse(readFileSync(join(cronDir, f), 'utf8'))
-          if (r.status === 'running') cronRunning++
-          if (r.status === 'failed' && r.startedAt >= dayAgo) cronFailed24h++
+          const r = JSON.parse(readFileSync6(join7(cronDir, f), "utf8"));
+          if (r.status === "running")
+            cronRunning++;
+          if (r.status === "failed" && r.startedAt >= dayAgo)
+            cronFailed24h++;
         } catch {}
       }
     } catch {}
   }
-  let bgRunning = 0
+  let bgRunning = 0;
   try {
-    const bf = join(cfg, 'bg-tasks.json')
-    if (existsSync(bf)) {
-      const arr = JSON.parse(readFileSync(bf, 'utf8'))
-      bgRunning = arr.filter((t) => t.status === 'running').length
+    const bf = join7(CFG(), "bg-tasks.json");
+    if (existsSync6(bf)) {
+      const arr = JSON.parse(readFileSync6(bf, "utf8"));
+      bgRunning = arr.filter((t) => t.status === "running").length;
     }
   } catch {}
-  const spend = aiSpendToday({})
+  const spend = aiSpendToday({});
   return {
     hitlOpen,
     cronRunning,
     cronFailed24h,
     bgRunning,
     spendTodayUsd: spend.totalUsd,
-    spendByModel: spend.byModel,
-  }
+    spendByModel: spend.byModel
+  };
 }
-
-// --- set_run_outcome ------------------------------------------------------
-
 function setRunOutcomeTool(args) {
-  const { runId, outcome } = args
-  if (!runId || !outcome) throw new Error('runId and outcome are required')
-  const dir = join(CFG, 'ai-runs')
-  if (!existsSync(dir)) return { ok: false, reason: 'no ai-runs/ dir' }
-  // Find the AIRun by runId (the harness id), not the AIRun file's own id
-  let updated = 0
-  for (const f of readdirSync(dir)) {
-    if (!f.endsWith('.json')) continue
-    const path = join(dir, f)
+  const { runId, outcome } = args;
+  if (!runId || !outcome)
+    throw new Error("runId and outcome are required");
+  const dir = join7(CFG(), "ai-runs");
+  if (!existsSync6(dir))
+    return { ok: false, reason: "no ai-runs/ dir" };
+  let updated = 0;
+  for (const f of readdirSync4(dir)) {
+    if (!f.endsWith(".json"))
+      continue;
+    const path = join7(dir, f);
     try {
-      const r = JSON.parse(readFileSync(path, 'utf8'))
+      const r = JSON.parse(readFileSync6(path, "utf8"));
       if (r.runId === runId) {
-        r.outcome = outcome
-        writeFileSync(path, JSON.stringify(r, null, 2))
-        updated++
+        r.outcome = outcome;
+        writeFileSync2(path, JSON.stringify(r, null, 2));
+        updated++;
       }
     } catch {}
   }
-  return { ok: updated > 0, updated }
+  return { ok: updated > 0, updated };
 }
 
-// ---------------------------------------------------------------------------
-// Cross-repo + repo-introspection tools added 2026-05-30. These close the
-// "agents can self-query the IDE" gap: list_agents (what agents exist),
-// list_review_patterns (top clusters from review-findings miner),
-// factory_health (cross-repo rollup), search_decisions (grep ADRs +
-// learnings), recent_changes (git log digest), nearest_session (find a
-// related Claude session by repo/branch).
-// ---------------------------------------------------------------------------
-
-const DEFAULT_AGENT_SUMMARIES = [
-  ['factory', 'Run /factory'],
-  ['docs', 'Improve docs'],
-  ['deep-audit', 'Deep audit'],
-  ['ticket-pr-cleanup', 'Ticket / PR cleanup'],
-  ['test-coverage', 'Strengthen tests'],
-  ['code-review', 'Code review'],
-  ['security-sweep', 'Security sweep'],
-  ['perf-pass', 'Performance pass'],
-  ['dep-upgrade', 'Dependency hygiene'],
-  ['dead-code', 'Dead-code cleanup'],
-  ['comments-inspector', 'Comments inspector'],
-  ['product-audit', 'Product audit'],
-  ['friction-hunter', 'Friction hunter'],
-  ['red-team-audit', 'Red-team audit'],
-  ['intelligence', 'Intelligence sweep'],
-  ['strategy', 'Strategy review'],
-  ['cert-check', 'TLS / cert check'],
-  ['translations-check', 'Translations check'],
-  ['changelog', 'Changelog update'],
-  ['simplification', 'Simplification pass'],
-  ['devils-advocate', "Devil's advocate"],
-  ['bloat-check', 'Bloat check'],
-  ['knowledge-base', 'Knowledge base sweep'],
-  ['ci-improver', 'CI improver'],
-  ['summary', 'Daily summary'],
-  ['beacon', 'Process Beacon feedback'],
-  ['emergency-fix', 'Emergency fix'],
-  ['unblock-ci', 'Unblock CI'],
-  ['revert-main', 'Revert last main commit'],
-]
-
+// src/mcp/agents.ts
+var DEFAULT_AGENT_SUMMARIES = [
+  ["factory", "Run /factory"],
+  ["docs", "Improve docs"],
+  ["deep-audit", "Deep audit"],
+  ["ticket-pr-cleanup", "Ticket / PR cleanup"],
+  ["test-coverage", "Strengthen tests"],
+  ["code-review", "Code review"],
+  ["security-sweep", "Security sweep"],
+  ["perf-pass", "Performance pass"],
+  ["dep-upgrade", "Dependency hygiene"],
+  ["dead-code", "Dead-code cleanup"],
+  ["comments-inspector", "Comments inspector"],
+  ["product-audit", "Product audit"],
+  ["friction-hunter", "Friction hunter"],
+  ["red-team-audit", "Red-team audit"],
+  ["intelligence", "Intelligence sweep"],
+  ["strategy", "Strategy review"],
+  ["cert-check", "TLS / cert check"],
+  ["translations-check", "Translations check"],
+  ["changelog", "Changelog update"],
+  ["simplification", "Simplification pass"],
+  ["devils-advocate", "Devil's advocate"],
+  ["bloat-check", "Bloat check"],
+  ["knowledge-base", "Knowledge base sweep"],
+  ["ci-improver", "CI improver"],
+  ["summary", "Daily summary"],
+  ["beacon", "Process Beacon feedback"],
+  ["emergency-fix", "Emergency fix"],
+  ["unblock-ci", "Unblock CI"],
+  ["revert-main", "Revert last main commit"]
+];
 function pushAgent(out, seen, agent) {
-  const key = `${agent.kind || 'classic'}:${agent.scope || 'global'}:${agent.id}`
-  if (seen.has(key)) return
-  seen.add(key)
-  out.push(agent)
+  const key = `${agent.kind || "classic"}:${agent.scope || "global"}:${agent.id}`;
+  if (seen.has(key))
+    return;
+  seen.add(key);
+  out.push(agent);
 }
-
 function agentDefinitionHints(meta) {
-  if (!meta || typeof meta !== 'object') return {}
-  const modelPolicy =
-    meta.modelPolicy && typeof meta.modelPolicy === 'object' ? meta.modelPolicy : {}
-  const quality = meta.quality && typeof meta.quality === 'object' ? meta.quality : {}
-  const hints = {}
-  const model = modelPolicy.default || meta.model
-  if (model) hints.model = model
-  if (modelPolicy.cheap) hints.cheapModel = modelPolicy.cheap
-  if (modelPolicy.deep) hints.deepModel = modelPolicy.deep
+  if (!meta || typeof meta !== "object")
+    return {};
+  const modelPolicy = meta.modelPolicy && typeof meta.modelPolicy === "object" ? meta.modelPolicy : {};
+  const quality = meta.quality && typeof meta.quality === "object" ? meta.quality : {};
+  const hints = {};
+  const model = modelPolicy.default || meta.model;
+  if (model)
+    hints.model = model;
+  if (modelPolicy.cheap)
+    hints.cheapModel = modelPolicy.cheap;
+  if (modelPolicy.deep)
+    hints.deepModel = modelPolicy.deep;
   if (modelPolicy.judge || quality?.judge?.model)
-    hints.judgeModel = modelPolicy.judge || quality.judge.model
-  const acceptanceCriteria = Array.isArray(quality.acceptanceCriteria)
-    ? quality.acceptanceCriteria.length
-    : 0
-  const deterministicChecks = Array.isArray(quality.deterministicChecks)
-    ? quality.deterministicChecks.length
-    : 0
-  const requiredArtifacts = Array.isArray(quality.requiredArtifacts)
-    ? quality.requiredArtifacts.length
-    : 0
+    hints.judgeModel = modelPolicy.judge || quality.judge.model;
+  const acceptanceCriteria = Array.isArray(quality.acceptanceCriteria) ? quality.acceptanceCriteria.length : 0;
+  const deterministicChecks = Array.isArray(quality.deterministicChecks) ? quality.deterministicChecks.length : 0;
+  const requiredArtifacts = Array.isArray(quality.requiredArtifacts) ? quality.requiredArtifacts.length : 0;
   if (acceptanceCriteria || deterministicChecks || requiredArtifacts || quality?.judge?.enabled) {
     hints.quality = {
       acceptanceCriteria,
       deterministicChecks,
       requiredArtifacts,
-      judge: quality?.judge?.enabled ? quality.judge.mode || 'llm' : 'off',
-    }
+      judge: quality?.judge?.enabled ? quality.judge.mode || "llm" : "off"
+    };
   }
-  if (typeof meta.outputContract === 'string' && meta.outputContract.trim()) {
-    hints.outputContract = meta.outputContract.trim().slice(0, 160)
+  if (typeof meta.outputContract === "string" && meta.outputContract.trim()) {
+    hints.outputContract = meta.outputContract.trim().slice(0, 160);
   }
-  return hints
+  return hints;
 }
-
-// --- list_agents: what agents are available for a repo --------------------
 function listAgentsTool(args) {
-  const root = args.repo ? findRepoRoot(args.repo) : process.env.TERMINAL_REPO || null
-  if (!root) return { error: 'unknown repo; pass repo=<basename> or set TERMINAL_REPO' }
-  const out = []
-  const seen = new Set()
+  const root = args.repo ? findRepoRoot(args.repo) : process.env.TERMINAL_REPO || null;
+  if (!root)
+    return { error: "unknown repo; pass repo=<basename> or set TERMINAL_REPO" };
+  const out = [];
+  const seen = new Set;
   for (const [id, title] of DEFAULT_AGENT_SUMMARIES) {
-    pushAgent(out, seen, { id, title, scope: 'global', kind: 'classic', source: 'default' })
+    pushAgent(out, seen, { id, title, scope: "global", kind: "classic", source: "default" });
   }
-  const globalJson = join(CFG, 'agents', 'global.json')
-  if (existsSync(globalJson)) {
+  const globalJson = join8(CFG(), "agents", "global.json");
+  if (existsSync7(globalJson)) {
     try {
-      const list = JSON.parse(readFileSync(globalJson, 'utf8'))
-      const arr = Array.isArray(list) ? list : []
+      const list = JSON.parse(readFileSync7(globalJson, "utf8"));
+      const arr = Array.isArray(list) ? list : [];
       for (const a of arr) {
         if (a?.id && a?.title)
           pushAgent(out, seen, {
             id: a.id,
             title: a.title,
-            scope: 'global',
-            kind: 'classic',
-            source: 'global',
+            scope: "global",
+            kind: "classic",
+            source: "global",
             description: a.description,
-            ...agentDefinitionHints(a),
-          })
+            ...agentDefinitionHints(a)
+          });
       }
     } catch {}
   }
-  // Repo-local: .agents/agents.json + .agents/*.sh
-  const localJson = join(root, '.agents', 'agents.json')
-  if (existsSync(localJson)) {
+  const localJson = join8(root, ".agents", "agents.json");
+  if (existsSync7(localJson)) {
     try {
-      const list = JSON.parse(readFileSync(localJson, 'utf8'))
-      const arr = Array.isArray(list) ? list : Array.isArray(list?.agents) ? list.agents : []
+      const list = JSON.parse(readFileSync7(localJson, "utf8"));
+      const arr = Array.isArray(list) ? list : Array.isArray(list?.agents) ? list.agents : [];
       for (const a of arr) {
         if (a?.id && a?.title)
           pushAgent(out, seen, {
             id: a.id,
             title: a.title,
-            scope: 'repo',
-            kind: 'classic',
-            source: 'repo',
+            scope: "repo",
+            kind: "classic",
+            source: "repo",
             force: !!a.force,
             opensPr: !!a.opensPr,
             inPlace: !!a.inPlace,
             description: a.description,
-            ...agentDefinitionHints(a),
-          })
+            ...agentDefinitionHints(a)
+          });
       }
     } catch {}
   }
-  if (existsSync(join(root, '.agents'))) {
+  if (existsSync7(join8(root, ".agents"))) {
     try {
-      for (const f of readdirSync(join(root, '.agents'))) {
-        if (!f.endsWith('.sh')) continue
-        const id = f.slice(0, -3)
-        let meta = {}
+      for (const f of readdirSync5(join8(root, ".agents"))) {
+        if (!f.endsWith(".sh"))
+          continue;
+        const id = f.slice(0, -3);
+        let meta = {};
         try {
-          const p = join(root, '.agents', `${id}.json`)
-          if (existsSync(p)) meta = JSON.parse(readFileSync(p, 'utf8'))
+          const p = join8(root, ".agents", `${id}.json`);
+          if (existsSync7(p))
+            meta = JSON.parse(readFileSync7(p, "utf8"));
         } catch {}
         pushAgent(out, seen, {
           id,
           title: meta.title || id,
-          scope: 'repo',
-          kind: 'classic',
-          source: 'repo-script',
+          scope: "repo",
+          kind: "classic",
+          source: "repo-script",
           description: meta.description,
-          ...agentDefinitionHints(meta),
-        })
+          ...agentDefinitionHints(meta)
+        });
       }
     } catch {}
   }
-  // Global script agents
-  const globalScripts = join(CFG, 'scripts')
-  if (existsSync(globalScripts)) {
+  const globalScripts = join8(CFG(), "scripts");
+  if (existsSync7(globalScripts)) {
     try {
-      for (const f of readdirSync(globalScripts)) {
-        if (!f.endsWith('.sh')) continue
-        const id = f.slice(0, -3)
-        let meta = {}
+      for (const f of readdirSync5(globalScripts)) {
+        if (!f.endsWith(".sh"))
+          continue;
+        const id = f.slice(0, -3);
+        let meta = {};
         try {
-          const p = join(globalScripts, `${id}.json`)
-          if (existsSync(p)) meta = JSON.parse(readFileSync(p, 'utf8'))
+          const p = join8(globalScripts, `${id}.json`);
+          if (existsSync7(p))
+            meta = JSON.parse(readFileSync7(p, "utf8"));
         } catch {}
         pushAgent(out, seen, {
           id,
           title: meta.title || id,
-          scope: 'global',
-          kind: 'classic',
-          source: 'global-script',
+          scope: "global",
+          kind: "classic",
+          source: "global-script",
           description: meta.description,
-          ...agentDefinitionHints(meta),
-        })
+          ...agentDefinitionHints(meta)
+        });
       }
     } catch {}
   }
-  const persistentRoot = join(CFG, 'persistent-agents')
-  if (existsSync(persistentRoot)) {
+  const persistentRoot = join8(CFG(), "persistent-agents");
+  if (existsSync7(persistentRoot)) {
     try {
-      for (const id of readdirSync(persistentRoot)) {
-        const metaPath = join(persistentRoot, id, 'agent.json')
-        if (!existsSync(metaPath)) continue
+      for (const id of readdirSync5(persistentRoot)) {
+        const metaPath = join8(persistentRoot, id, "agent.json");
+        if (!existsSync7(metaPath))
+          continue;
         try {
-          const meta = JSON.parse(readFileSync(metaPath, 'utf8'))
+          const meta = JSON.parse(readFileSync7(metaPath, "utf8"));
           pushAgent(out, seen, {
             id,
             title: meta.title || id,
-            scope: 'global',
-            kind: 'persistent',
-            source: 'persistent',
+            scope: "global",
+            kind: "persistent",
+            source: "persistent",
             description: meta.description,
-            ...agentDefinitionHints(meta),
-          })
+            ...agentDefinitionHints(meta)
+          });
         } catch {}
       }
     } catch {}
   }
-  return { repo: basename(root), agents: out.sort((a, b) => a.id.localeCompare(b.id)) }
+  return { repo: basename5(root), agents: out.sort((a, b) => a.id.localeCompare(b.id)) };
 }
-
-// One inbox item per session the first time an agent delegates. Per-SESSION,
-// not per-call: a research agent legitimately delegates several times in a row,
-// and an item per call would be the re-nag failure that gets the inbox muted.
-// The marker is keyed by session id and lives beside the other run state.
 function noteFirstDelegation(title, repo, agentId) {
   try {
-    const sessionId = process.env.GT_TERMINAL_SESSION_ID || ''
-    const cfg = CFG
-    const dir = join(cfg, 'delegation-seen')
-    mkdirSync(dir, { recursive: true, mode: 0o700 })
-    const marker = join(dir, `${(sessionId || 'no-session').replace(/[^\w-]/g, '_')}.json`)
-    if (existsSync(marker)) return
-    writeFileSync(marker, JSON.stringify({ at: Date.now(), repo, agentId }), { mode: 0o600 })
+    const sessionId = process.env.GT_TERMINAL_SESSION_ID || "";
+    const dir = join8(CFG(), "delegation-seen");
+    mkdirSync3(dir, { recursive: true, mode: 448 });
+    const marker = join8(dir, `${(sessionId || "no-session").replace(/[^\w-]/g, "_")}.json`);
+    if (existsSync7(marker))
+      return;
+    writeFileSync3(marker, JSON.stringify({ at: Date.now(), repo, agentId }), { mode: 384 });
     emitActivityRaw({
-      kind: 'info',
-      title: `Agent delegated work · ${repo}`,
+      kind: "info",
+      title: `Agent delegated work \xB7 ${repo}`,
       detail: `An agent spawned a delegated ${agentId} run ("${title}"). Further delegations this session are not announced.`,
       repo,
-      suppressTelegram: true,
-    })
-  } catch {
-    // Visibility is not worth failing the delegation over.
-  }
+      suppressTelegram: true
+    });
+  } catch {}
 }
-
-// --- request_agent_artifact: delegate focused research/artifact work -------
 function requestAgentArtifactTool(args) {
-  const root = args.repo ? findRepoRoot(args.repo) : process.env.TERMINAL_REPO || null
-  if (!root) throw new Error('unknown repo; pass repo or set TERMINAL_REPO')
-  const prompt = typeof args.prompt === 'string' ? args.prompt.trim() : ''
-  if (!prompt) throw new Error('prompt is required')
-  const title =
-    typeof args.title === 'string' && args.title.trim()
-      ? args.title.trim()
-      : 'Agent artifact request'
-  const agent = normalizeTicketAgent(
-    {
-      agentId: args.agentId || 'knowledge-base',
-      agentScope: args.agentScope || 'global',
-      agentKind: args.agentKind || 'classic',
-    },
-    'feature',
-  )
-  const timeoutMs = Math.max(30_000, Math.min(Number(args.timeoutMs || 180_000), 600_000))
-  const model = typeof args.model === 'string' && args.model.trim() ? args.model.trim() : ''
-  const runSlug = `${new Date().toISOString().replace(/[:.]/g, '-')}-${slugify(title)}`
-  // Delegated-artifact runtime state is personal → the sidecar, never the repo.
-  const dir = join(statePathForWrite(root, 'agent-requests') || join(root, '.TerMinal', 'agent-requests'), runSlug)
-  mkdirSync(dir, { recursive: true })
-  const promptPath = join(dir, 'prompt.md')
-  const reportPath = join(dir, 'report.md')
-  const metaPath = join(dir, 'artifact.json')
+  const root = args.repo ? findRepoRoot(args.repo) : process.env.TERMINAL_REPO || null;
+  if (!root)
+    throw new Error("unknown repo; pass repo or set TERMINAL_REPO");
+  const prompt = typeof args.prompt === "string" ? args.prompt.trim() : "";
+  if (!prompt)
+    throw new Error("prompt is required");
+  const title = typeof args.title === "string" && args.title.trim() ? args.title.trim() : "Agent artifact request";
+  const agent = normalizeTicketAgent({
+    agentId: args.agentId || "knowledge-base",
+    agentScope: args.agentScope || "global",
+    agentKind: args.agentKind || "classic"
+  }, "feature");
+  const timeoutMs = Math.max(30000, Math.min(Number(args.timeoutMs || 180000), 600000));
+  const model = typeof args.model === "string" && args.model.trim() ? args.model.trim() : "";
+  const runSlug = `${new Date().toISOString().replace(/[:.]/g, "-")}-${slugify(title)}`;
+  const dir = join8(statePathForWrite(root, "agent-requests") || join8(root, ".TerMinal", "agent-requests"), runSlug);
+  mkdirSync3(dir, { recursive: true });
+  const promptPath = join8(dir, "prompt.md");
+  const reportPath = join8(dir, "report.md");
+  const metaPath = join8(dir, "artifact.json");
   const fullPrompt = `You are a delegated TerMinal agent request.
 
 Agent: ${agent.kind}:${agent.scope}:${agent.id}
-Repo: ${basename(root)}
+Repo: ${basename5(root)}
 Working directory: ${root}
 
 Task:
@@ -1847,54 +1741,57 @@ Rules:
 - Re-read files from disk instead of asking the parent agent for pasted context.
 - Return a concise markdown artifact with: Summary, Findings, Evidence/Paths, and Recommended next steps.
 - If follow-up implementation is needed, recommend exactly which agent should own it.
-`
-  writeFileSync(promptPath, fullPrompt)
-  // Delegation spawns a REAL `claude -p` — it costs money and runs unattended,
-  // triggered by an agent rather than by the operator. It stays allowed (gating
-  // it behind a flag TerMinal might not set would break it silently), but the
-  // first delegation of each session announces itself, so an agent cannot fan
-  // out sub-agents entirely invisibly (ticket 67, F-11).
-  noteFirstDelegation(title, basename(root), agent.id)
-  const child = spawnSync(
-    'claude',
-    ['-p', fullPrompt, '--permission-mode', 'auto', ...(model ? ['--model', model] : [])],
-    {
-      cwd: root,
-      encoding: 'utf8',
-      timeout: timeoutMs,
-      maxBuffer: 20 * 1024 * 1024,
-      env: {
-        ...process.env,
-        TERMINAL_DELEGATE_AGENT_ID: agent.id,
-        TERMINAL_DELEGATE_AGENT_SCOPE: agent.scope,
-        TERMINAL_DELEGATE_AGENT_KIND: agent.kind,
-      },
-    },
-  )
-  const stdout = child.stdout || ''
-  const stderr = child.stderr || ''
-  const errorMessage = child.error?.message || ''
-  const timedOut = child.error && child.error.code === 'ETIMEDOUT'
-  const ok = !child.error && (child.status === 0 || child.status === null)
-  const body =
-    stdout.trim() ||
-    (stderr.trim()
-      ? `Delegated agent wrote no stdout.\n\n## stderr\n\n\`\`\`\n${stderr.trim().slice(0, 8000)}\n\`\`\``
-      : `Delegated agent wrote no stdout.${errorMessage ? `\n\n## error\n\n\`\`\`\n${errorMessage}\n\`\`\`` : ''}`)
-  writeFileSync(
-    reportPath,
-    `---\ntitle: ${JSON.stringify(title)}\nrepo: ${basename(root)}\nagent_id: ${agent.id}\nagent_scope: ${agent.scope}\nagent_kind: ${agent.kind}\ncreated: ${new Date().toISOString()}\nok: ${ok}\n---\n\n${body}\n`,
-  )
-  const summary = body
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line && !line.startsWith('#'))
-    .slice(0, 6)
-    .join('\n')
-    .slice(0, 1200)
+`;
+  writeFileSync3(promptPath, fullPrompt);
+  noteFirstDelegation(title, basename5(root), agent.id);
+  const child = spawnSync("claude", ["-p", fullPrompt, "--permission-mode", "auto", ...model ? ["--model", model] : []], {
+    cwd: root,
+    encoding: "utf8",
+    timeout: timeoutMs,
+    maxBuffer: 20 * 1024 * 1024,
+    env: {
+      ...process.env,
+      TERMINAL_DELEGATE_AGENT_ID: agent.id,
+      TERMINAL_DELEGATE_AGENT_SCOPE: agent.scope,
+      TERMINAL_DELEGATE_AGENT_KIND: agent.kind
+    }
+  });
+  const stdout = child.stdout || "";
+  const stderr = child.stderr || "";
+  const errorMessage = child.error?.message || "";
+  const timedOut = child.error && child.error.code === "ETIMEDOUT";
+  const ok = !child.error && (child.status === 0 || child.status === null);
+  const body = stdout.trim() || (stderr.trim() ? `Delegated agent wrote no stdout.
+
+## stderr
+
+\`\`\`
+${stderr.trim().slice(0, 8000)}
+\`\`\`` : `Delegated agent wrote no stdout.${errorMessage ? `
+
+## error
+
+\`\`\`
+${errorMessage}
+\`\`\`` : ""}`);
+  writeFileSync3(reportPath, `---
+title: ${JSON.stringify(title)}
+repo: ${basename5(root)}
+agent_id: ${agent.id}
+agent_scope: ${agent.scope}
+agent_kind: ${agent.kind}
+created: ${new Date().toISOString()}
+ok: ${ok}
+---
+
+${body}
+`);
+  const summary = body.split(`
+`).map((line) => line.trim()).filter((line) => line && !line.startsWith("#")).slice(0, 6).join(`
+`).slice(0, 1200);
   const meta = {
     title,
-    kind: 'agent-artifact',
+    kind: "agent-artifact",
     createdAt: new Date().toISOString(),
     agent,
     ok,
@@ -1903,19 +1800,20 @@ Rules:
     timedOut: !!timedOut,
     promptPath,
     primaryPath: reportPath,
-    summary,
-  }
-  writeFileSync(metaPath, JSON.stringify(meta, null, 2) + '\n')
+    summary
+  };
+  writeFileSync3(metaPath, JSON.stringify(meta, null, 2) + `
+`);
   emitActivityRaw({
-    kind: ok ? 'agent-run' : 'error',
-    title: `Agent artifact · ${agent.id}`,
+    kind: ok ? "agent-run" : "error",
+    title: `Agent artifact \xB7 ${agent.id}`,
     detail: title,
-    repo: basename(root),
-    repoRoot: root,
-  })
+    repo: basename5(root),
+    repoRoot: root
+  });
   return {
     ok,
-    repo: basename(root),
+    repo: basename5(root),
     agent,
     artifactPath: reportPath,
     promptPath,
@@ -1923,646 +1821,652 @@ Rules:
     summary,
     status: child.status,
     signal: child.signal,
-    timedOut: !!timedOut,
-  }
+    timedOut: !!timedOut
+  };
 }
 
-// --- list_review_patterns: read <harnessDir>/reports/review-patterns.md
+// src/mcp/insights.ts
+import { execFileSync as execFileSync2 } from "child_process";
+import { existsSync as existsSync8, readFileSync as readFileSync8, readdirSync as readdirSync6, statSync as statSync2 } from "fs";
+import { homedir as homedir3 } from "os";
+import { basename as basename6, join as join9 } from "path";
 function listReviewPatternsTool(args) {
-  const harness = configuredHarnessDir()
-  if (!harness) return { error: 'no harnessDir configured in ~/.config/TerMinal/settings.json' }
-  const path = join(harness, 'reports', 'review-patterns.md')
-  if (!existsSync(path))
-    return { error: 'no review patterns report yet; runs nightly via bin/review-findings-mine' }
-  const limit = typeof args?.limit === 'number' ? Math.max(1, Math.min(50, args.limit)) : 10
-  const raw = readFileSync(path, 'utf8')
-  // Each cluster is a `## ` heading block. Parse heading + first 3 list items
-  // (representative tokens + count + N-repos) into an array.
-  const out = []
-  const sections = raw.split(/^## /m).slice(1)
+  const harness = configuredHarnessDir();
+  if (!harness)
+    return { error: "no harnessDir configured in ~/.config/TerMinal/settings.json" };
+  const path = join9(harness, "reports", "review-patterns.md");
+  if (!existsSync8(path))
+    return { error: "no review patterns report yet; runs nightly via bin/review-findings-mine" };
+  const limit = typeof args?.limit === "number" ? Math.max(1, Math.min(50, args.limit)) : 10;
+  const raw = readFileSync8(path, "utf8");
+  const out = [];
+  const sections = raw.split(/^## /m).slice(1);
   for (const sec of sections) {
-    const lines = sec.split('\n')
-    const title = (lines[0] || '').trim()
-    const meta = lines
-      .slice(1, 12)
-      .filter((l) => l.trim())
-      .slice(0, 8)
-    out.push({ title, summary: meta.join('\n') })
-    if (out.length >= limit) break
+    const lines = sec.split(`
+`);
+    const title = (lines[0] || "").trim();
+    const meta = lines.slice(1, 12).filter((l) => l.trim()).slice(0, 8);
+    out.push({ title, summary: meta.join(`
+`) });
+    if (out.length >= limit)
+      break;
   }
-  return { count: out.length, patterns: out }
+  return { count: out.length, patterns: out };
 }
-
-// --- factory_health: cross-repo rollup from per-repo state files ----------
 function factoryHealthTool() {
-  const out = []
+  const out = [];
   for (const root of knownRepoRoots()) {
-    const repo = basename(root)
+    const repo = basename6(root);
     const repoOut = {
       repo,
       ticketCounts: { open: 0, inProgress: 0, closed: 0, stuck: 0, icebox: 0 },
-      openPrs: 0,
-    }
-    // Tickets
-    const backlogs = backlogReadDirs(root)
+      openPrs: 0
+    };
+    const backlogs = backlogReadDirs(root);
     for (const backlog of backlogs) {
       try {
-        for (const f of readdirSync(backlog)) {
-          if (!/^\d{4}-.*\.md$/.test(f)) continue
+        for (const f of readdirSync6(backlog)) {
+          if (!/^\d{4}-.*\.md$/.test(f))
+            continue;
           try {
-            const { meta } = parseFrontmatter(readFileSync(join(backlog, f), 'utf8'))
-            const s = meta.status || 'open'
-            if (s === 'open') repoOut.ticketCounts.open++
-            else if (s === 'in-progress') repoOut.ticketCounts.inProgress++
-            else if (s === 'closed') repoOut.ticketCounts.closed++
-            else if (s === 'stuck') repoOut.ticketCounts.stuck++
-            else if (s === 'icebox') repoOut.ticketCounts.icebox++
+            const { meta } = parseFrontmatter(readFileSync8(join9(backlog, f), "utf8"));
+            const s = meta.status || "open";
+            if (s === "open")
+              repoOut.ticketCounts.open++;
+            else if (s === "in-progress")
+              repoOut.ticketCounts.inProgress++;
+            else if (s === "closed")
+              repoOut.ticketCounts.closed++;
+            else if (s === "stuck")
+              repoOut.ticketCounts.stuck++;
+            else if (s === "icebox")
+              repoOut.ticketCounts.icebox++;
           } catch {}
         }
       } catch {}
     }
-    out.push(repoOut)
+    out.push(repoOut);
   }
-  // Open PR count (from prs/cache.json)
   try {
-    const root = prsRoot()
-    if (!root) return { repos: out.sort((a, b) => b.ticketCounts.open - a.ticketCounts.open) }
-    const cf = join(root, 'cache.json')
-    if (existsSync(cf)) {
-      const cache = JSON.parse(readFileSync(cf, 'utf8'))
-      const prs = Array.isArray(cache?.prs) ? cache.prs : []
+    const root = prsRoot();
+    if (!root)
+      return { repos: out.sort((a, b) => b.ticketCounts.open - a.ticketCounts.open) };
+    const cf = join9(root, "cache.json");
+    if (existsSync8(cf)) {
+      const cache = JSON.parse(readFileSync8(cf, "utf8"));
+      const prs = Array.isArray(cache?.prs) ? cache.prs : [];
       for (const pr of prs) {
-        const repoBase = basename(String(pr.repo || ''))
-        const r = out.find((x) => x.repo === repoBase || pr.repo?.endsWith(x.repo))
-        if (r && (pr.state || '').toLowerCase() === 'open') r.openPrs++
+        const repoBase = basename6(String(pr.repo || ""));
+        const r = out.find((x) => x.repo === repoBase || pr.repo?.endsWith(x.repo));
+        if (r && (pr.state || "").toLowerCase() === "open")
+          r.openPrs++;
       }
     }
   } catch {}
-  return { repos: out.sort((a, b) => b.ticketCounts.open - a.ticketCounts.open) }
+  return { repos: out.sort((a, b) => b.ticketCounts.open - a.ticketCounts.open) };
 }
-
-// --- search_decisions: grep docs/decisions + docs/learnings for a query ---
 function searchDecisionsTool(args) {
-  const q = (args?.query || '').trim().toLowerCase()
-  if (!q) return { error: 'query is required' }
-  const limit = typeof args?.limit === 'number' ? Math.max(1, Math.min(50, args.limit)) : 20
-  const repoArg = args?.repo
-  const roots = repoArg ? [findRepoRoot(repoArg)].filter(Boolean) : knownRepoRoots()
-  const out = []
+  const q = (args?.query || "").trim().toLowerCase();
+  if (!q)
+    return { error: "query is required" };
+  const limit = typeof args?.limit === "number" ? Math.max(1, Math.min(50, args.limit)) : 20;
+  const repoArg = args?.repo;
+  const roots = repoArg ? [findRepoRoot(repoArg)].filter(Boolean) : knownRepoRoots();
+  const out = [];
   for (const root of roots) {
-    for (const sub of ['docs/decisions', 'docs/learnings', 'docs/runbooks']) {
-      const dir = join(root, sub)
-      if (!existsSync(dir)) continue
-      let entries
+    for (const sub of ["docs/decisions", "docs/learnings", "docs/runbooks"]) {
+      const dir = join9(root, sub);
+      if (!existsSync8(dir))
+        continue;
+      let entries;
       try {
-        entries = readdirSync(dir)
+        entries = readdirSync6(dir);
       } catch {
-        continue
+        continue;
       }
       for (const f of entries) {
-        if (!f.endsWith('.md')) continue
-        const path = join(dir, f)
-        let raw
+        if (!f.endsWith(".md"))
+          continue;
+        const path = join9(dir, f);
+        let raw;
         try {
-          raw = readFileSync(path, 'utf8')
+          raw = readFileSync8(path, "utf8");
         } catch {
-          continue
+          continue;
         }
-        const lower = raw.toLowerCase()
-        if (!lower.includes(q)) continue
-        const { meta } = parseFrontmatter(raw)
-        // First matching line (with a few chars context) for the snippet
-        const idx = lower.indexOf(q)
-        const lineStart = lower.lastIndexOf('\n', idx) + 1
-        const lineEnd = lower.indexOf('\n', idx)
-        const snippet = raw.slice(lineStart, lineEnd > 0 ? lineEnd : lineStart + 200)
+        const lower = raw.toLowerCase();
+        if (!lower.includes(q))
+          continue;
+        const { meta } = parseFrontmatter(raw);
+        const idx = lower.indexOf(q);
+        const lineStart = lower.lastIndexOf(`
+`, idx) + 1;
+        const lineEnd = lower.indexOf(`
+`, idx);
+        const snippet = raw.slice(lineStart, lineEnd > 0 ? lineEnd : lineStart + 200);
         out.push({
-          repo: basename(root),
-          path: path.replace(homedir(), '~'),
-          kind: sub.split('/')[1], // decisions|learnings|runbooks
-          title: meta.title || f.replace(/\.md$/, ''),
+          repo: basename6(root),
+          path: path.replace(homedir3(), "~"),
+          kind: sub.split("/")[1],
+          title: meta.title || f.replace(/\.md$/, ""),
           status: meta.status,
           tags: meta.tags,
-          snippet: snippet.trim().slice(0, 200),
-        })
-        if (out.length >= limit) return { count: out.length, hits: out }
+          snippet: snippet.trim().slice(0, 200)
+        });
+        if (out.length >= limit)
+          return { count: out.length, hits: out };
       }
     }
   }
-  return { count: out.length, hits: out }
+  return { count: out.length, hits: out };
 }
-
-// --- recent_changes: git log digest for a repo since N days ago -----------
 function recentChangesTool(args) {
-  const root = args?.repo ? findRepoRoot(args.repo) : process.env.TERMINAL_REPO || null
-  if (!root) return { error: 'unknown repo; pass repo=<basename> or set TERMINAL_REPO' }
-  const days = typeof args?.days === 'number' ? Math.max(1, Math.min(90, args.days)) : 7
-  const limit = typeof args?.limit === 'number' ? Math.max(1, Math.min(200, args.limit)) : 50
+  const root = args?.repo ? findRepoRoot(args.repo) : process.env.TERMINAL_REPO || null;
+  if (!root)
+    return { error: "unknown repo; pass repo=<basename> or set TERMINAL_REPO" };
+  const days = typeof args?.days === "number" ? Math.max(1, Math.min(90, args.days)) : 7;
+  const limit = typeof args?.limit === "number" ? Math.max(1, Math.min(200, args.limit)) : 50;
   try {
-    const { execFileSync } = require('node:child_process')
-    const out = execFileSync(
-      'git',
-      [
-        '-C',
-        root,
-        'log',
-        `--since=${days} days ago`,
-        `-n`,
-        String(limit),
-        '--pretty=format:%h|%an|%ar|%s',
-      ],
-      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
-    )
-    const commits = out
-      .split('\n')
-      .filter(Boolean)
-      .map((line) => {
-        const [sha, author, when, ...subjectParts] = line.split('|')
-        return { sha, author, when, subject: subjectParts.join('|') }
-      })
-    return { repo: basename(root), days, count: commits.length, commits }
+    const out = execFileSync2("git", [
+      "-C",
+      root,
+      "log",
+      `--since=${days} days ago`,
+      `-n`,
+      String(limit),
+      "--pretty=format:%h|%an|%ar|%s"
+    ], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    const commits = out.split(`
+`).filter(Boolean).map((line) => {
+      const [sha, author, when, ...subjectParts] = line.split("|");
+      return { sha, author, when, subject: subjectParts.join("|") };
+    });
+    return { repo: basename6(root), days, count: commits.length, commits };
   } catch (e) {
-    return { error: `git log failed: ${e.message}` }
+    return { error: `git log failed: ${e.message}` };
   }
 }
-
-// --- nearest_session: find recent Claude session transcripts for a repo ---
 function nearestSessionTool(args) {
-  const root = args?.repo ? findRepoRoot(args.repo) : process.env.TERMINAL_REPO || null
-  if (!root) return { error: 'unknown repo; pass repo=<basename> or set TERMINAL_REPO' }
-  const limit = typeof args?.limit === 'number' ? Math.max(1, Math.min(20, args.limit)) : 5
-  // Claude transcript naming convention: dir slugifies the cwd path.
-  const slug = '-' + root.replace(/^\//, '').replace(/\//g, '-')
-  const dir = join(homedir(), '.claude', 'projects', slug)
-  if (!existsSync(dir))
+  const root = args?.repo ? findRepoRoot(args.repo) : process.env.TERMINAL_REPO || null;
+  if (!root)
+    return { error: "unknown repo; pass repo=<basename> or set TERMINAL_REPO" };
+  const limit = typeof args?.limit === "number" ? Math.max(1, Math.min(20, args.limit)) : 5;
+  const slug = "-" + root.replace(/^\//, "").replace(/\//g, "-");
+  const dir = join9(homedir3(), ".claude", "projects", slug);
+  if (!existsSync8(dir))
     return {
-      repo: basename(root),
+      repo: basename6(root),
       sessions: [],
-      hint: `no transcript dir at ~/.claude/projects/${slug}`,
-    }
-  let files
+      hint: `no transcript dir at ~/.claude/projects/${slug}`
+    };
+  let files;
   try {
-    files = readdirSync(dir)
+    files = readdirSync6(dir);
   } catch {
-    return { error: `cannot read ${dir}` }
+    return { error: `cannot read ${dir}` };
   }
-  const sessions = files
-    .filter((f) => f.endsWith('.jsonl'))
-    .map((f) => {
-      const path = join(dir, f)
-      let stat
-      try {
-        stat = statSync(path)
-      } catch {
-        return null
-      }
-      return {
-        id: f.replace(/\.jsonl$/, ''),
-        modifiedMs: stat.mtimeMs,
-        sizeBytes: stat.size,
-        path: path.replace(homedir(), '~'),
-      }
-    })
-    .filter(Boolean)
-    .sort((a, b) => b.modifiedMs - a.modifiedMs)
-    .slice(0, limit)
-  return { repo: basename(root), count: sessions.length, sessions }
+  const sessions = files.filter((f) => f.endsWith(".jsonl")).map((f) => {
+    const path = join9(dir, f);
+    let stat;
+    try {
+      stat = statSync2(path);
+    } catch {
+      return null;
+    }
+    return {
+      id: f.replace(/\.jsonl$/, ""),
+      modifiedMs: stat.mtimeMs,
+      sizeBytes: stat.size,
+      path: path.replace(homedir3(), "~")
+    };
+  }).filter(Boolean).sort((a, b) => b.modifiedMs - a.modifiedMs).slice(0, limit);
+  return { repo: basename6(root), count: sessions.length, sessions };
 }
 
-// ---------------------------------------------------------------------------
-// MCP JSON-RPC server (stdio)
-//
-// We implement the minimal MCP slice: tools/list + tools/call + initialize.
-// No prompts, no resources, no completion. Reads stdin line-buffered.
-// ---------------------------------------------------------------------------
-
-const TOOLS = [
+// src/mcp/tools.ts
+var TOOLS = [
   {
-    name: 'list_tickets',
-    description:
-      'List backlog tickets across managed repos (index view: frontmatter only, no body — use get_ticket for the full body). Defaults to ACTIVE tickets (excludes closed); pass status:"all" for everything including closed, or a specific status (open|in-progress|closed|stuck|icebox). Also filter by repo (basename) or type. include_body adds a 600-char preview; limit caps the count.',
+    name: "list_tickets",
+    description: 'List backlog tickets across managed repos (index view: frontmatter only, no body \u2014 use get_ticket for the full body). Defaults to ACTIVE tickets (excludes closed); pass status:"all" for everything including closed, or a specific status (open|in-progress|closed|stuck|icebox). Also filter by repo (basename) or type. include_body adds a 600-char preview; limit caps the count.',
     inputSchema: {
-      type: 'object',
+      type: "object",
       properties: {
-        repo: { type: 'string' },
-        status: { type: 'string' },
-        type: { type: 'string' },
-        include_body: { type: 'boolean' },
-        limit: { type: 'number' },
+        repo: { type: "string" },
+        status: { type: "string" },
+        type: { type: "string" },
+        include_body: { type: "boolean" },
+        limit: { type: "number" }
+      }
+    }
+  },
+  {
+    name: "get_ticket",
+    description: 'Fetch the full body + frontmatter of one ticket by its slug (e.g. "0042-fix-foo").',
+    inputSchema: { type: "object", properties: { slug: { type: "string" } }, required: ["slug"] }
+  },
+  {
+    name: "list_prs",
+    description: "List PRs / MRs the harness is tracking (newest first, capped at 50).",
+    inputSchema: {
+      type: "object",
+      properties: { repo: { type: "string" }, status: { type: "string" } }
+    }
+  },
+  {
+    name: "get_pr_artifact",
+    description: "Fetch the latest review+test artifact for one PR. SHA optional (defaults to newest commit).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        host: { type: "string" },
+        repo: { type: "string" },
+        number: { type: "number" },
+        sha: { type: "string" }
       },
-    },
+      required: ["host", "repo", "number"]
+    }
   },
   {
-    name: 'get_ticket',
-    description:
-      'Fetch the full body + frontmatter of one ticket by its slug (e.g. "0042-fix-foo").',
-    inputSchema: { type: 'object', properties: { slug: { type: 'string' } }, required: ['slug'] },
+    name: "list_scheduled_agents",
+    description: "List scheduled cron agents (filterable by repo basename).",
+    inputSchema: { type: "object", properties: { repo: { type: "string" } } }
   },
   {
-    name: 'list_prs',
-    description: 'List PRs / MRs the harness is tracking (newest first, capped at 50).',
+    name: "recent_agent_runs",
+    description: "Recent scheduled-agent runs (cron-runs/ ledger). Filter by repo, status, limit.",
     inputSchema: {
-      type: 'object',
-      properties: { repo: { type: 'string' }, status: { type: 'string' } },
-    },
-  },
-  {
-    name: 'get_pr_artifact',
-    description:
-      'Fetch the latest review+test artifact for one PR. SHA optional (defaults to newest commit).',
-    inputSchema: {
-      type: 'object',
+      type: "object",
       properties: {
-        host: { type: 'string' },
-        repo: { type: 'string' },
-        number: { type: 'number' },
-        sha: { type: 'string' },
-      },
-      required: ['host', 'repo', 'number'],
-    },
+        repo: { type: "string" },
+        status: { type: "string" },
+        limit: { type: "number" }
+      }
+    }
   },
   {
-    name: 'list_scheduled_agents',
-    description: 'List scheduled cron agents (filterable by repo basename).',
-    inputSchema: { type: 'object', properties: { repo: { type: 'string' } } },
-  },
-  {
-    name: 'recent_agent_runs',
-    description: 'Recent scheduled-agent runs (cron-runs/ ledger). Filter by repo, status, limit.',
+    name: "ai_spend_today",
+    description: "Cost summary for today (USD spent across the AI fleet). Filterable by repo or agent.",
     inputSchema: {
-      type: 'object',
+      type: "object",
+      properties: { repo: { type: "string" }, agent: { type: "string" } }
+    }
+  },
+  {
+    name: "file_ticket",
+    description: "Create a new backlog ticket. Atomically allocates the next NNNN id, writes the frontmatter, returns the slug + path. Use after deciding what to file \u2014 schema decisions stay with the model, formatting is done here.",
+    inputSchema: {
+      type: "object",
+      required: ["repo", "title"],
       properties: {
-        repo: { type: 'string' },
-        status: { type: 'string' },
-        limit: { type: 'number' },
-      },
-    },
-  },
-  {
-    name: 'ai_spend_today',
-    description:
-      'Cost summary for today (USD spent across the AI fleet). Filterable by repo or agent.',
-    inputSchema: {
-      type: 'object',
-      properties: { repo: { type: 'string' }, agent: { type: 'string' } },
-    },
-  },
-  // ---- WRITE TOOLS (deterministic — agents skip reading skill files) -----
-  {
-    name: 'file_ticket',
-    description:
-      'Create a new backlog ticket. Atomically allocates the next NNNN id, writes the frontmatter, returns the slug + path. Use after deciding what to file — schema decisions stay with the model, formatting is done here.',
-    inputSchema: {
-      type: 'object',
-      required: ['repo', 'title'],
-      properties: {
-        repo: { type: 'string', description: 'Repo basename (e.g. "vellum-project")' },
-        title: { type: 'string' },
-        body: { type: 'string' },
+        repo: { type: "string", description: 'Repo basename (e.g. "vellum-project")' },
+        title: { type: "string" },
+        body: { type: "string" },
         type: {
-          type: 'string',
-          enum: ['bug', 'feature', 'security', 'docs', 'dx', 'testing', 'ux', 'performance'],
+          type: "string",
+          enum: ["bug", "feature", "security", "docs", "dx", "testing", "ux", "performance"]
         },
-        priority: { type: 'string', enum: ['critical', 'high', 'medium', 'low'] },
+        priority: { type: "string", enum: ["critical", "high", "medium", "low"] },
         status: {
-          type: 'string',
-          enum: ['open', 'in-progress', 'closed', 'stuck', 'icebox'],
+          type: "string",
+          enum: ["open", "in-progress", "closed", "stuck", "icebox"]
         },
-        source: { type: 'string' },
+        source: { type: "string" },
         agentId: {
-          type: 'string',
-          description: 'Assigned agent id. Defaults by ticket type when omitted.',
+          type: "string",
+          description: "Assigned agent id. Defaults by ticket type when omitted."
         },
-        agentScope: { type: 'string', enum: ['repo', 'global'] },
-        agentKind: { type: 'string', enum: ['classic', 'persistent'] },
+        agentScope: { type: "string", enum: ["repo", "global"] },
+        agentKind: { type: "string", enum: ["classic", "persistent"] },
         related: {
-          type: 'array',
-          items: { type: 'number' },
-          description: 'Ticket ids this one is related to. Replaces the list wholesale.',
+          type: "array",
+          items: { type: "number" },
+          description: "Ticket ids this one is related to. Replaces the list wholesale."
         },
         duplicateOf: {
-          type: 'number',
-          description: 'Canonical ticket id this one duplicates. 0 clears the link.',
+          type: "number",
+          description: "Canonical ticket id this one duplicates. 0 clears the link."
         },
         modelTier: {
-          type: 'string',
-          enum: ['auto', 'top', 'cheap-agentic', 'cheap-raw'],
-          description:
-            'Routing tier resolved against the owner agent modelPolicy at spawn: top→deep, cheap-agentic/cheap-raw→cheap, auto→default. Defaults to auto.',
-        },
-      },
-    },
+          type: "string",
+          enum: ["auto", "top", "cheap-agentic", "cheap-raw"],
+          description: "Routing tier resolved against the owner agent modelPolicy at spawn: top\u2192deep, cheap-agentic/cheap-raw\u2192cheap, auto\u2192default. Defaults to auto."
+        }
+      }
+    }
   },
   {
-    name: 'comment_ticket',
-    description:
-      "Append a timestamped entry to a ticket's `## Log` - the durable per-ticket context later runs read. Use it for findings, dead ends, and decisions that the next agent working this ticket needs; do NOT use it to edit the ticket's prose body. Auto-bumps `updated:`. Repo is auto-resolved from the slug.",
+    name: "comment_ticket",
+    description: "Append a timestamped entry to a ticket's `## Log` - the durable per-ticket context later runs read. Use it for findings, dead ends, and decisions that the next agent working this ticket needs; do NOT use it to edit the ticket's prose body. Auto-bumps `updated:`. Repo is auto-resolved from the slug.",
     inputSchema: {
-      type: 'object',
-      required: ['slug', 'body'],
+      type: "object",
+      required: ["slug", "body"],
       properties: {
-        slug: { type: 'string' },
-        body: { type: 'string', description: 'Markdown. What a later run needs to know.' },
+        slug: { type: "string" },
+        body: { type: "string", description: "Markdown. What a later run needs to know." },
         author: {
-          type: 'string',
-          description: 'Agent id to attribute the entry to. Defaults to "agent".',
+          type: "string",
+          description: 'Agent id to attribute the entry to. Defaults to "agent".'
         },
-        via: { type: 'string', description: 'engine/model that wrote it, e.g. "codex/gpt-5".' },
-      },
-    },
+        via: { type: "string", description: 'engine/model that wrote it, e.g. "codex/gpt-5".' }
+      }
+    }
   },
   {
-    name: 'update_ticket',
-    description:
-      "Mutate a ticket's frontmatter (status, priority, assigned agent, run link) and optionally add/remove a PR URL. Auto-bumps `updated:`. Body is never modified. Repo is auto-resolved from the slug.",
+    name: "update_ticket",
+    description: "Mutate a ticket's frontmatter (status, priority, assigned agent, run link) and optionally add/remove a PR URL. Auto-bumps `updated:`. Body is never modified. Repo is auto-resolved from the slug.",
     inputSchema: {
-      type: 'object',
-      required: ['slug'],
+      type: "object",
+      required: ["slug"],
       properties: {
-        slug: { type: 'string' },
+        slug: { type: "string" },
         status: {
-          type: 'string',
-          enum: ['open', 'in-progress', 'closed', 'stuck', 'icebox'],
+          type: "string",
+          enum: ["open", "in-progress", "closed", "stuck", "icebox"]
         },
-        priority: { type: 'string', enum: ['critical', 'high', 'medium', 'low'] },
-        appendPrUrl: { type: 'string' },
-        removePrUrl: { type: 'string' },
-        agentId: { type: 'string' },
-        agentScope: { type: 'string', enum: ['repo', 'global'] },
-        agentKind: { type: 'string', enum: ['classic', 'persistent'] },
-        runId: { type: 'string' },
-        runSource: { type: 'string', enum: ['agent', 'cron', 'bg', 'session'] },
-        sessionId: { type: 'string' },
-        runStartedAt: { type: 'string' },
-        runStatus: { type: 'string' },
+        priority: { type: "string", enum: ["critical", "high", "medium", "low"] },
+        appendPrUrl: { type: "string" },
+        removePrUrl: { type: "string" },
+        agentId: { type: "string" },
+        agentScope: { type: "string", enum: ["repo", "global"] },
+        agentKind: { type: "string", enum: ["classic", "persistent"] },
+        runId: { type: "string" },
+        runSource: { type: "string", enum: ["agent", "cron", "bg", "session"] },
+        sessionId: { type: "string" },
+        runStartedAt: { type: "string" },
+        runStatus: { type: "string" },
         modelTier: {
-          type: 'string',
-          enum: ['auto', 'top', 'cheap-agentic', 'cheap-raw'],
-          description:
-            'Routing tier resolved against the owner agent modelPolicy at spawn. Only written when passed.',
+          type: "string",
+          enum: ["auto", "top", "cheap-agentic", "cheap-raw"],
+          description: "Routing tier resolved against the owner agent modelPolicy at spawn. Only written when passed."
+        }
+      }
+    }
+  },
+  {
+    name: "update_ticket_agent",
+    description: "Assign one ticket to exactly one agent. Auto-bumps `updated:`. Use list_agents first when you need valid ids. agentScope distinguishes repo-local from global agents; persistent agents are global.",
+    inputSchema: {
+      type: "object",
+      required: ["slug", "agentId"],
+      properties: {
+        slug: { type: "string" },
+        agentId: { type: "string" },
+        agentScope: { type: "string", enum: ["repo", "global"] },
+        agentKind: { type: "string", enum: ["classic", "persistent"] }
+      }
+    }
+  },
+  {
+    name: "update_ticket_run",
+    description: "Link a ticket to the agent run that picked it up. Writes agent_run_* frontmatter fields and auto-bumps `updated:`. Use this at ticket implementation start when TERMINAL_RUN_ID or another run/session id is available.",
+    inputSchema: {
+      type: "object",
+      required: ["slug", "runId"],
+      properties: {
+        slug: { type: "string" },
+        runId: { type: "string" },
+        runSource: { type: "string", enum: ["agent", "cron", "bg", "session"] },
+        sessionId: { type: "string" },
+        runStartedAt: { type: "string" },
+        runStatus: { type: "string" }
+      }
+    }
+  },
+  {
+    name: "file_inbox_item",
+    description: 'Append an item to the TerMinal Inbox \u2014 the one cross-repo queue of things a human should see. `category` files it under a folder in the Inbox sidebar and is free-form ("Monitoring", "Monitoring/Certs", "Code review"); human-in-the-loop blockers are simply the default, uncategorised kind. Append-only from the agent side: agents file and may later query list_inbox, but only the human should resolve. Emits a blocked activity event and pings Telegram with [Resolve] / [Tail run] buttons.',
+    inputSchema: {
+      type: "object",
+      required: ["title"],
+      properties: {
+        title: { type: "string" },
+        action: { type: "string", description: "What the human needs to do" },
+        detail: { type: "string" },
+        repo: { type: "string" },
+        category: {
+          type: "string",
+          description: 'Free-form Inbox folder, nested with "/". Any name works \u2014 nothing needs registering.'
         },
-      },
-    },
-  },
-  {
-    name: 'update_ticket_agent',
-    description:
-      'Assign one ticket to exactly one agent. Auto-bumps `updated:`. Use list_agents first when you need valid ids. agentScope distinguishes repo-local from global agents; persistent agents are global.',
-    inputSchema: {
-      type: 'object',
-      required: ['slug', 'agentId'],
-      properties: {
-        slug: { type: 'string' },
-        agentId: { type: 'string' },
-        agentScope: { type: 'string', enum: ['repo', 'global'] },
-        agentKind: { type: 'string', enum: ['classic', 'persistent'] },
-      },
-    },
-  },
-  {
-    name: 'update_ticket_run',
-    description:
-      'Link a ticket to the agent run that picked it up. Writes agent_run_* frontmatter fields and auto-bumps `updated:`. Use this at ticket implementation start when TERMINAL_RUN_ID or another run/session id is available.',
-    inputSchema: {
-      type: 'object',
-      required: ['slug', 'runId'],
-      properties: {
-        slug: { type: 'string' },
-        runId: { type: 'string' },
-        runSource: { type: 'string', enum: ['agent', 'cron', 'bg', 'session'] },
-        sessionId: { type: 'string' },
-        runStartedAt: { type: 'string' },
-        runStatus: { type: 'string' },
-      },
-    },
-  },
-  {
-    name: 'file_hitl',
-    description:
-      'Append a human-in-the-loop item into the TerMinal inbox. This is append-only from the agent side: agents file blockers and may later query list_hitl/status, but only the human should resolve them. Emits a blocked activity event and pings Telegram with [Resolve] / [Tail run] buttons. Use when an agent hits a genuine blocker that needs the human.',
-    inputSchema: {
-      type: 'object',
-      required: ['title'],
-      properties: {
-        title: { type: 'string' },
-        action: { type: 'string', description: 'What the human needs to do' },
-        detail: { type: 'string' },
-        repo: { type: 'string' },
         source: {
-          type: 'string',
-          enum: ['manual', 'agent', 'skill', 'factory', 'cron-fail'],
+          type: "string",
+          enum: ["manual", "agent", "skill", "factory", "cron-fail"]
         },
         severity: {
-          type: 'string',
-          enum: ['urgent', 'normal', 'low'],
-          description:
-            'urgent = push/ping now; normal = inbox-worthy, notifies only if the user lowered their threshold; low = FYI. Omit for the source default.',
+          type: "string",
+          enum: ["urgent", "normal", "low"],
+          description: "urgent = push/ping now; normal = inbox-worthy, notifies only if the user lowered their threshold; low = FYI. Omit for the source default."
         },
-        runId: { type: 'string' },
-        ticketPath: { type: 'string' },
-      },
-    },
+        runId: { type: "string" },
+        ticketPath: { type: "string" }
+      }
+    }
   },
   {
-    name: 'resolve_hitl',
-    description:
-      'Mark a HITL item resolved (or re-open it). Human/operator tool only; agents should generally not call this for their own blockers. Agents should query list_hitl status or periodically re-check the original blocker.',
+    name: "file_hitl",
+    description: "Alias of file_inbox_item, kept for existing agent scripts. Prefer file_inbox_item \u2014 a human-in-the-loop request is one category of Inbox item, not a separate queue. Same arguments, same behaviour.",
     inputSchema: {
-      type: 'object',
-      required: ['id'],
-      properties: { id: { type: 'string' }, resolved: { type: 'boolean' } },
-    },
+      type: "object",
+      required: ["title"],
+      properties: {
+        title: { type: "string" },
+        action: { type: "string", description: "What the human needs to do" },
+        detail: { type: "string" },
+        repo: { type: "string" },
+        category: { type: "string" },
+        source: {
+          type: "string",
+          enum: ["manual", "agent", "skill", "factory", "cron-fail"]
+        },
+        severity: { type: "string", enum: ["urgent", "normal", "low"] },
+        runId: { type: "string" },
+        ticketPath: { type: "string" }
+      }
+    }
   },
   {
-    name: 'emit_activity',
-    description:
-      'Append one event to the TerMinal activity log. Consumed by the Activity tab + Telegram feed. Use to surface progress without spamming Telegram.',
+    name: "resolve_inbox_item",
+    description: "Mark an Inbox item resolved (or re-open it). Human/operator tool only; agents should generally not call this for their own blockers. Agents should query list_inbox status or periodically re-check the original blocker.",
     inputSchema: {
-      type: 'object',
-      required: ['kind', 'title'],
+      type: "object",
+      required: ["id"],
+      properties: { id: { type: "string" }, resolved: { type: "boolean" } }
+    }
+  },
+  {
+    name: "resolve_hitl",
+    description: "Alias of resolve_inbox_item, kept for existing agent scripts.",
+    inputSchema: {
+      type: "object",
+      required: ["id"],
+      properties: { id: { type: "string" }, resolved: { type: "boolean" } }
+    }
+  },
+  {
+    name: "emit_activity",
+    description: "Append one event to the TerMinal activity log. Consumed by the Activity tab + Telegram feed. Use to surface progress without spamming Telegram.",
+    inputSchema: {
+      type: "object",
+      required: ["kind", "title"],
       properties: {
         kind: {
-          type: 'string',
-          description:
-            'session-start | session-end | ticket-filed | ticket-closed | pr-opened | pr-verdict | pr-merged | tests-pass | tests-fail | check | doc | agent-run | task-complete | blocked | error | info',
+          type: "string",
+          description: "session-start | session-end | ticket-filed | ticket-closed | pr-opened | pr-verdict | pr-merged | tests-pass | tests-fail | check | doc | agent-run | task-complete | blocked | error | info"
         },
-        title: { type: 'string' },
-        detail: { type: 'string' },
-        repo: { type: 'string' },
-      },
-    },
+        title: { type: "string" },
+        detail: { type: "string" },
+        repo: { type: "string" }
+      }
+    }
   },
   {
-    name: 'set_agent_state',
-    description:
-      'Persist per-(repo, agent) sidecar state at ~/.config/TerMinal/agent-state/<repo>/<agent>.json. Use for lastScannedSha or any arbitrary key so re-runs no-op early.',
+    name: "set_agent_state",
+    description: "Persist per-(repo, agent) sidecar state at ~/.config/TerMinal/agent-state/<repo>/<agent>.json. Use for lastScannedSha or any arbitrary key so re-runs no-op early.",
     inputSchema: {
-      type: 'object',
-      required: ['repo', 'agent', 'key'],
+      type: "object",
+      required: ["repo", "agent", "key"],
       properties: {
-        repo: { type: 'string' },
-        agent: { type: 'string' },
-        key: { type: 'string' },
-        value: {},
-      },
-    },
+        repo: { type: "string" },
+        agent: { type: "string" },
+        key: { type: "string" },
+        value: {}
+      }
+    }
   },
   {
-    name: 'get_agent_state',
-    description:
-      'Read per-(repo, agent) sidecar state. Omit `key` for the whole object. Use at the top of /check-style flows to early-exit on unchanged SHA.',
+    name: "get_agent_state",
+    description: "Read per-(repo, agent) sidecar state. Omit `key` for the whole object. Use at the top of /check-style flows to early-exit on unchanged SHA.",
     inputSchema: {
-      type: 'object',
-      required: ['repo', 'agent'],
+      type: "object",
+      required: ["repo", "agent"],
       properties: {
-        repo: { type: 'string' },
-        agent: { type: 'string' },
-        key: { type: 'string' },
-      },
-    },
+        repo: { type: "string" },
+        agent: { type: "string" },
+        key: { type: "string" }
+      }
+    }
   },
   {
-    name: 'list_activity',
-    description:
-      'Query the TerMinal activity feed. Returns recent events filtered by kind/repo/sinceMs. Use to check "what happened recently" before deciding what to do next.',
+    name: "list_activity",
+    description: 'Query the TerMinal activity feed. Returns recent events filtered by kind/repo/sinceMs. Use to check "what happened recently" before deciding what to do next.',
     inputSchema: {
-      type: 'object',
+      type: "object",
       properties: {
-        kind: { type: 'string', description: 'Filter by activity kind' },
-        repo: { type: 'string' },
-        sinceMs: { type: 'number', description: 'ms epoch — only events newer than this' },
-        limit: { type: 'number' },
-      },
-    },
+        kind: { type: "string", description: "Filter by activity kind" },
+        repo: { type: "string" },
+        sinceMs: { type: "number", description: "ms epoch \u2014 only events newer than this" },
+        limit: { type: "number" }
+      }
+    }
   },
   {
-    name: 'list_hitl',
-    description:
-      'List human-in-the-loop items. Default = open only. Use at the start of an agent run to check "is anything blocking me right now?" and self-route around blockers.',
+    name: "list_inbox",
+    description: 'List TerMinal Inbox items (any category, including human-in-the-loop blockers). Default = open only. Use at the start of an agent run to check "is anything blocking me right now?" and self-route around blockers.',
     inputSchema: {
-      type: 'object',
+      type: "object",
       properties: {
-        status: { type: 'string', enum: ['open', 'resolved', 'all'] },
-        repo: { type: 'string' },
-        limit: { type: 'number' },
-      },
-    },
+        status: { type: "string", enum: ["open", "resolved", "all"] },
+        repo: { type: "string" },
+        limit: { type: "number" }
+      }
+    }
   },
   {
-    name: 'list_bg_tasks',
-    description:
-      'List background /bg tasks. Filter by status (running|done|failed|canceled) and repo. Use to see what async work is already in flight before spawning more.',
+    name: "list_hitl",
+    description: "Alias of list_inbox, kept for existing agent scripts.",
     inputSchema: {
-      type: 'object',
+      type: "object",
       properties: {
-        status: { type: 'string' },
-        repo: { type: 'string' },
-        limit: { type: 'number' },
-      },
-    },
+        status: { type: "string", enum: ["open", "resolved", "all"] },
+        repo: { type: "string" },
+        limit: { type: "number" }
+      }
+    }
   },
   {
-    name: 'harness_status',
-    description:
-      'Snapshot of the whole harness right now: HITL open count, cron running, cron failures in last 24h, bg tasks running, today\'s spend by model. The single-call answer to "how is the fleet doing".',
-    inputSchema: { type: 'object', properties: {} },
-  },
-  {
-    name: 'set_run_outcome',
-    description:
-      'Tag a run with its outcome (pr-opened | ticket-filed | merged | none). Call at the end of an agent run so the per-agent ROI column on the Spend tab populates. The runId is the harness run id (TERMINAL_RUN_ID env var).',
+    name: "list_bg_tasks",
+    description: "List background /bg tasks. Filter by status (running|done|failed|canceled) and repo. Use to see what async work is already in flight before spawning more.",
     inputSchema: {
-      type: 'object',
-      required: ['runId', 'outcome'],
+      type: "object",
       properties: {
-        runId: { type: 'string' },
-        outcome: { type: 'string', enum: ['pr-opened', 'ticket-filed', 'merged', 'none'] },
-      },
-    },
-  },
-  // --- introspection / cross-repo tools (2026-05-30) ---------------------
-  {
-    name: 'list_agents',
-    description:
-      'List assignable agents for a repo, including TerMinal defaults, repo-local agents/scripts, global agents/scripts, and persistent agents. Returns compact id/title/scope/kind records for use with file_ticket or update_ticket_agent. Defaults to TERMINAL_REPO.',
-    inputSchema: { type: 'object', properties: { repo: { type: 'string' } } },
+        status: { type: "string" },
+        repo: { type: "string" },
+        limit: { type: "number" }
+      }
+    }
   },
   {
-    name: 'request_agent_artifact',
-    description:
-      'Delegate a focused knowledge/artifact request to a short-lived Claude subprocess, write the result under .TerMinal/agent-requests/, and return a compact summary plus artifact paths. Use during ticket implementation when you need another agent/domain view without bloating the parent context.',
+    name: "harness_status",
+    description: `Snapshot of the whole harness right now: HITL open count, cron running, cron failures in last 24h, bg tasks running, today's spend by model. The single-call answer to "how is the fleet doing".`,
+    inputSchema: { type: "object", properties: {} }
+  },
+  {
+    name: "set_run_outcome",
+    description: "Tag a run with its outcome (pr-opened | ticket-filed | merged | none). Call at the end of an agent run so the per-agent ROI column on the Spend tab populates. The runId is the harness run id (TERMINAL_RUN_ID env var).",
     inputSchema: {
-      type: 'object',
-      required: ['prompt'],
+      type: "object",
+      required: ["runId", "outcome"],
       properties: {
-        repo: { type: 'string' },
-        title: { type: 'string' },
-        prompt: { type: 'string' },
+        runId: { type: "string" },
+        outcome: { type: "string", enum: ["pr-opened", "ticket-filed", "merged", "none"] }
+      }
+    }
+  },
+  {
+    name: "list_agents",
+    description: "List assignable agents for a repo, including TerMinal defaults, repo-local agents/scripts, global agents/scripts, and persistent agents. Returns compact id/title/scope/kind records for use with file_ticket or update_ticket_agent. Defaults to TERMINAL_REPO.",
+    inputSchema: { type: "object", properties: { repo: { type: "string" } } }
+  },
+  {
+    name: "request_agent_artifact",
+    description: "Delegate a focused knowledge/artifact request to a short-lived Claude subprocess, write the result under .TerMinal/agent-requests/, and return a compact summary plus artifact paths. Use during ticket implementation when you need another agent/domain view without bloating the parent context.",
+    inputSchema: {
+      type: "object",
+      required: ["prompt"],
+      properties: {
+        repo: { type: "string" },
+        title: { type: "string" },
+        prompt: { type: "string" },
         agentId: {
-          type: 'string',
-          description: 'Assignable agent id from list_agents. Defaults to knowledge-base.',
+          type: "string",
+          description: "Assignable agent id from list_agents. Defaults to knowledge-base."
         },
-        agentScope: { type: 'string', enum: ['repo', 'global'] },
-        agentKind: { type: 'string', enum: ['classic', 'persistent'] },
-        model: { type: 'string' },
-        timeoutMs: { type: 'number' },
-      },
-    },
+        agentScope: { type: "string", enum: ["repo", "global"] },
+        agentKind: { type: "string", enum: ["classic", "persistent"] },
+        model: { type: "string" },
+        timeoutMs: { type: "number" }
+      }
+    }
   },
   {
-    name: 'list_review_patterns',
-    description:
-      'Top clusters from the nightly review-findings miner (<harnessDir>/reports/review-patterns.md). Use to see what recurring issues code reviews are flagging across the fleet before opening a fresh review.',
-    inputSchema: { type: 'object', properties: { limit: { type: 'number' } } },
+    name: "list_review_patterns",
+    description: "Top clusters from the nightly review-findings miner (<harnessDir>/reports/review-patterns.md). Use to see what recurring issues code reviews are flagging across the fleet before opening a fresh review.",
+    inputSchema: { type: "object", properties: { limit: { type: "number" } } }
   },
   {
-    name: 'factory_health',
-    description:
-      'Cross-repo rollup: per-repo ticket counts (by status) + open PR counts. The single-call "how is every project doing" snapshot the /factory orchestrator uses to pick targets.',
-    inputSchema: { type: 'object', properties: {} },
+    name: "factory_health",
+    description: 'Cross-repo rollup: per-repo ticket counts (by status) + open PR counts. The single-call "how is every project doing" snapshot the /factory orchestrator uses to pick targets.',
+    inputSchema: { type: "object", properties: {} }
   },
   {
-    name: 'search_decisions',
-    description:
-      'Grep docs/decisions (ADRs), docs/learnings, docs/runbooks across managed repos for a query string. Returns hits with snippets so an agent can find prior decisions/gotchas before re-deciding.',
+    name: "search_decisions",
+    description: "Grep docs/decisions (ADRs), docs/learnings, docs/runbooks across managed repos for a query string. Returns hits with snippets so an agent can find prior decisions/gotchas before re-deciding.",
     inputSchema: {
-      type: 'object',
-      required: ['query'],
+      type: "object",
+      required: ["query"],
       properties: {
-        query: { type: 'string' },
-        repo: { type: 'string', description: 'Scope to one repo (basename); omit to search all' },
-        limit: { type: 'number' },
-      },
-    },
+        query: { type: "string" },
+        repo: { type: "string", description: "Scope to one repo (basename); omit to search all" },
+        limit: { type: "number" }
+      }
+    }
   },
   {
-    name: 'recent_changes',
-    description:
-      'Git log digest for a repo over the last N days (default 7). Defaults to TERMINAL_REPO. Returns sha, author, relative time, subject — the cheapest "what changed recently" call.',
+    name: "recent_changes",
+    description: 'Git log digest for a repo over the last N days (default 7). Defaults to TERMINAL_REPO. Returns sha, author, relative time, subject \u2014 the cheapest "what changed recently" call.',
     inputSchema: {
-      type: 'object',
+      type: "object",
       properties: {
-        repo: { type: 'string' },
-        days: { type: 'number' },
-        limit: { type: 'number' },
-      },
-    },
+        repo: { type: "string" },
+        days: { type: "number" },
+        limit: { type: "number" }
+      }
+    }
   },
   {
-    name: 'nearest_session',
-    description:
-      'List recent Claude session transcripts for a repo (newest first). Use to find a previous session that worked on the same code so a fresh agent can pull in context without you wiring it explicitly. Returns transcript file paths the agent can read.',
+    name: "nearest_session",
+    description: "List recent Claude session transcripts for a repo (newest first). Use to find a previous session that worked on the same code so a fresh agent can pull in context without you wiring it explicitly. Returns transcript file paths the agent can read.",
     inputSchema: {
-      type: 'object',
+      type: "object",
       properties: {
-        repo: { type: 'string' },
-        limit: { type: 'number' },
-      },
-    },
-  },
-]
+        repo: { type: "string" },
+        limit: { type: "number" }
+      }
+    }
+  }
+];
 
-const HANDLERS = {
+// src/mcp/index.ts
+var HANDLERS = {
   list_tickets: listTicketsTool,
   get_ticket: getTicketTool,
   list_prs: listPrs,
@@ -2570,159 +2474,152 @@ const HANDLERS = {
   list_scheduled_agents: listSchedules,
   recent_agent_runs: recentAgentRuns,
   ai_spend_today: aiSpendToday,
-  // writes
   file_ticket: fileTicket,
   comment_ticket: commentTicket,
   update_ticket: updateTicket,
   update_ticket_agent: updateTicketAgent,
   update_ticket_run: updateTicketRun,
+  file_inbox_item: fileHitlTool,
   file_hitl: fileHitlTool,
+  resolve_inbox_item: resolveHitlTool,
   resolve_hitl: resolveHitlTool,
   emit_activity: emitActivityTool,
   set_agent_state: setAgentStateTool,
   get_agent_state: getAgentStateTool,
   list_activity: listActivityTool,
+  list_inbox: listHitlTool,
   list_hitl: listHitlTool,
   list_bg_tasks: listBgTasksTool,
   harness_status: harnessStatusTool,
   set_run_outcome: setRunOutcomeTool,
-  // 2026-05-30: cross-repo + introspection
   list_agents: listAgentsTool,
   request_agent_artifact: requestAgentArtifactTool,
   list_review_patterns: listReviewPatternsTool,
   factory_health: factoryHealthTool,
   search_decisions: searchDecisionsTool,
   recent_changes: recentChangesTool,
-  nearest_session: nearestSessionTool,
-}
-
-// Tool exposure filter — keep the in-context schema list lean for clients that
-// load every tool schema eagerly (Codex, older Claude Code). Default exposes
-// every tool (backward compatible). Override with GT_MCP_TOOLS env or
-// settings.json `mcp.tools`: a preset ("all" | "core" | "write" | "read") or a
-// comma-separated allowlist of tool names (presets and names may be mixed).
-const TOOL_PRESETS = {
+  nearest_session: nearestSessionTool
+};
+var TOOL_PRESETS = {
   write: [
-    'file_ticket',
-    'comment_ticket',
-  'update_ticket',
-    'update_ticket_agent',
-    'update_ticket_run',
-    'file_hitl',
-    'resolve_hitl',
-    'emit_activity',
-    'set_agent_state',
-    'get_agent_state',
-    'set_run_outcome',
-    'request_agent_artifact',
+    "file_ticket",
+    "comment_ticket",
+    "update_ticket",
+    "update_ticket_agent",
+    "update_ticket_run",
+    "file_inbox_item",
+    "resolve_inbox_item",
+    "emit_activity",
+    "set_agent_state",
+    "get_agent_state",
+    "set_run_outcome",
+    "request_agent_artifact"
   ],
   read: [
-    'list_tickets',
-    'get_ticket',
-    'list_prs',
-    'get_pr_artifact',
-    'list_scheduled_agents',
-    'recent_agent_runs',
-    'ai_spend_today',
-    'list_activity',
-    'list_hitl',
-    'list_bg_tasks',
-    'harness_status',
-    'list_agents',
-    'list_review_patterns',
-    'factory_health',
-    'search_decisions',
-    'recent_changes',
-    'nearest_session',
-  ],
-}
-// core = the deterministic-filing tools (the server's reason to exist) plus the
-// few most-used reads. ~11 tools vs 25 — roughly half the schema tokens.
-TOOL_PRESETS.core = [...TOOL_PRESETS.write, 'list_tickets', 'list_hitl', 'harness_status']
-
+    "list_tickets",
+    "get_ticket",
+    "list_prs",
+    "get_pr_artifact",
+    "list_scheduled_agents",
+    "recent_agent_runs",
+    "ai_spend_today",
+    "list_activity",
+    "list_inbox",
+    "list_bg_tasks",
+    "harness_status",
+    "list_agents",
+    "list_review_patterns",
+    "factory_health",
+    "search_decisions",
+    "recent_changes",
+    "nearest_session"
+  ]
+};
+TOOL_PRESETS.core = [...TOOL_PRESETS.write, "list_tickets", "list_inbox", "harness_status"];
 function exposedTools() {
-  let raw = process.env.GT_MCP_TOOLS
+  let raw = process.env.GT_MCP_TOOLS;
   if (!raw) {
-    const s = readSettings()
-    raw = s.mcp && typeof s.mcp.tools === 'string' ? s.mcp.tools : ''
+    const s = readSettings();
+    raw = s.mcp && typeof s.mcp.tools === "string" ? s.mcp.tools : "";
   }
-  raw = (raw || 'all').trim()
-  if (!raw || raw === 'all') return TOOLS
-  const wanted = new Set()
-  for (const tok of raw
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean)) {
-    if (TOOL_PRESETS[tok]) TOOL_PRESETS[tok].forEach((n) => wanted.add(n))
-    else wanted.add(tok)
+  raw = (raw || "all").trim();
+  if (!raw || raw === "all")
+    return TOOLS;
+  const wanted = new Set;
+  for (const tok of raw.split(",").map((s) => s.trim()).filter(Boolean)) {
+    if (TOOL_PRESETS[tok])
+      TOOL_PRESETS[tok].forEach((n) => wanted.add(n));
+    else
+      wanted.add(tok);
   }
-  const filtered = TOOLS.filter((t) => wanted.has(t.name))
-  return filtered.length ? filtered : TOOLS // never accidentally expose nothing
+  const filtered = TOOLS.filter((t) => wanted.has(t.name));
+  return filtered.length ? filtered : TOOLS;
 }
-
 function jsonRpc(id, result, error) {
-  const msg = error ? { jsonrpc: '2.0', id, error } : { jsonrpc: '2.0', id, result }
-  process.stdout.write(JSON.stringify(msg) + '\n')
+  const msg = error ? { jsonrpc: "2.0", id, error } : { jsonrpc: "2.0", id, result };
+  process.stdout.write(JSON.stringify(msg) + `
+`);
 }
-
 function handleRequest(req) {
-  const { id, method, params } = req
-  if (method === 'initialize') {
+  const { id, method, params } = req;
+  if (method === "initialize") {
     return jsonRpc(id, {
-      protocolVersion: '2025-06-18',
+      protocolVersion: "2025-06-18",
       capabilities: { tools: {} },
-      serverInfo: { name: 'terminal-harness', version: '0.1.0' },
-    })
+      serverInfo: { name: "terminal-harness", version: "0.1.0" }
+    });
   }
-  if (method === 'notifications/initialized') return // notification, no reply
-  if (method === 'tools/list') {
-    return jsonRpc(id, { tools: exposedTools() })
+  if (method === "notifications/initialized")
+    return;
+  if (method === "tools/list") {
+    return jsonRpc(id, { tools: exposedTools() });
   }
-  if (method === 'tools/call') {
-    const name = params?.name
-    const args = params?.arguments || {}
-    const handler = HANDLERS[name]
-    if (!handler) return jsonRpc(id, null, { code: -32601, message: `Unknown tool: ${name}` })
+  if (method === "tools/call") {
+    const name = params?.name;
+    const args = params?.arguments || {};
+    const handler = HANDLERS[name];
+    if (!handler)
+      return jsonRpc(id, null, { code: -32601, message: `Unknown tool: ${name}` });
     try {
-      const result = handler(args)
+      const result = handler(args);
       return jsonRpc(id, {
-        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-      })
+        content: [{ type: "text", text: JSON.stringify(result, null, 2) }]
+      });
     } catch (e) {
-      return jsonRpc(id, null, { code: -32603, message: e.message })
+      return jsonRpc(id, null, { code: -32603, message: e.message });
     }
   }
-  jsonRpc(id, null, { code: -32601, message: `Method not found: ${method}` })
+  jsonRpc(id, null, { code: -32601, message: `Method not found: ${method}` });
 }
-
-// Line-buffered stdin
-let buffer = ''
-process.stdin.on('data', (chunk) => {
-  buffer += chunk.toString()
-  let nl
-  while ((nl = buffer.indexOf('\n')) >= 0) {
-    const line = buffer.slice(0, nl).trim()
-    buffer = buffer.slice(nl + 1)
-    if (!line) continue
+var buffer = "";
+process.stdin.on("data", (chunk) => {
+  buffer += chunk.toString();
+  let nl;
+  while ((nl = buffer.indexOf(`
+`)) >= 0) {
+    const line = buffer.slice(0, nl).trim();
+    buffer = buffer.slice(nl + 1);
+    if (!line)
+      continue;
     try {
-      const req = JSON.parse(line)
-      handleRequest(req)
+      const req = JSON.parse(line);
+      handleRequest(req);
     } catch (e) {
-      // Parse error
-      process.stderr.write(`mcp-server: parse error: ${e.message}\n`)
+      process.stderr.write(`mcp-server: parse error: ${e.message}
+`);
     }
   }
-})
-
-// Drain in-flight Slack effects before exiting: a one-shot `terminal-cli mcp`
-// invocation closes stdin the moment it has its JSON-RPC response, and a bare
-// process.exit would cut best-effort posts/reactions off mid-flight. Capped so
-// a hung socket can never wedge the process open.
-process.stdin.on('end', () => {
-  if (!pendingEffects.size) process.exit(0)
-  const bail = setTimeout(() => process.exit(0), 10_000)
-  void Promise.allSettled([...pendingEffects]).then(() => {
-    clearTimeout(bail)
-    process.exit(0)
-  })
-})
+});
+process.stdin.on("end", () => {
+  if (!pendingEffects.size)
+    process.exit(0);
+  const bail = setTimeout(() => process.exit(0), 1e4);
+  Promise.allSettled([...pendingEffects]).then(() => {
+    clearTimeout(bail);
+    process.exit(0);
+  });
+});
+export {
+  handleRequest,
+  exposedTools
+};

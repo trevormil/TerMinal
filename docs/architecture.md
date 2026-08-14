@@ -8,7 +8,10 @@ the system changes.
 An Electron app in three layers, built with **electron-vite**:
 
 - **main** (`src/main/`) — Node. Spawns PTYs, owns all filesystem/CLI reads,
-  exposes everything over IPC. No DOM.
+  exposes everything over IPC. No DOM. `src/main/index.ts` is lifecycle only —
+  app/window/PTY wiring plus the registrar calls; every IPC handler lives in a
+  per-domain module under `src/main/ipc/`, which takes the session state it
+  needs as injected deps.
 - **preload** (`src/preload/index.ts`) — the single `gt` bridge, published to the
   renderer via `contextBridge`. Every renderer↔main call goes through it.
 - **renderer** (`src/renderer/src/`) — React 19 + Tailwind v4. The UI: the
@@ -76,10 +79,10 @@ anything else that can run a shell command.
   without the agent polling. Silent and exit 0 wherever no session is
   registered, which is most sessions.
 - **`src/main/bridge/`** is a small authenticated JSON API — no streaming.
-  Sessions: `GET /v1/remote` (sessions + HITL), `POST /v1/remote/new`,
+  Sessions: `GET /v1/remote` (sessions + Inbox), `POST /v1/remote/new`,
   `DELETE /v1/remote/:id`, `GET /v1/remote/:id/messages`,
   `POST /v1/remote/:id/reply`, `POST /v1/remote/:id/end`,
-  `GET /v1/remote/:id/image/:name`. HITL: `GET /v1/hitl`,
+  `GET /v1/remote/:id/image/:name`. Inbox: `GET /v1/hitl`,
   `POST /v1/hitl/read`, `POST /v1/hitl/:id`. Workspaces: `GET /v1/repos`,
   `GET /v1/workspaces`, `GET /v1/workspaces/:kind` (lists),
   `GET /v1/workspace/:kind` (drill-downs), `GET /v1/engines`. Push:
@@ -96,7 +99,7 @@ anything else that can run a shell command.
   live at `~/.config/TerMinal/bridge/` (0600) rather than `settings.json`,
   whose `safeStorage` sealing drops secrets outright when OS encryption is
   unavailable — which would silently unpair a phone in dev builds.
-- **HITL fans out to remote hosts**, so an agent blocked on `tm` still reaches
+- **The Inbox fans out to remote hosts**, so an agent blocked on `tm` still reaches
   the phone.
 - **Push is an alert channel.** `createPushChannel` sits alongside
   telegram/desktop/webhook in `dispatchAlert`, and `src/main/bridge/push.ts`
@@ -120,7 +123,7 @@ Both are "just a folder" discovered with Vite `import.meta.glob`:
 - **Tabs** — `src/renderer/src/tabs/<id>/index.tsx` default-exporting a `Tab`
   (`{ id, title, icon, order, appliesTo(ctx), badge?, Component }`).
   `SessionView` filters by `appliesTo(tabContext)` and polls `badge(gt)` for the
-  live count pill (HITL).
+  live count pill (unread Inbox items).
 
 `icon` is a `lucide-react` component in both. **Command widgets**
 (`lib/commandWidget.tsx`) wrap a declarative JSON shell-command spec as a Plugin.
@@ -196,14 +199,14 @@ Both are "just a folder" discovered with Vite `import.meta.glob`:
   Completed in-process runs also write deterministic evaluation metadata
   (configured checks, status summary, judge-not-run state) and optional lineage
   back to a ticket or PR.
-- `events.ts`, `hitl.ts`, `factory-health.ts`, `cycle.ts`, `schedules.ts` +
+- `events.ts`, `hitl.ts`, `cycle.ts`, `schedules.ts` +
   `cron*.ts` + `launchd.ts`, `telegram*.ts` — the software-factory layer, below.
 
 ## Software factory & observability
 
 A continuous, observable agent loop layered on top of the session shell. The
 human gate to `main`/`master` is never crossed by the app — agents stop at "PR
-open" and park true human-needs to HITL.
+open" and park true human-needs to the Inbox.
 
 **Append-only global stores** under `~/.config/TerMinal/` (cross-repo, work
 offline, survive a fresh clone):
@@ -216,9 +219,9 @@ offline, survive a fresh clone):
   channel-agnostic alert layer (`notify-channels.ts`: Telegram, desktop,
   outbound webhook — per-channel toggles in Settings, failure-isolated; see
   [`docs/alert-channels.md`](./alert-channels.md)).
-- `hitl.json` — the global HITL inbox (`hitl.ts`). `fileHitl` writes the item,
+- `hitl.json` — the global Inbox (`hitl.ts`). The FILE keeps its pre-rename name: the concept was renamed (ticket 0123), the state area was not, because five processes write it. `fileHitl` writes the item,
   mirrors a `blocked` activity event, and fires a Telegram ping. The top-right
-  Inbox button badge shows the unresolved count. HITL items filed
+  Inbox button badge shows the unresolved count. Items filed
   **out-of-process** (`bin/terminal-cli`, `bin/terminal-cron`,
   `bin/terminal-mcp-server`) ping Telegram too, but those are plain Bun
   processes that can't call Electron `safeStorage` to decrypt the token sealed
@@ -231,8 +234,8 @@ offline, survive a fresh clone):
 
 **Scheduling** (`schedules.ts` → `cron.ts`/`launchd.ts`): each enabled schedule
 is mirrored to a per-schedule **launchd** LaunchAgent that runs a headless runner
-(`bin/terminal-cron`, zero Electron imports, installed to
-`~/.config/TerMinal/bin`) so it fires even when the app is closed.
+(`bin/terminal-cron` — bundled from `src/runner/`, zero Electron imports,
+installed to `~/.config/TerMinal/bin`) so it fires even when the app is closed.
 `reconcileSchedules()` diffs launchd ↔ store to kill orphans and returns
 `{loaded, removed, failed[]}` — `loaded` only counts jobs launchd actually
 loaded (`isJobLoaded`, a plist-exists + `launchctl print` probe), so a schedule
@@ -242,11 +245,12 @@ surfaced instead of silently never firing. `syncSchedule` is idempotent
 plist is unchanged) so an app relaunch doesn't reset a `StartInterval` job's
 timer. Interval `nextRun` is anchored to `max(lastRun, jobLoadedAt)` (plist
 mtime), matching launchd's actual "fires N seconds after load" semantics. A
-failed (not cancelled) run auto-files a HITL item.
+failed (not cancelled) run auto-files an Inbox item.
 
-**Aggregation** (`factory-health.ts`): a read-only roll-up over those stores —
-throughput windows, agent/cron success rates, recent failures, a daily
-sparkline, top repos. **Cycle time** (`cycle.ts`, pure + unit-tested) joins a
+**Aggregation**: the cross-repo factory-health roll-up (throughput windows,
+agent/cron success rates, recent failures, a daily sparkline, top repos) lives
+only in the MCP tool `factory_health` (`bin/terminal-mcp-server`) — there is no
+in-app health tab or IPC for it. **Cycle time** (`cycle.ts`, pure + unit-tested) joins a
 ticket's events by `ref` (`ticket-filed{ticket}` → `pr-opened{ticket,pr}` →
 `pr-merged{pr}`) into median time-to-merge, the two stage splits, and a 7-day
 funnel.
@@ -259,6 +263,13 @@ Tickets tab uses the same run id to embed the linked log and evaluation.
 
 ## Loop engine (headless / paired / single)
 
+**Experimental** — the `loops` flag in Settings → Experimental. With the flag off
+there is no loop mode on the New workspace screen, and `loops:create` refuses in
+main (`experimentGate(readSettings(), 'loops')`); hiding the UI is not a gate.
+Only *creation* is gated: `loops:list` / `get` / `state` are reads and
+`loops:stop` only winds a loop down, so gating those would strand a loop started
+while the flag was on with no way to see or stop it after a flip off.
+
 A goal-convergence loop that lets the model drive: a **planner** drafts a
 gradable contract, a **generator** implements against it (and may not grade
 itself), and an **evaluator** adversarially scores pass/fail with evidence,
@@ -270,11 +281,29 @@ cycling `negotiate → generate → evaluate → decide` until the contract is m
 state under `<repoRoot>/.TerMinal/loops/<id>/` — `contract.md`,
 `feature_list.json`, `progress.md`, `log.md`, and an append-only `events.jsonl`.
 `readLoopState(id)` derives a bounded read-model (phase, iteration, last score,
-assertion tallies, log tail) for the cockpit widget.
+assertion tallies, log tail).
+
+**Where a running loop is visible** — `SessionView`'s `LoopStrip`, and nowhere
+else. There is no loops tab and no cockpit widget. Any session carrying a
+`loopId` gets a one-line strip above the terminal showing phase, iteration, last
+taste score, and contract-assertion tallies, polled from `gt.loops.state` every
+5 s **while that tile is on screen** (`visible`, not `active` — tiled layouts keep
+every session mounted), plus a confirm-gated **Stop loop** button on
+`gt.loops.stop`. It renders outside the `terminalTile`-hidden chrome on purpose:
+paired loops open in split layout, where the session header is hidden, which is
+exactly when the stop control matters. `gt.loops.list` has no UI consumer — a
+loop is reached through its sessions, so a list view would be a tab with nothing
+to say.
 
 **Three modes over the same loop state** (`LoopMode = 'headless' | 'paired' | 'single'`):
 
-- **Headless** — the engine spawns one agent turn per phase itself.
+- **Headless** — implemented, with **no UI that can create it**. `loops:create`
+  accepts `mode: 'headless'` (and it is `createLoop`'s default), but the only
+  callers in the renderer pass `'single'` or `'paired'`, so reaching it means
+  calling `gt.loops.create({ mode: 'headless', … })` programmatically. Kept
+  because it is the one mode that runs unattended and the engine below is the
+  substrate the other two reuse. The engine spawns one agent turn per phase
+  itself.
   `stepLoop(id)` builds the per-role command (`buildTurnCommand`) and spawns the
   chosen engine detached (generator runs in the worktree, other roles in the
   repo root; `--model` threaded when set), writing to `turns/<iter>-<role>.log`.

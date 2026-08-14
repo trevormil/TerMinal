@@ -2,7 +2,7 @@
 id: 0002
 title: Multi-host scheduled agents — always-on execution off the Mac
 anchor: ADR-0002
-status: proposed
+status: accepted
 date: 2026-07-12
 supersedes:
 superseded-by:

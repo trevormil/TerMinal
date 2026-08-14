@@ -4,12 +4,12 @@ A scheduled agent that handles **dependency hygiene** and **code-quality
 sweeps** in one pass: outdated/vulnerable deps, lockfile freshness, formatter
 drift, lint regressions, and TODO/FIXME aging.
 
-**Workflow is uniform**: own worktree → analyze → propose PR / ticket / HITL → human merges.
+**Workflow is uniform**: own worktree → analyze → propose PR / ticket / Inbox item → human merges.
 
 ## Mode
 
 `writer` — opens PRs for safe automated fixes (lint/format/dep bumps that pass
-the 3-day-age rule). HITLs for critical CVEs. Tickets for everything else.
+the 3-day-age rule). Inbox items for critical CVEs. Tickets for everything else.
 
 ## Inputs
 
@@ -42,14 +42,14 @@ If `HEAD == lastScannedSha` AND last advisory feed update was before
 
 1. **Worktree**: `git worktree add "${WORKTREES_DIR:-$HOME/.worktrees}/<repo>/deps-quality-<short_sha>" main`.
 2. **Dependency audit** — run `bun audit` (or ecosystem equivalent). Critical
-   CVEs trip the HITL fast path.
+   CVEs trip the Inbox fast path.
 3. **Identify safe bumps** — minor/patch versions ≥3 days old, no breaking
    semver, lockfile-resolvable. Apply in the worktree.
 4. **Run formatter + linter** with auto-fix. Capture before/after diff.
 5. **TODO/FIXME aging** — flag entries >90 days old (via `git blame`).
 6. **Decide**:
    - Safe bumps + auto-fix changes → single PR `chore: deps + lint sweep`.
-   - Critical CVE that can't be auto-fixed → HITL via `$HOME/.config/TerMinal/plugin/bin/hitl`.
+   - Critical CVE that can't be auto-fixed → Inbox item via `$HOME/.config/TerMinal/plugin/bin/inbox-item`.
    - Aging TODO/FIXME (>90d) → ticket per cluster.
 7. **Write artifact** to `$TERMINAL_REPORTS_DIR/deps-quality/<short_sha>.md`.
 8. **Update state** — `lastScannedSha`, `lastAuditAt`, `lastDeps`.
@@ -84,7 +84,7 @@ status: ok
 
 1. **3-day-age rule** for any bump (per global §10). No `@latest` adoption.
 2. **No major-version bumps.** Patch + minor only; major is a ticket.
-3. **HITL for Critical CVEs.** Don't silently downgrade severity.
+3. **Inbox item for Critical CVEs.** Don't silently downgrade severity.
 4. **Ticket + MR workflow** — every PR through human merge.
 5. **Worktree isolation**.
 6. **Idempotent.**

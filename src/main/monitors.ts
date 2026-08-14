@@ -3,41 +3,22 @@ import { readFileSync, mkdirSync, readdirSync } from 'node:fs'
 import { updateJsonState } from './atomic-write'
 import { join } from 'node:path'
 import { terminalConfigDir } from './config-dir'
+import type { Monitor, MonitorNotify, MonitorState, MonitorType } from '../shared/types/monitors'
+export type { Monitor, MonitorNotify, MonitorState, MonitorType } from '../shared/types/monitors'
+import type { Severity } from '../shared/types/monitors'
+export type { Severity } from '../shared/types/monitors'
+import {
+  DEFAULT_MIN_CONSECUTIVE_FAILURES,
+  normalizeMinConsecutiveFailures,
+  type FailureCategory,
+} from '../shared/monitor-flap'
+
+export { DEFAULT_MIN_CONSECUTIVE_FAILURES }
 
 // The Monitoring subsystem's app-side surface: config + latest state, read by
 // the Monitoring tab and the bridge. The DAEMON (bin/terminal-monitor) owns all
 // writes to state and does the probing — this module never runs a check. Pure,
 // deterministic infrastructure observability: NO inference, NOT runs/agents.
-
-export type MonitorType = 'http' | 'tls-cert' | 'tcp' | 'dns' | 'command'
-export type MonitorState = 'ok' | 'warn' | 'fail'
-export type Severity = 'urgent' | 'normal' | 'low'
-
-export type MonitorNotify = {
-  /** Severity filed to the Inbox when the check starts failing. 'off' = silent. */
-  onFailure: Severity | 'off'
-  /** File a low-severity recovery item when it goes back to ok. */
-  onRecovery: boolean
-  /** Re-file a still-failing check this often (0 = once, never re-nag). */
-  renotifyAfterSec: number
-  /** A daily digest of this monitor's status at digestHour (local). */
-  dailyDigest: boolean
-  digestHour: number
-}
-
-export type Monitor = {
-  id: string
-  name: string
-  type: MonitorType
-  /** URL / host:port / hostname / command — the thing being checked. */
-  target: string
-  intervalSec: number
-  enabled: boolean
-  group?: string
-  notify: MonitorNotify
-  /** Type-specific knobs (thresholds, expected status, etc.). */
-  config: Record<string, unknown>
-}
 
 export type MonitorStatus = {
   id: string
@@ -55,66 +36,53 @@ export type MonitorStatus = {
   since: number
   lastTransition: { from: MonitorState; to: MonitorState; at: number } | null
   history: { at: number; status: MonitorState }[]
+  /** Failed checks in a row, including ones held below the alert threshold. */
+  consecutiveFailures?: number
+  /** What kind of failure the last non-ok probe hit. */
+  category?: FailureCategory
+  /** Raw probe verdict before the threshold held it back — the "recent blip". */
+  observed?: MonitorState
+  /** True when the last cycle was discarded for lack of local connectivity. */
+  paused?: boolean
+  pausedSince?: number
 }
 
 const CFG = (): string => terminalConfigDir()
 export const MONITORS_FILE = (): string => join(CFG(), 'monitors.json')
 export const MONITOR_STATE_DIR = (): string => join(CFG(), 'monitor-state')
+export const MONITOR_CONNECTIVITY_FILE = (): string => join(CFG(), 'monitor-connectivity.json')
 
-// ---- pure classifiers (the check logic — unit tested) ----------------------
-
-/** HTTP status → health. 2xx/3xx ok, 4xx warn, 5xx/none fail. A latency over
- *  the threshold downgrades ok→warn. */
-export function classifyHttp(
-  status: number | null,
-  latencyMs: number | null,
-  warnLatencyMs?: number,
-): MonitorState {
-  if (status === null || status >= 500) return 'fail'
-  if (status >= 400) return 'warn'
-  if (warnLatencyMs && latencyMs !== null && latencyMs > warnLatencyMs) return 'warn'
-  return 'ok'
-}
-
-/** Days-until-expiry → health. Past due or unreadable = fail. */
-export function classifyCert(
-  daysRemaining: number | null,
-  warnDays = 15,
-  critDays = 5,
-): MonitorState {
-  if (daysRemaining === null) return 'fail'
-  if (daysRemaining < 0 || daysRemaining <= critDays) return 'fail'
-  if (daysRemaining <= warnDays) return 'warn'
-  return 'ok'
-}
+/** The daemon's latest verdict on whether THIS machine has connectivity. */
+export type MonitorConnectivity = { offline: boolean; since?: number }
 
 /**
- * Fold certificate CHAIN VALIDITY into the expiry-based health (ticket 67 F-15).
- *
- * The TLS probe connects with `rejectUnauthorized: false` on purpose — you want
- * to be told a cert expires in 3 days even when the chain is already broken, and
- * a rejected handshake would report nothing at all. But the old probe then threw
- * the trust result away, so a self-signed cert, a wrong-hostname cert, or an
- * untrusted issuer all rendered as a plain green "88d until expiry". The monitor
- * was not merely silent about it; it actively asserted health.
- *
- * `warn`, not `fail`: an untrusted chain is often deliberate (an internal CA, a
- * staging box), and a monitor that hard-fails on it gets muted — after which it
- * detects nothing. Expiry still escalates to `fail` on its own schedule, and a
- * genuinely-bad chain is never allowed to read as `ok`.
+ * Read the local-connectivity verdict the daemon wrote. Absent file ⇒ online:
+ * a machine that has never been offline has no reason to render a warning, and
+ * defaulting to "offline" would grey out the whole tab on first run.
  */
-export function classifyCertTrust(expiryState: MonitorState, authorized: boolean): MonitorState {
-  if (authorized) return expiryState
-  return expiryState === 'ok' ? 'warn' : expiryState
+export function readMonitorConnectivity(file = MONITOR_CONNECTIVITY_FILE()): MonitorConnectivity {
+  try {
+    const raw = JSON.parse(readFileSync(file, 'utf8'))
+    if (raw && typeof raw === 'object' && typeof raw.offline === 'boolean')
+      return { offline: raw.offline, since: Number(raw.since) || undefined }
+  } catch {
+    /* never written yet */
+  }
+  return { offline: false }
 }
 
-/** A command check maps exit code → health (0 ok, else fail), unless it printed
- *  a `{status}` JSON, which wins. */
-export function classifyCommand(exitCode: number, parsedStatus?: string): MonitorState {
-  if (parsedStatus === 'ok' || parsedStatus === 'warn' || parsedStatus === 'fail')
-    return parsedStatus
-  return exitCode === 0 ? 'ok' : 'fail'
-}
+// ---- pure classifiers (the check logic — unit tested) ----------------------
+// The check logic itself lives in src/shared/monitor-classify.ts, because the
+// DAEMON needs the identical functions and cannot import this module (it is a
+// separate process bundled to bin/terminal-monitor). Re-exported here so the
+// app-side callers keep their single import site.
+export {
+  classifyCert,
+  classifyCertTrust,
+  classifyCommand,
+  classifyHttp,
+  needsConfirmation,
+} from '../shared/monitor-classify'
 
 /** Whether a transition warrants re-filing to the Inbox: any status change, or
  *  a still-failing check whose renotify window has elapsed. */
@@ -131,22 +99,6 @@ export function shouldNotify(
   const since = prev?.since ?? now
   const lastAt = prev?.lastTransition?.at ?? since
   return now - lastAt >= renotifyAfterSec * 1000
-}
-
-/**
- * Whether a probe result needs a confirmation re-probe before it is believed.
- *
- * Every "is down" the Inbox saw over a week of real use was a single blown
- * probe — "no response" once, HTTP 200 on the next check (laptop sleep/wake,
- * Wi-Fi blip) — each one filing an urgent item plus a recovery. So a result
- * that would move a monitor to a WORSE state is probed a second time before
- * the transition is recorded; a real outage fails the confirm probe too and
- * still alerts within seconds of the first probe. Recoveries and steady states
- * are believed immediately — delaying "it's back" helps nobody.
- */
-export function needsConfirmation(prev: MonitorState, next: MonitorState): boolean {
-  const rank: Record<MonitorState, number> = { ok: 0, warn: 1, fail: 2 }
-  return rank[next] > rank[prev]
 }
 
 export const DEFAULT_NOTIFY: MonitorNotify = {
@@ -257,6 +209,7 @@ export function validateMonitor(raw: unknown): Monitor | null {
     target: r.target,
     intervalSec: clamp(r.intervalSec, MIN_INTERVAL_SEC, MAX_INTERVAL_SEC, 300),
     enabled: r.enabled !== false,
+    minConsecutiveFailures: normalizeMinConsecutiveFailures(r.minConsecutiveFailures),
     ...(typeof r.group === 'string' ? { group: r.group } : {}),
     notify: validateNotify(r.notify),
     config:
@@ -287,10 +240,22 @@ export function validateMonitors(raw: unknown): { monitors: Monitor[]; rejected:
 
 // ---- config + state IO -----------------------------------------------------
 
+/**
+ * Config migration on load: monitors.json predates `minConsecutiveFailures`, so
+ * every entry written before it existed is filled in with the default here
+ * rather than at each use site. The file itself is left alone until the next
+ * save — a read must never rewrite state the daemon may be reading too.
+ */
 export function readMonitors(file = MONITORS_FILE()): Monitor[] {
   try {
     const raw = JSON.parse(readFileSync(file, 'utf8'))
-    return Array.isArray(raw) ? raw.filter((m) => m && typeof m.id === 'string') : []
+    if (!Array.isArray(raw)) return []
+    return raw
+      .filter((m) => m && typeof m.id === 'string')
+      .map((m) => ({
+        ...m,
+        minConsecutiveFailures: normalizeMinConsecutiveFailures(m.minConsecutiveFailures),
+      }))
   } catch {
     return []
   }

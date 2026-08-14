@@ -1,6 +1,8 @@
 // Pure pipeline logic — no electron/disk imports, so it's unit-testable.
 // A pipeline is a chain of stages run sequentially in ONE worktree: the first
 // step is the task itself, later stages append review/iterate passes.
+import type { PipelineId } from '../shared/types/app'
+export type { PipelineId } from '../shared/types/app'
 export type Step = { label: string; prompt: string }
 
 const REVIEW_STAGE: Step = {
@@ -14,7 +16,6 @@ const ITERATE_STAGE: Step = {
     'Now iterate until this branch is merge-ready: resolve any remaining review findings and TODOs, make the test suite and build pass, and tighten edge cases — keep changes surgical. Commit your work and update the PR if one is open. End with the final status (tests/build green?) and a short summary.',
 }
 
-export type PipelineId = 'single' | 'review' | 'review-iterate'
 export const PIPELINES: Record<
   PipelineId,
   { id: PipelineId; title: string; description: string; stages: Step[] }

@@ -1,17 +1,6 @@
 import type { HitlSource } from './hitl'
-
-// Pure severity logic, split out so it's testable without importing hitl.ts
-// (which transitively pulls in Electron via the activity feed).
-//
-// Three tiers, and a CONFIGURABLE notify threshold, so the inbox behaves like
-// real email: only what you've said is loud enough interrupts you; the rest
-// waits for your next sweep.
-//   'urgent' — emergency / a real block: notifies (push/Telegram/desktop).
-//   'normal' — worth seeing, not worth a buzz: inbox-only unless you lower the
-//              threshold.
-//   'low'    — FYI / a completion reminder: inbox-only.
-// Every item persists in the inbox regardless; severity only gates the alert.
-export type HitlSeverity = 'urgent' | 'normal' | 'low'
+import type { HitlSeverity } from '../shared/types/activity'
+export type { HitlSeverity } from '../shared/types/activity'
 
 /** Minimum severity that fires a notification. Default 'urgent' — only the loud
  *  stuff pings; everything else is email you check once or twice a day. */

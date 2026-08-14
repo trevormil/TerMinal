@@ -50,10 +50,17 @@ describe('classifyCertTrust (ticket 67 F-15)', () => {
 })
 
 describe('the daemon actually uses it (ticket 67 F-15)', () => {
-  // bin/terminal-monitor is a standalone script that mirrors these classifiers.
-  // A fix in monitors.ts that the daemon never calls would change nothing —
-  // the daemon is the only thing that ever runs a probe.
-  const src = readFileSync(resolve(import.meta.dir, '../../bin/terminal-monitor'), 'utf8')
+  // The daemon is the only thing that ever runs a probe, so a fix in the
+  // classifier that the TLS probe never calls would change nothing. It used to
+  // carry a hand-copy of these functions; now it IMPORTS the canonical ones
+  // (src/shared/monitor-classify.ts) and is bundled to bin/terminal-monitor, so
+  // what has to be pinned is the probe's use of them, not a mirror's fidelity.
+  const src = readFileSync(resolve(import.meta.dir, '../monitor/probes.ts'), 'utf8')
+
+  test('it imports the canonical classifiers rather than redefining them', () => {
+    expect(src).toContain("from '../shared/monitor-classify'")
+    expect(src).not.toMatch(/function\s+classifyCertTrust/)
+  })
 
   test('it reads the trust result off the socket', () => {
     expect(src).toContain('socket.authorized')
@@ -69,20 +76,13 @@ describe('the daemon actually uses it (ticket 67 F-15)', () => {
     expect(src).toMatch(/authorizationError/)
   })
 
-  test('the mirrored copy is behaviourally identical to the canonical one', () => {
-    // Extract the daemon's copy and run it against the same table.
-    const start = src.indexOf('function classifyCertTrust')
-    expect(start).toBeGreaterThan(-1)
-    const body = src.slice(start, src.indexOf('\n}\n', start) + 3)
-    const mirrored = new Function(`${body}; return classifyCertTrust`)() as (
-      s: string,
-      a: boolean,
-    ) => string
-    for (const state of ['ok', 'warn', 'fail'] as const) {
-      for (const authorized of [true, false]) {
-        expect(mirrored(state, authorized)).toBe(classifyCertTrust(state, authorized))
-      }
-    }
+  test('the shipped artifact carries that same code', () => {
+    // The bundle is what launchd actually executes. A source fix that was never
+    // rebuilt would leave the OLD daemon running — src/bin-build-sync.test.ts
+    // guards staleness in general; this pins the specific fix.
+    const bundle = readFileSync(resolve(import.meta.dir, '../../bin/terminal-monitor'), 'utf8')
+    expect(bundle).toContain('classifyCertTrust')
+    expect(bundle).toContain('rejectUnauthorized: false')
   })
 
   test('rejectUnauthorized stays false — reporting requires connecting', () => {

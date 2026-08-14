@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { existsSync, mkdirSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -20,6 +20,15 @@ import {
   updateRepoTicket,
 } from './ticket-provider'
 import { readFileSync } from 'node:fs'
+
+import { INSIDE_MIGRATION_WINDOW, setMigrationClock } from '../shared/migration-sunset'
+
+// These cases exercise ADR-0020's LEGACY in-repo read, which sunsets on
+// MIGRATION_SUNSET. Pin the clock inside the migration window so they keep
+// testing the fallback they were written for instead of turning red by
+// themselves on the sunset date.
+beforeAll(() => setMigrationClock(INSIDE_MIGRATION_WINDOW))
+afterAll(() => setMigrationClock(null))
 
 function repoWithTicketConfig(config?: unknown) {
   const repo = mkdtempSync(join(tmpdir(), 'terminal-ticket-provider-'))
@@ -278,7 +287,7 @@ describe('linear-native meta', () => {
       description: 'body',
       priority: 1,
       state: { name: 'In Review', type: 'started', color: '#f2c94c' },
-      assignee: { name: 'Trevor Miller' },
+      assignee: { name: 'Ada Lovelace' },
       labels: { nodes: [{ name: 'Bug', color: '#eb5757' }, { name: 'iOS' }] },
       project: { name: 'Mobile' },
       cycle: { name: 'Cycle 12' },
@@ -294,7 +303,7 @@ describe('linear-native meta', () => {
       stateColor: '#f2c94c',
       priority: 1,
       priorityLabel: 'Urgent',
-      assignee: 'Trevor Miller',
+      assignee: 'Ada Lovelace',
       project: 'Mobile',
       cycle: 'Cycle 12',
       team: 'Engineering',
@@ -518,11 +527,11 @@ describe('provider comment mapping', () => {
       id: 'TRE-5',
       title: 'x',
       comments: [
-        { user: { name: 'Trevor' }, body: 'linear note', createdAt: '2026-06-07T20:41:17.329Z' },
+        { user: { name: 'Ada' }, body: 'linear note', createdAt: '2026-06-07T20:41:17.329Z' },
       ],
     })
     expect(t.comments).toEqual([
-      { at: '2026-06-07T20:41:17.329Z', author: 'Trevor', kind: 'human', body: 'linear note' },
+      { at: '2026-06-07T20:41:17.329Z', author: 'Ada', kind: 'human', body: 'linear note' },
     ])
   })
 })

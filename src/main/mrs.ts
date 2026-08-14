@@ -25,57 +25,16 @@ import {
 // "Mr" names are kept (internal + IPC stable) regardless of GitHub vs GitLab.
 
 export type { CiJob, CiInfo } from './forge'
-
-export type Finding = {
-  id?: string
-  severity?: string
-  title?: string
-  text?: string
-  body?: string
-  file?: string
-  line?: number
-  status?: string
-  agent_fix_prompt?: string
-  category?: string
-} & Record<string, unknown>
-
-export type MrDetail = {
-  iid: number
-  title: string
-  description: string
-  state: string
-  author: string
-  webUrl: string
-  sourceBranch: string
-  targetBranch: string
-  draft: boolean
-  reviewMd: string
-  reviewMeta: Review | null
-  findings: Finding[]
-  suggestions: Finding[]
-  /** Reviewer-captured screenshots (empty for the common non-visual review). */
-  screenshots: Screenshot[]
-  artifactShortSha: string
-  headShort: string
-}
-
-export type Mr = {
-  iid: number
-  title: string
-  state: string
-  author: string
-  webUrl: string
-  sourceBranch: string
-  draft: boolean
-  review: Review | null
-  labels: string[]
-  /** Model(s) that wrote this MR, cross-referenced from the linked ticket's worked_by. */
-  workedBy: string[]
-}
-
-// `error` distinguishes a genuinely-empty list from a CLI failure, so the UI
-// can show an accurate empty state instead of a misleading "not authenticated".
-export type MrListResult = { mrs: Mr[]; error?: string }
+import type { DigestArtifact, Finding, Mr, MrDetail, MrListResult } from '../shared/types/mrs'
+export type {
+  DigestArtifact,
+  DigestChunk,
+  DigestDecision,
+  Finding,
+  Mr,
+  MrDetail,
+  MrListResult,
+} from '../shared/types/mrs'
 
 // Live MRs/PRs for the repo, each enriched with its harness review/test verdict.
 export async function listMrs(repoRoot: string): Promise<MrListResult> {
@@ -253,64 +212,6 @@ export async function getStructuralDiff(
 // The human-review digest artifact (<short>.chunks.json) produced by /digest.
 // Chunks the diff into a risk-ranked, noise-filtered surface with first-class
 // design-decision callouts. See autopilot-harness .agents/digest.md.
-
-export type DigestDecision = {
-  id: string
-  title: string
-  category: string
-  files: string[]
-  what: string | null
-  why: string | null
-  alternatives: string | null
-  reversibility: 'low' | 'medium' | 'high'
-}
-export type DigestChunk = {
-  id: string
-  file: string
-  old_path: string | null
-  kind: string
-  risk: 'green' | 'yellow' | 'red'
-  risk_reason: string
-  status: string
-  added: number
-  deleted: number
-  green_label: string | null
-  summary: string | null
-  note: string | null
-  confidence: string | null
-  decision_signals: string[]
-  hunks: {
-    header: string
-    old_start: number
-    new_start: number
-    mechanical: boolean
-    label: string
-  }[]
-}
-export type DigestArtifact = {
-  pr: string | null
-  short_sha: string | null
-  generated: string
-  generator: string
-  joint: { member_mrs: string[] } | false
-  brief: string | null
-  blast_radius: string | null
-  diagrams: { title: string; kind: string; mermaid: string }[]
-  double_check: { file: string; why: string }[]
-  decisions: DigestDecision[]
-  stats: {
-    files: number
-    chunks: number
-    green: number
-    yellow: number
-    red: number
-    llm_chunks: number
-    added: number
-    deleted: number
-    decisions?: number
-  }
-  chunks: DigestChunk[]
-}
 
 // The digest artifact for an MR — newest <sha>.chunks.json (or an exact head-sha
 // match), independent of whether a review .md exists. null when /digest hasn't run.

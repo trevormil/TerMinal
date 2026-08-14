@@ -23,6 +23,8 @@ import {
 import { recordRunnerInvocation } from './ai-collectors'
 import { resolveModel } from './resolve-model'
 import { coerceEffort, effortArgs } from '../shared/engines'
+import { experimentEnabled } from '../shared/experiments'
+import { laneGate } from '../shared/lanes'
 // The run store moved to agent-run-store.ts (ticket 91); re-exported so the
 // existing importers via './agents' keep working unchanged.
 export {
@@ -104,7 +106,7 @@ const shq = (s: string) => `'${s.replace(/'/g, "'\\''")}'`
 
 // `defaultBase` costs up to three git invocations, and runSpec called it TWICE
 // per run (header line + the worktree add) with no memoisation — driven
-// sequentially up to 100x by runTicketLanes, that is up to 600 synchronous git
+// sequentially once per lane by runTicketLanes, that is six synchronous git
 // processes on the main thread for a single fan-out. The default branch of a
 // repo does not change during a fan-out, so cache it briefly.
 const DEFAULT_BASE_TTL_MS = 60_000
@@ -1169,7 +1171,7 @@ The script body MUST follow this shape:
       cursor-agent -p --force --trust --workspace "\${TERMINAL_WORKTREE}" --model "\${TERMINAL_MODEL:-composer-2.5-fast}" "<prompt>"
   - For TerMinal helpers, use these (on PATH via ~/.config/TerMinal/bin/terminal-cli):
       terminal-cli ticket "<title>" "<body>"   # file a backlog ticket on TERMINAL_REPO
-      terminal-cli hitl "<title>" "<action>"   # file a global HITL item + Telegram ping
+      terminal-cli inbox-item "<title>" "<action>"   # file a global Inbox item + Telegram ping
       terminal-cli activity <kind> "<title>" "<detail>"   # emit one activity-feed event
       terminal-cli notify "<message>"          # raw Telegram message
       terminal-cli state get-sha               # last main/master sha this agent scanned ("" if first run)
@@ -1188,7 +1190,7 @@ THE BODY MUST FOLLOW THE PROJECT'S WORKFLOW:
   - File backlog tickets via \`terminal-cli ticket\` for findings the script cannot fix in-pass.
   - Open a PR only when there are concrete changes. If the diff is ONLY docs/markdown/tickets/reports, apply the \`auto-mergeable\` label per the forge contract (\`tm-agent-spec forge\`).
   - Explicit success criteria (what makes the run "done"). \`exit 0\` on success; non-zero on failure.
-  - HITL only for true blockers (decisions, credentials, hard blockers) via \`terminal-cli hitl\`.
+  - Inbox items only for true blockers (decisions, credentials, hard blockers) via \`terminal-cli inbox-item\`.
 
 CONVENTIONS TO READ BEFORE WRITING THE SCRIPT:
   1. CLAUDE.md (root) — project conventions and global rules.
@@ -1357,9 +1359,6 @@ After this completes the app reconciles schedules automatically — your new ent
 }
 
 /** Turn a backlog ticket into an implementation run that opens a PR. */
-/** Hard ceiling on parallel lanes — fan-out spawns one engine process each. */
-export const MAX_LANES = 100
-
 type TicketRunInput = {
   slug?: string
   id: number
@@ -1371,6 +1370,9 @@ type TicketRunInput = {
    *  earlier runs on this ticket learned. */
   comments?: TicketComment[]
   agent?: TicketAgent
+  /** The ticket's acceptance criteria — the lane gate refuses a fan-out without
+   *  them (nothing to compare N competing MRs against). */
+  acceptance?: string[]
   /** The ticket's model_tier frontmatter — mapped through the owner agent's
    *  modelPolicy by resolveModel at spawn time. */
   modelTier?: string
@@ -1410,10 +1412,11 @@ export function runTicketAgent(
   const provider = repoTicketProvider(repoRoot)
   const ref = ticket.externalKey || `#${ticket.id}`
   // Lanes are independent variant attempts: each opens its OWN MR and must NOT
-  // touch the ticket (concurrent frontmatter writes would race). The judge step
-  // compares lanes and links the winner. A solo run links the ticket as before.
+  // touch the ticket (concurrent frontmatter writes would race). There is no
+  // automated judge — a human reads the N MRs and picks one. A solo run links
+  // the ticket as before.
   const ticketWriteInstr = lane
-    ? `Open a PR/MR that references ticket ${ref}${ticket.url ? ` (${ticket.url})` : ''} and report its URL. Do NOT modify the ticket file, its status, or its prs — a separate judging step compares all lanes and links the winner.`
+    ? `Open a PR/MR that references ticket ${ref}${ticket.url ? ` (${ticket.url})` : ''} and report its URL. Do NOT modify the ticket file, its status, or its prs — every lane opens its own MR and a human compares them and picks the winner.`
     : `Commit your work and open a PR that references ticket ${ref}${ticket.url ? ` (${ticket.url})` : ''}. If fully delivered set the ticket status to closed (else in-progress). Link or reference the PR in the ticket provider when supported.`
   const laneFraming = lane
     ? `\n\n--- LANE ${lane.index} of ${lane.total} ---\nYou are one of ${lane.total} independent variant attempts at this ticket, each in its own worktree and branch. Pursue a genuinely distinct, high-quality approach — don't converge on the obvious one. Satisfy every acceptance criterion in the ticket.`
@@ -1472,7 +1475,12 @@ export function runTicketAgent(
 export type LaneFanout = { group: string | null; runs: AgentRun[]; errors?: string[] }
 
 /** Launch `lanes` parallel variant attempts of a ticket, each in its own
- *  worktree/branch with its own MR. lanes<=1 is the classic single run. */
+ *  worktree/branch with its own MR. lanes<=1 is the classic single run.
+ *
+ *  A fan-out is gated here, not in the UI: the `lanes` experiment must be on and
+ *  the ticket must carry acceptance criteria, and the count is capped at
+ *  MAX_LANES. Every lane is a real engine process, so a refusal has to happen
+ *  before anything spawns. */
 export function runTicketLanes(
   repoRoot: string,
   ticket: TicketRunInput,
@@ -1484,7 +1492,13 @@ export function runTicketLanes(
   extraContext?: string,
   effort?: string,
 ): LaneFanout | { error: string } {
-  const n = Math.max(1, Math.min(MAX_LANES, Math.floor(lanes || 1)))
+  const gate = laneGate({
+    lanes,
+    experimentOn: experimentEnabled(readSettings(), 'lanes'),
+    acceptance: ticket.acceptance,
+  })
+  if ('error' in gate) return gate
+  const n = gate.n
   if (n <= 1) {
     const r = runTicketAgent(
       repoRoot,
@@ -1553,7 +1567,7 @@ export function runTicketSpawn(
  *  merge-ready PRs (stacked-mr passes, gated by review), never merging to main. */
 export function runFactorySpawn(repoRoot: string, engine: Engine): AgentRun | { error: string } {
   if (!repoRoot) return { error: 'not a git repo' }
-  const prompt = `Run the /factory orchestrator for THIS repository, following the project's /factory skill exactly. This is a no-handoff loop: continuously turn the backlog into REVIEWED, merge-ready PRs by reconciling with /merge-sync, running /stacked-mr passes (build a stack TDD-first → batch-review to the bar → handle verdicts), compacting/migrating context at phase boundaries, then continuing with any runnable independent lane. NEVER stop with "tell me when you're ready" language. Stop only if the user explicitly stops you, the goal is actually complete, or every remaining lane is blocked on human-only action. NEVER merge to main/master — the human merges. Park any TRUE human-need (decision, approval, creds, hard blocker) to the global HITL inbox with ~/.config/TerMinal/plugin/bin/hitl, then continue other work. Emit an activity event at each checkpoint. Do not invent scope. End only when the factory loop has no runnable work left.`
+  const prompt = `Run the /factory orchestrator for THIS repository, following the project's /factory skill exactly. This is a no-handoff loop: continuously turn the backlog into REVIEWED, merge-ready PRs by reconciling with /merge-sync, running /stacked-mr passes (build a stack TDD-first → batch-review to the bar → handle verdicts), compacting/migrating context at phase boundaries, then continuing with any runnable independent lane. NEVER stop with "tell me when you're ready" language. Stop only if the user explicitly stops you, the goal is actually complete, or every remaining lane is blocked on human-only action. NEVER merge to main/master — the human merges. Park any TRUE human-need (decision, approval, creds, hard blocker) to the global Inbox with ~/.config/TerMinal/plugin/bin/inbox-item, then continue other work. Emit an activity event at each checkpoint. Do not invent scope. End only when the factory loop has no runnable work left.`
   return runSpec(repoRoot, {
     id: 'factory',
     title: 'Factory',

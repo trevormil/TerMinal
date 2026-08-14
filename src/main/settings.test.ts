@@ -15,6 +15,7 @@ import {
   telegramSidecarPayload,
   slackSidecarPayload,
 } from './settings'
+import { EXPERIMENT_IDS, experimentEnabled } from '../shared/experiments'
 
 describe('migrate', () => {
   test('empty / garbage → defaults', () => {
@@ -186,6 +187,56 @@ describe('migrate', () => {
     expect(s.projectsDir).toBe('')
     expect(s.onboarded).toBe(false)
     expect(s.engines.codex.path).toBe('')
+  })
+})
+
+describe('experimental flags (experiments)', () => {
+  test('every flag is OFF on a fresh install', () => {
+    expect(defaultSettings().experiments).toEqual({})
+    for (const id of EXPERIMENT_IDS) {
+      expect(experimentEnabled(defaultSettings(), id)).toBe(false)
+    }
+  })
+
+  test('a settings file predating the flags reads as off, not on', () => {
+    const s = migrate({ onboarded: true })
+    expect(s.experiments).toEqual({})
+    expect(experimentEnabled(s, 'loops')).toBe(false)
+  })
+
+  test('opted-in flags survive migration', () => {
+    const s = migrate({ experiments: { loops: true, lanes: false } })
+    expect(s.experiments).toEqual({ loops: true, lanes: false })
+    expect(experimentEnabled(s, 'loops')).toBe(true)
+    expect(experimentEnabled(s, 'lanes')).toBe(false)
+  })
+
+  test('unknown ids and wrong types are dropped on read', () => {
+    expect(migrate({ experiments: { loops: 'yes', nope: true } }).experiments).toEqual({})
+    expect(migrate({ experiments: 'on' }).experiments).toEqual({})
+  })
+
+  test('a patch merges per-flag instead of replacing the block', () => {
+    const cur = mergeSettingsPatch(defaultSettings(), { experiments: { loops: true } })
+    expect(cur.experiments).toEqual({ loops: true })
+    const next = mergeSettingsPatch(cur, { experiments: { lanes: true } })
+    expect(next.experiments).toEqual({ loops: true, lanes: true })
+    const off = mergeSettingsPatch(next, { experiments: { loops: false } })
+    expect(off.experiments).toEqual({ loops: false, lanes: true })
+    expect(experimentEnabled(off, 'loops')).toBe(false)
+  })
+
+  test('a patch cannot smuggle in an unknown flag or a non-boolean', () => {
+    const s = mergeSettingsPatch(defaultSettings(), {
+      experiments: { nope: true, loops: 'yes' },
+    } as never)
+    expect(s.experiments).toEqual({})
+  })
+
+  test('round-trips through disk unchanged', () => {
+    const on = mergeSettingsPatch(defaultSettings(), { experiments: { lanes: true } })
+    const sealed = sealSettingsForDisk(on, null)
+    expect(migrate(openSettingsFromDisk(JSON.parse(JSON.stringify(sealed)), null))).toEqual(on)
   })
 })
 
@@ -740,5 +791,57 @@ describe('slack inbox destination', () => {
     expect(slackSidecarPayload(s)).toEqual({ ...s.slack, destination: 'both' })
     s.slack.botToken = ''
     expect(slackSidecarPayload(s)).toBeNull() // token cleared
+  })
+})
+
+describe('savedPrompts (spawn prompt library)', () => {
+  test('defaults to an empty library', () => {
+    expect(defaultSettings().savedPrompts).toEqual([])
+    expect(migrate({}).savedPrompts).toEqual([])
+  })
+
+  test('round-trips a saved prompt, newlines intact', () => {
+    const s = migrate({
+      savedPrompts: [{ id: 'p1', name: 'Ship it', text: 'line one\nline two' }],
+    })
+    expect(s.savedPrompts).toEqual([{ id: 'p1', name: 'Ship it', text: 'line one\nline two' }])
+  })
+
+  test('junk entries are dropped rather than taking the library out', () => {
+    const s = migrate({
+      savedPrompts: [
+        null,
+        'nope',
+        { id: 'ok', name: 'Fine', text: 'body' },
+        { id: 'empty', name: 'No body', text: '   ' },
+        { id: 'badtext', name: 'Bad', text: 42 },
+      ],
+    })
+    expect(s.savedPrompts).toEqual([{ id: 'ok', name: 'Fine', text: 'body' }])
+  })
+
+  test('a nameless or id-less entry is kept with a stable fallback', () => {
+    const s = migrate({ savedPrompts: [{ text: 'body' }] })
+    expect(s.savedPrompts).toHaveLength(1)
+    expect(s.savedPrompts[0].id).toBeTruthy()
+    expect(s.savedPrompts[0].name).toBeTruthy()
+    // Migrating the same file twice must not renumber the library.
+    expect(migrate({ savedPrompts: [{ text: 'body' }] })).toEqual(s)
+  })
+
+  test('a bad list is not an array → empty, never a crash', () => {
+    expect(migrate({ savedPrompts: 'nope' }).savedPrompts).toEqual([])
+    expect(migrate({ savedPrompts: { id: 'x' } }).savedPrompts).toEqual([])
+  })
+
+  test('a patch replaces the whole library and is validated on the way in', () => {
+    const cur = migrate({ savedPrompts: [{ id: 'old', name: 'Old', text: 'old body' }] })
+    const next = mergeSettingsPatch(cur, {
+      savedPrompts: [
+        { id: 'new', name: 'New', text: 'new body' },
+        { id: 'junk', name: 'Junk', text: '' },
+      ],
+    })
+    expect(next.savedPrompts).toEqual([{ id: 'new', name: 'New', text: 'new body' }])
   })
 })

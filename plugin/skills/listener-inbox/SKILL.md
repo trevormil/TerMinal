@@ -55,4 +55,4 @@ agent/script first and trigger it by id.
 - Use `dedupeKey` for polling/webhook integrations.
 - Unknown or invalid events should be allowed to land in `failed/` or
   `dead-letter/`; do not retry by rewriting the same bad file in a loop.
-- For destructive/costly actions, file HITL instead of running directly.
+- For destructive/costly actions, file an Inbox item instead of running directly.

@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { configPath } from './config-dir'
 import { repoForCwd, repoRootOf } from './repo'
+import { migrationWindowOpen } from '../shared/migration-sunset'
 import type { ProjectArea } from './project-layout'
 
 // Personal workflow state (tickets, reviews, sessions, checks, reports) used to
@@ -78,12 +79,16 @@ export function repoStatePathForWrite(repoRoot: string, rel: string): string {
  * else the legacy in-repo copy when THAT exists (state already committed stays
  * visible with no migration), else the sidecar path (i.e. "missing", and where
  * a subsequent write will land). Mirrors projectAreaPathForRead's asymmetry.
+ *
+ * The legacy leg is only consulted while the migration window is open — see
+ * src/shared/migration-sunset.ts. `now` is injectable so the sunset is
+ * testable without moving the system clock.
  */
-export function repoStatePathForRead(repoRoot: string, rel: string): string {
+export function repoStatePathForRead(repoRoot: string, rel: string, now?: Date): string {
   const sidecar = repoStatePathForWrite(repoRoot, rel)
   if (sidecar && existsSync(sidecar)) return sidecar
   const legacy = legacyStatePath(repoRoot, rel)
-  if (existsSync(legacy)) return legacy
+  if (migrationWindowOpen(now) && existsSync(legacy)) return legacy
   return sidecar || legacy
 }
 
@@ -95,10 +100,13 @@ export function repoStatePathForRead(repoRoot: string, rel: string): string {
  * sidecar would suddenly "lose" its contract/progress/scores mid-run. Sticky
  * resolution keeps the loop where it started; after migration moves the legacy
  * dir, this naturally resolves to the sidecar.
+ *
+ * Past the migration sunset there is no legacy loop left to protect, so this
+ * degrades to the plain write path — still a real directory, never ''.
  */
-export function repoStatePathSticky(repoRoot: string, rel: string): string {
+export function repoStatePathSticky(repoRoot: string, rel: string, now?: Date): string {
   const legacy = legacyStatePath(repoRoot, rel)
-  if (existsSync(legacy)) return legacy
+  if (migrationWindowOpen(now) && existsSync(legacy)) return legacy
   return repoStatePathForWrite(repoRoot, rel) || legacy
 }
 

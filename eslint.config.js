@@ -6,7 +6,22 @@ import reactHooks from 'eslint-plugin-react-hooks'
 // (hook misuse, unawaited promises, dead bindings). See docs/decisions.
 export default tseslint.config(
   {
-    ignores: ['out/**', 'dist/**', 'vendor/**', 'node_modules/**', 'templates/**'],
+    ignores: [
+      'out/**',
+      'dist/**',
+      'vendor/**',
+      'node_modules/**',
+      'templates/**',
+      // GENERATED, and deliberately byte-identical to the copies in bin/ —
+      // which eslint DOES lint, so the block itself is still covered.
+      'src/runner/repo-state-block.js',
+      // BUILT from typed sources (which are linted). Linting a bundle reports
+      // on the bundler.
+      'bin/terminal-cron',
+      'bin/terminal-monitor',
+      'bin/terminal-cli',
+      'bin/terminal-mcp-server',
+    ],
   },
   {
     files: ['src/**/*.ts', 'src/**/*.tsx'],
@@ -45,12 +60,12 @@ export default tseslint.config(
   // what `no-floating-promises` needs. Settling for the non-type-aware subset
   // would have left out the one rule that motivates the ticket.
   {
-    files: ['bin/terminal-*', 'bin/gt-notify'],
+    files: ['bin/gt-notify'],
     extends: [tseslint.configs.base],
     languageOptions: {
       parserOptions: {
         projectService: {
-          allowDefaultProject: ['bin/terminal-*', 'bin/gt-notify'],
+          allowDefaultProject: ['bin/*'],
         },
         tsconfigRootDir: import.meta.dirname,
         // The project service keys off the extension, and these files have

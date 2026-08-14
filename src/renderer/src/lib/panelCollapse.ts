@@ -1,7 +1,7 @@
 // Persisted collapse state for the session view's work column and for each of
 // its accordion sections. Panels reading localStorage with their own inline
 // try/catch is exactly how they drift apart, so they all go through here.
-// (The column's own key and its one-time migration live in columnLayout.ts.)
+// (The column's own key lives in columnLayout.ts.)
 
 type MiniStorage = Pick<Storage, 'getItem' | 'setItem'>
 

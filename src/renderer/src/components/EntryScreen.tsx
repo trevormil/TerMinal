@@ -18,19 +18,25 @@ import {
 } from 'lucide-react'
 import type {
   Engine,
+  LoopEngine,
   RemoteDirList,
   RemoteHost,
   RemoteSession,
+  SavedPrompt,
   SessionEngine,
   SessionMeta,
 } from '../lib/types'
 import { engineLabel, sessionEngineLabel, ENGINE_MODELS, ENGINE_IDS } from '../lib/engines'
+import { useExperiment } from '../lib/useExperiment'
 import { EngineLogo } from './EngineLogo'
 import { EffortSelect, ModelSelect } from './ModelSelect'
 import logo from '../assets/logo.png'
 import { filterSessionMetas } from '../lib/sessionSearch'
 import { repoOrientationPendingKey } from '../lib/orientation'
 import { relativeTime } from '../lib/time'
+import { SpawnOptions, type SpawnOptionsValue } from './SpawnOptions'
+import { getPref, setPref } from '../lib/prefs'
+import { clampSpawnCount } from '../lib/spawnOptions'
 
 export type Choice = {
   mode: 'new' | 'resume'
@@ -43,6 +49,13 @@ export type Choice = {
   cwd?: string
   name?: string
   initialInput?: string
+  /** Text typed into the new session's input and LEFT UNSENT (spawn options'
+   *  prompt library). Distinct from initialInput, which is submitted as the
+   *  session's first turn. */
+  prefillInput?: string
+  /** Spawn this many identical sessions (spawn options' multiplier). Renderer-
+   *  only: App fans it out into N single sessions, so it never reaches main. */
+  spawnCount?: number
   /** Submit initialInput automatically (send Enter). For sessions started with
    *  no one at the Mac — e.g. spawned from the phone — that would otherwise sit
    *  unsubmitted in the prompt. */
@@ -58,7 +71,7 @@ export type Choice = {
 
 // Loop roles run interactive skill-driven agents (openrouter is a harness
 // dimension, not a role engine; local is not an agent).
-export type LoopEngine = 'claude' | 'codex' | 'cursor' | 'pi' | 'hermes'
+export type { LoopEngine }
 export const LOOP_ENGINES: LoopEngine[] = ['claude', 'codex', 'cursor', 'pi', 'hermes']
 export type PairedLoopConfig = {
   goal: string
@@ -195,9 +208,17 @@ export function EntryScreen({
   /** Launches a live-paired loop; resolves to an error string on failure. */
   onStartLoop?: (cfg: PairedLoopConfig) => Promise<{ ok: boolean; error?: string }>
 }) {
+  // Loops are experimental: with the flag off there is no loop mode at all, and
+  // `loops:create` refuses in main regardless of what this screen renders.
+  const loopsOn = useExperiment('loops')
   // 'single' → one session (default). 'loop' → two linked role agents.
   const [mode, setMode] = useState<'single' | 'loop'>(initialMode)
   useEffect(() => setMode(initialMode), [initialMode])
+  // Flipping the flag off while the screen sits in loop mode must not leave a
+  // loop form on screen with a launch button main would reject.
+  useEffect(() => {
+    if (!loopsOn) setMode('single')
+  }, [loopsOn])
   // Live-paired loop fields (mode === 'loop').
   const [goal, setGoal] = useState('')
   // Loop topology: 'paired' (two live sessions) vs 'single' (one live generator
@@ -243,6 +264,30 @@ export function EntryScreen({
   const [pinnedWorkspaces, setPinnedWorkspaces] = useState<string[]>(() =>
     readWorkspaceList('gt.pinnedWorkspaces'),
   )
+  // Spawn options apply to every NEW session this screen can start — workspace,
+  // scratch, a freshly scaffolded repo, and the recent-workspace chips.
+  const [savedPrompts, setSavedPrompts] = useState<SavedPrompt[]>([])
+  const [spawn, setSpawn] = useState<SpawnOptionsValue>(() => ({
+    count: clampSpawnCount(getPref('spawnCount')),
+    promptId: getPref('spawnPromptId'),
+    text: '',
+  }))
+  const changeSpawn = (next: SpawnOptionsValue) => {
+    setSpawn(next)
+    setPref('spawnCount', clampSpawnCount(next.count))
+    setPref('spawnPromptId', next.promptId)
+  }
+  const persistPrompts = (next: SavedPrompt[]) => {
+    setSavedPrompts(next)
+    window.gt.settings.patch({ savedPrompts: next }).catch(() => {})
+  }
+  /** Stamp the spawn options onto a NEW-session choice. ×1 + None leaves it
+   *  byte-identical to what this screen produced before spawn options existed. */
+  const withSpawn = (c: Choice): Choice => ({
+    ...c,
+    prefillInput: spawn.text.replace(/\s+$/, '') || undefined,
+    spawnCount: clampSpawnCount(spawn.count) > 1 ? clampSpawnCount(spawn.count) : undefined,
+  })
   const parentLabel = defaultParent ? tilde(defaultParent) : '~'
 
   const togglePin = (path: string) => {
@@ -277,19 +322,21 @@ export function EntryScreen({
       if (location === 'remote') {
         const host = remoteHosts.find((h) => h.id === remoteHostId)
         if (!host) return setScaffoldErr('remote host not found')
-        onChoose({
-          mode: 'new',
-          engine: engine === 'local' ? host.daemon.defaultEngine || 'claude' : engine,
-          cwd: r.path,
-          remote: {
-            hostId: host.id,
-            label: host.label || host.sshTarget,
-            sshTarget: host.sshTarget,
+        onChoose(
+          withSpawn({
+            mode: 'new',
+            engine: engine === 'local' ? host.daemon.defaultEngine || 'claude' : engine,
             cwd: r.path,
-            platform: host.platform,
-            daemon: host.daemon,
-          },
-        })
+            remote: {
+              hostId: host.id,
+              label: host.label || host.sshTarget,
+              sshTarget: host.sshTarget,
+              cwd: r.path,
+              platform: host.platform,
+              daemon: host.daemon,
+            },
+          }),
+        )
       } else {
         // Local: open the newly-scaffolded project. The pending marker
         // guarantees the per-repo orientation (provider choice) shows on this
@@ -299,7 +346,7 @@ export function EntryScreen({
         } catch {
           /* ignore */
         }
-        onChoose({ mode: 'new', engine, cwd: r.path })
+        onChoose(withSpawn({ mode: 'new', engine, cwd: r.path }))
       }
     } else {
       setScaffoldErr(r.error || 'Scaffold failed')
@@ -308,6 +355,7 @@ export function EntryScreen({
   useEffect(() => {
     window.gt.settings.get().then((s) => {
       setDefaultParent(s.projectsDir)
+      setSavedPrompts(s.savedPrompts || [])
       setRemoteHosts(s.remoteHosts || [])
       if (!remoteHostId && s.remoteHosts?.[0]) setRemoteHostId(s.remoteHosts[0].id)
     })
@@ -383,12 +431,12 @@ export function EntryScreen({
   // (no repo, no folder-picking). For a quick chat you don't want to file away.
   const startScratch = async (e: SessionEngine) => {
     const dir = await window.gt.scratchDir()
-    onChoose({ mode: 'new', engine: e, cwd: dir, name: 'scratch' })
+    onChoose(withSpawn({ mode: 'new', engine: e, cwd: dir, name: 'scratch' }))
   }
   const loopRepoRoot = (lockedCwd || cwd).trim()
   const launchLoop = async () => {
     const g = goal.trim()
-    if (!g || !loopRepoRoot || loopBusy || !onStartLoop) return
+    if (!g || !loopRepoRoot || loopBusy || !onStartLoop || !loopsOn) return
     setLoopBusy(true)
     setLoopErr('')
     const res = await onStartLoop({
@@ -589,6 +637,16 @@ export function EntryScreen({
           )}
         </p>
 
+        {mode === 'single' && (
+          <SpawnOptions
+            value={spawn}
+            onChange={changeSpawn}
+            savedPrompts={savedPrompts}
+            onSaveCustom={(p) => persistPrompts([...savedPrompts, p])}
+            onDeleteCustom={(id) => persistPrompts(savedPrompts.filter((p) => p.id !== id))}
+          />
+        )}
+
         {!lockedCwd && (
           <div className="mb-5 rounded-2xl border border-[var(--gt-border)] bg-[var(--gt-panel)] px-4 py-3">
             <div className="flex items-center gap-3">
@@ -723,8 +781,12 @@ export function EntryScreen({
           </div>
 
           <div className="space-y-4 p-4">
-            <div className="flex gap-1 rounded-xl border border-[var(--gt-border)] bg-black/20 p-1">
-              {(['single', 'loop'] as const).map((m) => (
+            <div
+              className={`gap-1 rounded-xl border border-[var(--gt-border)] bg-black/20 p-1 ${
+                loopsOn ? 'flex' : 'hidden'
+              }`}
+            >
+              {(loopsOn ? (['single', 'loop'] as const) : (['single'] as const)).map((m) => (
                 <button
                   key={m}
                   onClick={() => switchMode(m)}
@@ -743,7 +805,7 @@ export function EntryScreen({
                 </button>
               ))}
             </div>
-            {mode === 'loop' && (
+            {loopsOn && mode === 'loop' && (
               <div className="text-[10.5px] leading-relaxed text-zinc-600">
                 Two linked agents in one worktree — a <span className="text-zinc-400">worker</span>{' '}
                 writes code, a <span className="text-zinc-400">driver</span> negotiates the contract
@@ -767,7 +829,7 @@ export function EntryScreen({
                     >
                       <button
                         onClick={() =>
-                          mode === 'loop' ? selectDir(r) : onChoose(choiceFromRecent(r))
+                          mode === 'loop' ? selectDir(r) : onChoose(withSpawn(choiceFromRecent(r)))
                         }
                         className="inline-flex min-w-0 items-center gap-1.5 text-left"
                       >
@@ -884,7 +946,7 @@ export function EntryScreen({
               </div>
             )}
 
-            {mode === 'loop' && (
+            {loopsOn && mode === 'loop' && (
               <>
                 <div>
                   <div className={`${sectionTitle} mb-2`}>1 · Goal</div>
@@ -1164,7 +1226,7 @@ export function EntryScreen({
                   className={`${sel} min-w-0 flex-1`}
                 />
                 <button
-                  onClick={() => onChoose(buildChoice())}
+                  onClick={() => onChoose(withSpawn(buildChoice()))}
                   disabled={location === 'remote' && !remoteHost}
                   className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--gt-accent)] px-4 py-2 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-40"
                 >

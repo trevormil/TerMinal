@@ -36,15 +36,17 @@ import type {
   ScheduleRetry,
   CronRun,
   Engine,
+  ScheduleDisabledDetail,
 } from '../../lib/types'
 import { EngineModelPicker } from '../../components/EngineModelPicker'
 import { relativeTime } from '../../lib/time'
+import { usePolled } from '../../lib/usePolled'
+import { getPref, setPref } from '../../lib/prefs'
 
 const WD = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
 const FIELD =
   'rounded-lg border border-[var(--gt-border)] bg-black/30 px-2 py-1.5 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60'
 
-const SCHED_REPO_FILTER_KEY = 'gt.schedules.repoFilter'
 const repoOf = (root: string) => root.split('/').filter(Boolean).pop() || root
 
 function fmtWhen(ts?: number | null): string {
@@ -273,6 +275,21 @@ function ScheduleForm({
         </code>{' '}
         in Codex.
       </SkillHint>
+      {/* Attached to a remote session: this path writes a schedule RECORD on the
+          host and installs no timer (that needs the remote daemon writer), so it
+          is saved PAUSED. Persistent, not a toast — it changes what you get. */}
+      {remote && (
+        <div className="flex items-start gap-2 rounded-lg border border-[var(--gt-yellow)]/50 bg-[var(--gt-yellow)]/10 px-2.5 py-2 text-[11px] text-[var(--gt-yellow)]">
+          <AlertTriangle size={12} strokeWidth={2.5} className="mt-0.5 shrink-0" />
+          <span>
+            You&apos;re attached to <span className="font-semibold">{remote.label}</span>. A
+            schedule created here is stored on that host and saved <b>paused</b> — recurring timers
+            need the remote daemon installed there. <b>Run Now</b> works over SSH today. For a real
+            recurring timer, create the schedule from the local (this-Mac) context and pick the host
+            in the &ldquo;on&rdquo; selector.
+          </span>
+        </div>
+      )}
       {/* Form / Custom toggle — same UX as the agents tab's new-agent flow. */}
       <div className="flex items-center gap-0.5 rounded-md border border-[var(--gt-border)] p-0.5">
         {(['form', 'custom'] as const).map((m) => (
@@ -557,10 +574,15 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
   const [creating, setCreating] = useState(false)
   const [expanded, setExpanded] = useState<string | null>(null)
   const [runs, setRuns] = useState<CronRun[]>([])
-  const [log, setLog] = useState<{ runId: string; text: string } | null>(null)
+  // Which run's log pane is open. The text itself is polled (below) rather than
+  // stored, so the tail and the "which one is open" question stay separate.
+  const [openLogId, setOpenLogId] = useState<string | null>(null)
   const [msg, setMsg] = useState('')
+  // Sticky failure banner — a swallowed teardown/toggle failure is exactly what
+  // this tab used to hide, so it stays until dismissed.
+  const [warning, setWarning] = useState('')
   // '__auto__' = follow the current repo (resolved below); '' = all repos.
-  const [repo, setRepo] = useState(() => localStorage.getItem(SCHED_REPO_FILTER_KEY) ?? '__auto__')
+  const [repo, setRepo] = useState(() => getPref('schedulesRepoFilter'))
   const activeRepoLabel = ctx.repoPath || repoOf(ctx.repoRoot || ctx.cwd || '')
   // The pause-all/kill-switch (agents-disabled.ts) is a LOCAL-only mechanism;
   // the remote daemon has no disabled-list, so those IPCs no-op when a remote
@@ -573,26 +595,25 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
     setRepo(activeRepoLabel)
   }, [activeRepoLabel, repo, ctx.repoRoot])
   const setRepoFilter = (value: string) => {
-    localStorage.setItem(SCHED_REPO_FILTER_KEY, value)
+    setPref('schedulesRepoFilter', value)
     setRepo(value)
   }
   // Tick the relative "fires in 12m" labels every minute. The Schedule.nextRun
   // value is already on each record (computed by readSchedules); this just
   // forces the count-down strings to refresh in place.
-  const [, setClockTick] = useState(0)
-  useEffect(() => {
-    const id = setInterval(() => setClockTick((n) => n + 1), 60_000)
-    return () => clearInterval(id)
-  }, [])
-  const [disabled, setDisabledIds] = useState<Set<string>>(new Set())
+  usePolled(async () => Date.now(), { intervalMs: 60_000 })
+  // Breaker state keyed by schedule id. An entry with a `host` came from THAT
+  // host's disabled.json — the host's own runner trips the breaker there, so
+  // reading only the local file rendered a dead schedule as enabled/healthy.
+  const [breaker, setBreaker] = useState<ScheduleDisabledDetail>({ entries: [], errors: [] })
+  const disabled = useMemo(() => new Map(breaker.entries.map((e) => [e.id, e])), [breaker.entries])
   // Lazy-loaded bash bodies, keyed by agentId. Same cache pattern as the Agents tab.
   const [scriptByAgent, setScriptByAgent] = useState<
     Record<string, { path: string; body: string } | null>
   >({})
 
   const reload = () => window.gt.schedules.list().then(setSchedules)
-  const reloadDisabled = () =>
-    window.gt.schedules.disabledList().then((ids) => setDisabledIds(new Set(ids)))
+  const reloadDisabled = () => window.gt.schedules.disabledDetail().then(setBreaker)
   useEffect(() => {
     reload()
     reloadDisabled()
@@ -612,24 +633,19 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
     return () => off()
   }, [])
 
-  // Live log tail while a running cron job's log is open. Polls every 1.5s and
-  // updates the inline log pane so the operator sees output as `script -q`
-  // streams agent stdout, instead of having to re-click "log".
-  useEffect(() => {
-    if (!log) return
-    const targetRun = runs.find((r) => r.id === log.runId)
-    if (!targetRun || targetRun.status !== 'running') return
-    let alive = true
-    const tick = async () => {
-      const text = await window.gt.schedules.runLog(log.runId)
-      if (alive && text !== log.text) setLog({ runId: log.runId, text })
-    }
-    const id = setInterval(tick, 1500)
-    return () => {
-      alive = false
-      clearInterval(id)
-    }
-  }, [log?.runId, log?.text, runs])
+  // Live log tail while the open run is still going: poll every 1.5s so the
+  // operator sees output as `script -q` streams agent stdout. Once the run
+  // finishes the log is final, so it drops to a one-shot fetch (intervalMs 0)
+  // — which also covers opening the log of an already-finished run.
+  const openLogRunning = runs.find((r) => r.id === openLogId)?.status === 'running' && !!openLogId
+  const logTail = usePolled(
+    async () => (openLogId ? await window.gt.schedules.runLog(openLogId) : ''),
+    {
+      intervalMs: openLogRunning ? 1500 : 0,
+      enabled: !!openLogId,
+      deps: [openLogId, openLogRunning],
+    },
+  )
 
   // Auto-refresh the expanded schedule's run list while any of its runs is still
   // running, so a run that finishes flips running → done/failed IN PLACE instead
@@ -638,18 +654,13 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
   // stream of same-status polls doesn't churn the interval; the effect tears the
   // poll down the moment nothing is running.
   const anyRunning = runs.some((r) => r.status === 'running')
+  const runsPoll = usePolled(
+    async () => (expanded ? await window.gt.schedules.runs(expanded) : []),
+    { intervalMs: 2000, enabled: !!expanded && anyRunning, deps: [expanded] },
+  )
   useEffect(() => {
-    if (!expanded || !anyRunning) return
-    let alive = true
-    const id = setInterval(async () => {
-      const next = await window.gt.schedules.runs(expanded)
-      if (alive) setRuns(next)
-    }, 2000)
-    return () => {
-      alive = false
-      clearInterval(id)
-    }
-  }, [expanded, anyRunning])
+    if (runsPoll.data) setRuns(runsPoll.data)
+  }, [runsPoll.data])
 
   // Global view: repo options span every repo that has a schedule. (Run-only
   // repos previously also appeared here; that's now the Runs tab's job.)
@@ -669,7 +680,7 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
       return
     }
     setExpanded(id)
-    setLog(null)
+    setOpenLogId(null)
     setRuns(await window.gt.schedules.runs(id))
     // Lazy-fetch the script body for the schedule's agent so it renders above
     // the run history. Cache including null so we don't re-hit IPC.
@@ -704,15 +715,22 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
       timeoutSec,
       host,
       runtime,
+      // Attached to a remote → no recurring timer gets installed on this path, so
+      // ask for it PAUSED. Main rejects enabled:true here rather than store a lie.
+      enabled: isRemote ? false : undefined,
     })
     if (r && 'error' in r) throw new Error(r.error)
     setCreating(false)
+    if (r && 'warning' in r && r.warning) warn(r.warning)
     reload()
   }
   const flash = (m: string) => {
     setMsg(m)
     setTimeout(() => setMsg(''), 5000)
   }
+  // Warnings are sticky (dismiss-only): "the old timer on <host> is still
+  // installed" must not scroll away after 5s like a success toast.
+  const warn = (m: string) => setWarning(m)
   return (
     <div className="relative flex h-full min-h-0 flex-col bg-[var(--gt-bg)]">
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--gt-border)] px-4 py-2">
@@ -813,6 +831,26 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
 
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
         {msg && <div className="px-1 text-[11px] text-[var(--gt-green)]">{msg}</div>}
+        {warning && (
+          <div className="flex items-start gap-2 rounded-lg border border-[var(--gt-yellow)]/50 bg-[var(--gt-yellow)]/10 px-2.5 py-2 text-[11px] text-[var(--gt-yellow)]">
+            <AlertTriangle size={12} strokeWidth={2.5} className="mt-0.5 shrink-0" />
+            <span className="min-w-0 flex-1">{warning}</span>
+            <button
+              onClick={() => setWarning('')}
+              className="shrink-0 rounded text-[var(--gt-yellow)]/70 hover:text-[var(--gt-yellow)]"
+              title="Dismiss"
+            >
+              <X size={11} strokeWidth={2} />
+            </button>
+          </div>
+        )}
+        {/* A host whose breaker file we could not read is NOT a clean host. */}
+        {breaker.errors.map((e) => (
+          <div
+            key={e.host}
+            className="px-1 text-[11px] text-[var(--gt-yellow)]"
+          >{`could not read the kill-switch on ${e.hostLabel} — auto-disabled state unknown there: ${e.error}`}</div>
+        ))}
         {schedules === null ? (
           <div className="p-3 text-[12px] text-zinc-600">Loading…</div>
         ) : schedules.length === 0 ? (
@@ -840,19 +878,33 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
                     {s.lastStatus && s.lastStatus !== 'never' && (
                       <Badge tone={statusTone(s.lastStatus)}>{s.lastStatus}</Badge>
                     )}
-                    {disabled.has(s.id) && (
-                      <button
-                        onClick={async () => {
-                          await window.gt.schedules.disabledToggle(s.id, false)
-                          reloadDisabled()
-                          flash(`${s.agentTitle} · re-enabled`)
-                        }}
-                        title="Auto-disabled by the circuit-breaker after consecutive failures. Click to re-enable."
-                        className="inline-flex items-center gap-1 rounded-full border border-[var(--gt-red)]/60 bg-[var(--gt-red)]/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--gt-red)] hover:bg-[var(--gt-red)]/20"
-                      >
-                        kill-switch · re-enable
-                      </button>
-                    )}
+                    {/* Kill-switch chip. For a host-assigned schedule the breaker
+                        tripped on the HOST, so name it — and the re-enable writes
+                        the host's disabled.json over the same SSH plumbing. */}
+                    {(() => {
+                      const b = disabled.get(s.id)
+                      if (!b) return null
+                      const where = b.hostLabel ? ` on ${b.hostLabel}` : ''
+                      return (
+                        <button
+                          onClick={async () => {
+                            const r = await window.gt.schedules.disabledToggle(s.id, false)
+                            reloadDisabled()
+                            if (!r.ok)
+                              warn(`could not re-enable ${s.agentTitle}${where} · ${r.error}`)
+                            else flash(`${s.agentTitle} · re-enabled${where}`)
+                          }}
+                          title={`${b.reason || 'Auto-disabled by the circuit-breaker after consecutive failures'}${
+                            b.disabledAt ? ` (${fmtWhen(b.disabledAt)})` : ''
+                          }${b.hostLabel ? ` · recorded on ${b.hostLabel}` : ''}. Click to re-enable.`}
+                          className="inline-flex items-center gap-1 rounded-full border border-[var(--gt-red)]/60 bg-[var(--gt-red)]/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--gt-red)] hover:bg-[var(--gt-red)]/20"
+                        >
+                          {b.hostLabel
+                            ? `auto-disabled${where} · re-enable`
+                            : 'kill-switch · re-enable'}
+                        </button>
+                      )
+                    })()}
                     {/* Enabled but not loaded in launchd → dark, will never fire.
                         Surface it with a one-click reconcile. Suppressed for
                         kill-switched schedules (their own badge explains it). */}
@@ -880,12 +932,26 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
                       <span className="ml-1 text-zinc-400">({untilFire(s.nextRun)})</span>
                     )}
                     {s.lastRun ? ` · last ${reltime(s.lastRun)}` : ''}
+                    {/* WHY it went dark, verbatim from whichever runner tripped it. */}
+                    {disabled.get(s.id)?.reason && (
+                      <span className="text-[var(--gt-red)]">
+                        {` · ${disabled.get(s.id)!.reason}`}
+                        {disabled.get(s.id)!.hostLabel
+                          ? ` (on ${disabled.get(s.id)!.hostLabel})`
+                          : ''}
+                      </span>
+                    )}
                   </div>
                 </div>
                 {/* iOS-style pill switch — clearer at a glance than a checkbox */}
                 <button
                   onClick={async () => {
-                    await window.gt.schedules.toggle(s.id, !s.enabled)
+                    const r = await window.gt.schedules.toggle(s.id, !s.enabled)
+                    if (!r.ok)
+                      warn(
+                        `could not ${s.enabled ? 'pause' : 'enable'} ${s.agentTitle} · ${r.error}`,
+                      )
+                    else if (r.warning) warn(`${s.agentTitle} · ${r.warning}`)
                     reload()
                   }}
                   title={s.enabled ? 'enabled — click to pause' : 'paused — click to enable'}
@@ -930,7 +996,9 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
                 <div className="flex-1" />
                 <button
                   onClick={async () => {
-                    await window.gt.schedules.remove(s.id)
+                    const r = await window.gt.schedules.remove(s.id)
+                    if (!r.ok) warn(`could not remove ${s.agentTitle} · ${r.error}`)
+                    else if (r.warning) warn(`${s.agentTitle} removed, but ${r.warning}`)
                     reload()
                   }}
                   className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-zinc-600 hover:bg-white/5 hover:text-[var(--gt-red)]"
@@ -982,7 +1050,7 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
                     </div>
                   ) : (
                     runs.map((r) => {
-                      const open = log?.runId === r.id
+                      const open = openLogId === r.id
                       const dur =
                         r.endedAt && r.startedAt
                           ? fmtDuration(r.endedAt - r.startedAt)
@@ -992,13 +1060,7 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
                       return (
                         <div key={r.id}>
                           <button
-                            onClick={async () =>
-                              setLog(
-                                open
-                                  ? null
-                                  : { runId: r.id, text: await window.gt.schedules.runLog(r.id) },
-                              )
-                            }
+                            onClick={() => setOpenLogId(open ? null : r.id)}
                             className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-[11px] text-left ${
                               open ? 'bg-white/5' : 'hover:bg-white/5'
                             }`}
@@ -1017,14 +1079,14 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
                               className={open ? 'text-[var(--gt-accent-light)]' : 'text-zinc-600'}
                             />
                           </button>
-                          {open && log && (
+                          {open && (
                             <div className="mt-1 rounded-lg border border-[var(--gt-border)] bg-[var(--gt-code-bg)]">
                               <div className="flex items-center justify-between border-b border-[var(--gt-border)]/60 px-2 py-1">
                                 <span className="text-[10px] uppercase tracking-wider text-zinc-600">
                                   log
                                 </span>
                                 <button
-                                  onClick={() => setLog(null)}
+                                  onClick={() => setOpenLogId(null)}
                                   className="rounded text-zinc-600 hover:bg-white/5 hover:text-zinc-300"
                                   title="Close log"
                                 >
@@ -1032,7 +1094,7 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
                                 </button>
                               </div>
                               <div className="max-h-72 overflow-auto p-2">
-                                <RunOutputView text={log.text} engine={r.engine} />
+                                <RunOutputView text={logTail.data ?? ''} engine={r.engine} />
                               </div>
                             </div>
                           )}

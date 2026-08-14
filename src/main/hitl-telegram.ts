@@ -12,7 +12,7 @@ export function hitlTelegramText(item: {
   action?: string
 }): string {
   const done = item.source === 'completion-hook'
-  return `${done ? '✅ Done' : '⛔ HITL'} · ${item.title}${item.action ? ` — ${item.action}` : ''}`
+  return `${done ? '✅ Done' : '⛔ Inbox'} · ${item.title}${item.action ? ` — ${item.action}` : ''}`
 }
 
 export function hitlTelegramKeyboard(item: {

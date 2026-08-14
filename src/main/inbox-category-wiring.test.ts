@@ -2,6 +2,10 @@ import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { deriveCategories, normalizeCategory } from '../shared/inbox-categories'
+import { normalizeCategoryShared } from '../cli/hitl'
+import { normalizeCategoryShared as mcpNormalizeCategoryShared } from '../mcp/writes'
+import type { HitlItem as MainHitlItem } from './hitl'
+import type { HitlItem as RendererHitlItem } from '../renderer/src/lib/types'
 
 // Ticket 120. The derivation logic is unit-tested next to itself; this file
 // checks the thing that actually makes the feature real — that `category`
@@ -14,9 +18,20 @@ import { deriveCategories, normalizeCategory } from '../shared/inbox-categories'
 const ROOT = resolve(import.meta.dir, '../..')
 const read = (rel: string): string => readFileSync(join(ROOT, rel), 'utf8')
 
+// Type-level, not text-level: `true` only assigns if the name main exports and
+// the name the renderer exports are mutually assignable. Re-forking `HitlItem`
+// on either side makes this line a tsc error.
+type Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false
+const rendererMirrorsMain: Exact<MainHitlItem, RendererHitlItem> = true
+
 describe('category survives every writer (ticket 120)', () => {
-  test('the main-process type declares it', () => {
-    expect(read('src/main/hitl.ts')).toMatch(/category\?: string/)
+  test('the type declares it, once', () => {
+    // `HitlItem` used to be written out twice — in src/main/hitl.ts and again in
+    // the renderer's lib/types.ts — and this file had to assert the field on
+    // both. It now has ONE declaration in src/shared/types, which is why the
+    // "renderer mirrors it" test below is an identity check rather than a grep.
+    expect(read('src/shared/types/activity.ts')).toMatch(/category\?: string/)
+    expect(read('src/main/hitl.ts')).toContain("from '../shared/types/activity'")
   })
 
   test('fileHitl normalizes at the write boundary, not at read time', () => {
@@ -28,12 +43,16 @@ describe('category survives every writer (ticket 120)', () => {
 
   test('the renderer type mirrors it', () => {
     // main → preload → renderer must agree, or the field is invisible in the UI
-    // while being present on disk.
-    expect(read('src/renderer/src/lib/types.ts')).toMatch(/category\?: string/)
+    // while being present on disk. This is now enforced by the compile-time
+    // identity assertion at the top of this file, which `bunx tsc --noEmit`
+    // fails on if the two names ever stop resolving to the same declaration.
+    // A grep for the field would pass again the day someone re-forks the type.
+    expect(rendererMirrorsMain).toBe(true)
   })
 
-  test('bin/terminal-cli accepts --category and puts it on the item', () => {
-    const cli = read('bin/terminal-cli')
+  test('terminal-cli accepts --category and puts it on the item', () => {
+    // Read from the typed source: bin/terminal-cli is a build artifact of it.
+    const cli = read('src/cli/hitl.ts') + read('src/cli/index.ts')
     expect(cli).toContain('normalizeCategoryShared(opts.category)')
     // Computing it and forgetting to spread it is exactly the half-wiring that
     // lint caught here once already.
@@ -49,7 +68,7 @@ describe('category survives every writer (ticket 120)', () => {
   test('the documented flags are the flags that are parsed', () => {
     // A flag in --help that the parser ignores is worse than an undocumented
     // one: it fails silently and looks like the feature is broken.
-    const cli = read('bin/terminal-cli')
+    const cli = read('src/cli/index.ts')
     const help = cli.slice(0, cli.indexOf('import '))
     const dispatch = cli.slice(cli.indexOf("case 'hitl':"), cli.indexOf("case 'monitor':"))
     for (const m of help.matchAll(/\[--(\w+)=/g)) {
@@ -57,31 +76,26 @@ describe('category survives every writer (ticket 120)', () => {
     }
   })
 
-  test('bin/terminal-mcp-server accepts it too', () => {
-    const mcp = read('bin/terminal-mcp-server')
-    expect(mcp).toMatch(/severity,\s*category\s*\}/)
+  test('terminal-mcp-server accepts it too', () => {
+    const mcp = read('src/mcp/writes.ts')
+    expect(mcp).toMatch(/severity,\s*category,?\s*\}/)
     expect(mcp).toContain('normalizeCategoryShared(category)')
   })
 
-  test('both bin scripts inline the normalizer, since they cannot import it', () => {
-    // Same constraint as the file-lock helper: standalone scripts copied to
-    // remote hosts with no sibling modules.
-    for (const f of ['bin/terminal-cli', 'bin/terminal-mcp-server']) {
-      expect(read(f), `${f} should inline it`).toContain('function normalizeCategoryShared')
-    }
+  test('both filing paths define their own normalizer, as real modules', () => {
+    // They used to be inlined blocks in two standalone scripts. Both scripts are
+    // bundles of typed sources now, so the copies are modules — still two of
+    // them, because the two verbs write subtly different shapes and collapsing
+    // them is a behaviour change, not a port.
+    expect(read('src/cli/hitl.ts')).toContain('export function normalizeCategoryShared')
+    expect(read('src/mcp/writes.ts')).toContain('export function normalizeCategoryShared')
   })
 
-  test('the inlined copies agree with the canonical one', () => {
-    // Extracted and RUN, not eyeballed — a copy that has drifted is the whole
-    // risk of inlining.
-    const cli = read('bin/terminal-cli')
-    const start = cli.indexOf('function normalizeCategoryShared')
-    const body = cli.slice(start, cli.indexOf('\n}\n', start) + 3)
-    const mirrored = new Function(`${body}; return normalizeCategoryShared`)() as (
-      v: unknown,
-    ) => string | undefined
+  test('the copies agree with the canonical one', () => {
+    // RUN, not eyeballed — a copy that has drifted is the whole risk of copying.
     for (const input of ['Monitoring', '  spaced  ', '', 'x'.repeat(80), 'a\nb', 42, null]) {
-      expect(mirrored(input)).toEqual(normalizeCategory(input))
+      expect(normalizeCategoryShared(input)).toEqual(normalizeCategory(input))
+      expect(mcpNormalizeCategoryShared(input)).toEqual(normalizeCategory(input))
     }
   })
 })
@@ -146,7 +160,7 @@ describe('bulk actions mean what the visible list says (ticket 120)', () => {
     const fn = tab.slice(tab.indexOf('const markAllRead'), tab.indexOf('const remove ='))
     expect(fn).toContain('scopedUnread')
     // The whole-inbox IPC is only correct when nothing is filtered.
-    expect(fn).toMatch(/activeCategory === ALL\s*\?\s*window\.gt\.hitl\.markAllRead\(\)/)
+    expect(fn).toMatch(/activeCategory === ALL\s*\?\s*window\.gt\.inbox\.markAllRead\(\)/)
   })
 
   test('the scoped set is derived from `shown`, which is the rendered list', () => {
@@ -165,5 +179,40 @@ describe('bulk actions mean what the visible list says (ticket 120)', () => {
     // left?", which a filter must not change; the button answers "what will
     // this do?", which a filter must.
     expect(tab).toContain('const unread = unsnoozed.filter(isUnread)')
+  })
+})
+
+describe('a row says which category it is in, when that is not obvious (ticket 0123)', () => {
+  const tab = read('src/renderer/src/tabs/hitl/index.tsx')
+  const row = tab.slice(tab.indexOf('{shown.map((h) => {'), tab.indexOf('{snoozedItems.length > 0'))
+
+  test('the chip is rendered from the item, not from a lookup table', () => {
+    // Same derived-not-declared rule as the sidebar: a brand-new category must
+    // render without anyone adding it to a map of labels or colours.
+    expect(row).toContain('<CategoryChip')
+    const chip = tab.slice(
+      tab.indexOf('function CategoryChip'),
+      tab.indexOf('export type InboxTerminalRef'),
+    )
+    expect(chip).toContain('categoryLeaf(')
+    expect(chip).not.toMatch(/(CATEGORY_LIST|KNOWN_CATEGORIES|Record<string, )/)
+  })
+
+  test('it is suppressed when the active filter already says it', () => {
+    // Under "Monitoring", stamping "Monitoring" on all twelve rows is noise —
+    // the chip only earns its width where the row's folder is not implied.
+    expect(row).toContain('activeCategory')
+    expect(row).toMatch(/chipCategory\(h,\s*activeCategory\)/)
+  })
+
+  test('the rule itself lives in the shared module, where it is unit-tested', () => {
+    // Deciding what to stamp is pure logic about categories, so it sits beside
+    // filterByCategory rather than inside a 900-line component — that is what
+    // lets inbox-categories.test.ts exercise the parent/child case for real
+    // instead of grepping a JSX file for it.
+    expect(tab).toMatch(
+      /chipCategory,[\s\S]{0,400}from '\.\.\/\.\.\/\.\.\/\.\.\/shared\/inbox-categories'/,
+    )
+    expect(read('src/shared/inbox-categories.ts')).toContain('export function chipCategory')
   })
 })

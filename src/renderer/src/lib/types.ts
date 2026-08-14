@@ -1,381 +1,171 @@
 import type { ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import type { NotifyCategory, NotifyMatrix } from '../../../shared/notifications'
 
-// Mirror of the preload `gt` bridge. Kept hand-written so plugins have a clean
-// typed surface without reaching across tsconfig roots into the preload build.
+// The renderer's view of the `gt` bridge. The DOMAIN vocabulary is no longer
+// declared here — it lives once in `src/shared/types` and is re-exported below,
+// so main and renderer cannot drift. What is left in this file is the part that
+// is genuinely renderer-only: `GtApi` (the bridge shape), the tab/plugin
+// contracts, and the few payloads that never cross into main.
+//
+// The re-export is deliberate: hundreds of import sites say `from '@/lib/types'`
+// (or `'../lib/types'`), and they keep working unchanged.
+export type * from '../../../shared/types'
 
-/** One prompt the human typed, as extracted from the transcript. */
-export type UserPrompt = { text: string; ts: number }
+// --- wire types -------------------------------------------------------------
+//
+// A handful of channels do not return the STORED shape: main enriches the value
+// on its way out (trust flags, computed next-run times, masked secrets), or
+// accepts less than the stored shape on the way in. Those six are declared here
+// as `Stored & { extras }` so the renderer keeps the exact names it always used
+// while main keeps a stored type that does not lie about what is on disk.
+// An explicit local export shadows the `export type *` above.
+//
+// Finding these is what the move to `src/shared/types` was for: each one was
+// two independent hand-written declarations that had silently drifted.
+import type {
+  CommandWidget as StoredCommandWidget,
+  CustomTab as StoredCustomTab,
+  NewTicketComment as StoredNewTicketComment,
+  Schedule as StoredSchedule,
+  Settings as StoredSettings,
+  Stack,
+} from '../../../shared/types'
 
-export type TranscriptStats = {
-  ok: boolean
-  sessionId: string
-  model: string
-  cwd: string
-  gitBranch: string
-  contextTokens: number
-  contextLimit: number
-  contextPct: number
-  totalInputTokens: number
-  totalOutputTokens: number
-  estCostUsd: number
-  turns: number
-  lastAction: { tool: string; detail: string } | null
-  firstUserText: string
-  aiTitle: string
-  permissionMode: string
-  lastPrompt: string
-  /** The last few prompts the human typed, oldest first. */
-  recentPrompts: UserPrompt[]
-  toolCounts: Record<string, number>
-  mtime: number
-  ts: number
+/** The renderer has always called main's `Stack` a `PrStack` — the DOM already
+ *  owns the good name. Note this is NOT `shared/types/mrs.ts`'s `PrStack`,
+ *  which is the raw GitHub `stack` field on a single PR. */
+export type PrStack = Stack
+
+/** `entryTrusted` is stamped on at read time (src/main/index.ts): global entries
+ *  are always live, repo entries only once the repo's command set is approved. */
+export type CommandWidget = StoredCommandWidget & { trusted: boolean }
+/** See `CommandWidget.trusted`. */
+export type CustomTab = StoredCustomTab & { trusted: boolean }
+
+/** `gt.settings.get()` returns the masked copy, never the raw file — every
+ *  secret is replaced and a `secretsSet` map says which ones are populated.
+ *  See `maskSettingsSecrets` in src/main/settings-mask.ts. */
+export type Settings = StoredSettings & { secretsSet?: Record<string, boolean> }
+
+/** `schedules:list` computes the last three fields per call; they are never
+ *  persisted. `loaded` is undefined for disabled or remote schedules; false
+ *  means enabled but dark — launchd does not have the job. */
+export type Schedule = StoredSchedule & {
+  describe?: string
+  nextRun?: number | null
+  loaded?: boolean
 }
 
-export type ObservabilitySession = {
-  id: string
-  engine: Engine
-  title: string
-  cwd: string
-  repo: string
-  gitBranch: string
-  model: string
-  turns: number
-  mtime: number
-  telemetry: 'ready' | 'metadata-only'
-  contextTokens: number
-  contextLimit: number
-  contextPct: number
-  totalInputTokens: number
-  totalOutputTokens: number
-  estCostUsd: number
-  toolCounts: Record<string, number>
-  toolTotal: number
-  lastAction: { tool: string; detail: string } | null
-  firstUserText: string
-}
+/** What the UI sends: main stamps `at` and defaults `author`/`kind`, so a
+ *  comment box only has to supply a body (src/main/index.ts `tickets:comment`). */
+export type NewTicketComment = Partial<StoredNewTicketComment> & { body: string }
 
-export type ObservabilityEventKind =
-  | 'user_message'
-  | 'assistant_message'
-  | 'reasoning'
-  | 'tool_call'
-  | 'tool_result'
-  | 'token_snapshot'
-  | 'agent_launch'
-  | 'skill_invoke'
-  | 'warning'
-  | 'parse_error'
-
-export type ObservabilityTokenSnapshot = {
-  timestamp: number
-  input: number
-  output: number
-  cachedInput: number
-  total: number
-  contextTokens: number
-  cumulativeInput: number
-  cumulativeOutput: number
-  cumulativeTotal: number
-}
-
-export type ObservabilityTimelineEvent = {
-  id: string
-  sessionId: string
-  timestamp: number
-  line: number
-  kind: ObservabilityEventKind
-  severity: 'info' | 'warning' | 'error'
-  turnId?: string
-  callId?: string
-  toolName?: string
-  previewText: string
-  argumentsPreview?: string
-  argumentsBytes?: number
-  commandPreview?: string
-  outputPreview?: string
-  outputBytes?: number
-  durationMs?: number
-  resultEventId?: string
-  joinedOutputPreview?: string
-  tokenSnapshot?: ObservabilityTokenSnapshot
-  agentRole?: string
-  agentTaskPreview?: string
-  skillName?: string
-}
-
-export type ObservabilityToolCall = {
-  callId: string
-  toolName: string
-  startedAt: number
-  completedAt?: number
-  line: number
-  completedLine?: number
-  turnId?: string
-  status: 'open' | 'ok' | 'error'
-  argumentsPreview?: string
-  argumentsBytes?: number
-  commandPreview?: string
-  outputPreview?: string
-  outputBytes?: number
-  durationMs?: number
-  resultEventId?: string
-  agentRole?: string
-  skillName?: string
-}
-
-export type ObservabilityToolCallPayload = {
-  sessionId: string
-  callId: string
-  toolName: string
-  status: 'open' | 'ok' | 'error'
-  inputText: string
-  outputText: string
-  inputBytes: number
-  outputBytes: number
-  sourceFile: string
-  startedLine: number
-  completedLine?: number
-  commandText?: string
-  skillName?: string
-  agentRole?: string
-  error?: string
-}
-
-export type ObservabilityTranscriptLine = {
-  line: number
-  text: string
-  timestamp?: number
-  role?: string
-  kind?: string
-  callId?: string
-  toolName?: string
-}
-
-export type ObservabilityTranscriptWindow = {
-  sessionId: string
-  sourceFile: string
-  startLine: number
-  endLine: number
-  totalLines: number
-  lines: ObservabilityTranscriptLine[]
-  error?: string
-}
-
-export type ObservabilityTurn = {
-  id: string
-  startedAt: number
-  completedAt: number
-  durationMs: number
-  inputTokens: number
-  outputTokens: number
-  totalTokens: number
-  toolCalls: number
-  lastMessage: string
-}
-
-export type ObservabilityAgentGraph = {
-  nodes: {
-    id: string
-    label: string
-    role: string
-    depth: number
-    tokens: number
-    status: 'root' | 'open' | 'closed' | 'failed'
-    taskPreview?: string
-  }[]
-  edges: {
-    id: string
-    from: string
-    to: string
-    status: 'open' | 'closed' | 'failed'
-    toolCallId?: string
-  }[]
-}
-
-export type ObservabilitySessionDetail = {
-  session: ObservabilitySession
-  events: ObservabilityTimelineEvent[]
-  toolCalls: ObservabilityToolCall[]
-  tokenSnapshots: ObservabilityTokenSnapshot[]
-  turns: ObservabilityTurn[]
-  graph: ObservabilityAgentGraph
-  warnings: string[]
-}
-
-export type ObservabilitySnapshot = {
-  ts: number
-  sessions: ObservabilitySession[]
-  totals: {
-    sessions: number
-    readySessions: number
-    tokens: number
-    inputTokens: number
-    outputTokens: number
-    costUsd: number
-    toolCalls: number
-  }
-  byEngine: Record<
-    string,
-    { sessions: number; readySessions: number; tokens: number; costUsd: number; toolCalls: number }
-  >
-  byRepo: Record<string, { sessions: number; tokens: number; costUsd: number; toolCalls: number }>
-  topTools: { tool: string; count: number }[]
-}
-
-export type ObservabilityIndexStatus = {
-  ok: boolean
-  dbPath: string
-  exists: boolean
-  sqliteAvailable: boolean
-  indexedAt: number | null
-  sessions: number
-  turns: number
-  toolCalls: number
-  tokenSnapshots: number
-  events: number
-  error?: string
-}
-
-export type ObservabilityIndexBuildResult = ObservabilityIndexStatus & {
-  durationMs: number
-  indexedSessions: number
-}
-
-export type ObservabilityIndexQueryId =
-  | 'sessions_by_tokens'
-  | 'low_yield_sessions'
-  | 'tool_calls'
-  | 'tool_payloads'
-  | 'tool_errors'
-  | 'tool_call_bloat'
-  | 'turn_hotspots'
-  | 'costliest_turns'
-  | 'model_rollup'
-  | 'repo_rollup'
-  | 'session_events'
-  | 'audit'
-
-/** Mirror of ObservabilityQueryFilter in src/main/observability-index.ts. */
-export type ObservabilityQueryFilter = {
-  since?: number
-  until?: number
-  repo?: string
-  engine?: string
-  model?: string
-}
-
-/** Mirror of Stack in src/main/stacks.ts — one GitHub native PR stack, layers
- *  ordered bottom-to-top. Named PrStack here to avoid colliding with the DOM. */
-export type PrStack = {
-  id: number
-  size: number
-  baseRef: string
-  layers: { iid: number; position: number }[]
-}
-
-/** Mirror of DeliveryRecord in src/main/notify-log.ts. */
-export type DeliveryRecord = {
-  ts: number
-  channel: string
-  ok: boolean
-  title: string
-  error?: string
-}
-
-export type ObservabilityIndexQueryResult = {
-  query: ObservabilityIndexQueryId
-  title: string
-  description: string
-  columns: string[]
-  rows: Record<string, unknown>[]
-  indexedAt: number | null
-  dbPath: string
-  needsArg?: 'session_id'
-  error?: string
-}
-
-export type TaskItem = { id: string; subject: string; status: string; activeForm: string }
-
-// Mirror of src/main/events.ts ActivityKind — keep in sync with the tab's
-// ICON / KIND_LABEL / activityTone maps. Unknown kinds fall back gracefully.
-export type ActivityKind =
-  | 'session-start'
-  | 'session-end'
-  | 'deploy'
-  | 'ticket-filed'
-  | 'ticket-closed'
-  | 'pr-opened'
-  | 'pr-verdict'
-  | 'pr-merged'
-  | 'tests-pass'
-  | 'tests-fail'
-  | 'check'
-  | 'doc'
-  | 'agent-run'
-  | 'task-complete'
-  | 'blocked'
-  | 'error'
-  | 'info'
-export type ActivityEvent = {
-  id: string
-  ts: number
-  kind: ActivityKind
-  title: string
-  detail?: string
-  repo?: string
-  repoRoot?: string
-  sessionId?: string
-  ref?: { ticket?: number; pr?: number }
-  runId?: string
-  runSource?: 'cron' | 'agent' | 'bg' | 'session'
-  suppressTelegram?: boolean
-}
-
-export type UsageWindow = { pct: number; resetsAt: number | null } | null
-export type Usage = {
-  ok: boolean
-  plan: string
-  tier: string
-  fiveHour: UsageWindow
-  sevenDay: UsageWindow
-  overagePct: number | null
-  stale: boolean
-  error?: string
-  ts: number
-}
-
-export type CommandWidget = {
-  id: string
-  title: string
-  icon?: string
-  command: string
-  intervalMs: number
-  mode: 'text' | 'big' | 'kv'
-  source: 'global' | 'repo'
-  /** Global entries are always live; repo entries only once the repo's command
-   *  set has been approved (see src/main/repo-trust.ts). */
-  trusted: boolean
-}
-
-export type CommandResult = { ok: boolean; stdout: string; code: number }
-
-// A declarative full-screen tab, the tab analogue of CommandWidget. Either a
-// `url` (embedded) or a `command` (stdout HTML, re-polled every intervalMs).
-export type CustomTab = {
-  id: string
-  title: string
-  icon?: string
-  source: 'global' | 'repo'
-  url?: string
-  command?: string
-  intervalMs?: number
-  /** See CommandWidget.trusted. */
-  trusted: boolean
-}
-
-export type TabRunResult = { ok: boolean; html: string; code: number }
+import type {
+  ActivityEvent,
+  Agent,
+  AgentDefinition,
+  AgentRun,
+  AgentScorecard,
+  BootstrapStatus,
+  BridgeStatus,
+  CiInfo,
+  CiJobsResult,
+  CiListResult,
+  CheapMessage,
+  CiLogResult,
+  CommandResult,
+  CronRun,
+  DaemonCfg,
+  DeliveryRecord,
+  DigestArtifact,
+  DigestRunState,
+  DisabledEntry,
+  DocsTree,
+  Engine,
+  EnvDetect,
+  GitBranchesResult,
+  GitCommitDetail,
+  GitLogResult,
+  GitOpResult,
+  GitPatchResult,
+  GitStashesResult,
+  GitStatus,
+  GitTagsResult,
+  HitlItem,
+  KnowledgeBase,
+  KnowledgeItem,
+  KnowledgePreview,
+  KnowledgeRagSearchResult,
+  KnowledgeRagStatus,
+  KnowledgeScope,
+  ListenerStatus,
+  LoopEngine,
+  LoopRecord,
+  LoopState,
+  ModelTier,
+  Monitor,
+  MonitorState,
+  MrDetail,
+  MrListResult,
+  ObservabilityIndexBuildResult,
+  ObservabilityIndexQueryId,
+  ObservabilityIndexQueryResult,
+  ObservabilityIndexStatus,
+  ObservabilityQueryFilter,
+  ObservabilitySessionDetail,
+  ObservabilitySnapshot,
+  ObservabilityToolCallPayload,
+  ObservabilityTranscriptWindow,
+  PersistentAgent,
+  PersistentAgentDetail,
+  PersistentAgentFiles,
+  PersistentArtifact,
+  PersistentArtifactRead,
+  Persona,
+  PipelineId,
+  PrActionResult,
+  PrChecks,
+  PrChecksSummaries,
+  PrConversation,
+  PrReviewEvent,
+  PresetKind,
+  PresetPrefs,
+  PrOverview,
+  ProjectSession,
+  ProjectsDirValidation,
+  PromptSnippet,
+  RemoteDirList,
+  RemotePlatform,
+  RemoteSession,
+  RepoTicketsConfig,
+  RunArtifact,
+  ScheduleSpec,
+  ScratchClearReport,
+  SessionEngine,
+  SessionMeta,
+  SessionSearchResult,
+  SettingsPatch,
+  SkillInfo,
+  StartOpts,
+  StructuralDiffResult,
+  TabRunResult,
+  TaskItem,
+  TddInfo,
+  TerminalStateSweepReport,
+  Ticket,
+  TicketAgent,
+  TicketAgentRecommendation,
+  TicketProviderKind,
+  TicketProviderTestResult,
+  TicketRunLink,
+  TranscriptStats,
+  UnifiedRun,
+  UpdateCheckResult,
+  Usage,
+  WorkingDiff,
+  WorkspaceSearchKind,
+  WorkspaceSearchResponse,
+} from '../../../shared/types'
 
 // The approval prompt's payload: the literal commands a repo wants to run, so
 // the user approves something they can actually read.
@@ -386,729 +176,22 @@ export type RepoTrustStatus = {
   commands: string[]
 }
 
-/** Linear's own schema on Linear-provider tickets — mirrors src/main/backlog.ts. */
-export type LinearMeta = {
-  identifier: string
-  stateName: string
-  stateType: string
-  stateColor?: string
-  priority: number
-  priorityLabel: string
-  assignee?: string
-  labels: { name: string; color?: string }[]
-  project?: string
-  cycle?: string
-  team?: string
-  estimate?: number
-  dueDate?: string
-}
-
-export type Ticket = {
-  slug: string
-  id: number
-  title: string
-  status: string
-  priority: string
-  horizon: string
-  hitl: boolean
-  type: string
-  source: string
-  created: string
-  updated: string
-  prs: string[]
-  refs: string[]
-  depends_on: number[]
-  /** Ticket ids this one is merely related to — no ordering implied. */
-  related?: number[]
-  /** The canonical ticket this one duplicates. */
-  duplicateOf?: number
-  /** Strict, checkable criteria for a correct/best implementation. Required
-   *  when running >1 lane (lanes are gated + ranked against these). */
-  acceptance: string[]
-  /** Recommended model tier (downgrade gate): auto | top | cheap-agentic | cheap-raw. */
-  modelTier: string
-  /** Model(s) that authored the implementation, stamped when the MR opens. */
-  workedBy: string[]
-  agent: TicketAgent
-  run?: TicketRunLink
-  /** Prose only — the `## Log` section is split out into `comments`. */
-  body: string
-  /** Timestamped log, oldest first. Remote workspaces may omit it. */
-  comments?: TicketComment[]
-  provider?: 'local' | 'github' | 'linear' | 'obsidian'
-  providerLabel?: string
-  /** Linear-native fields — set only when provider === 'linear'. */
-  linear?: LinearMeta
-  externalId?: string
-  externalKey?: string
-  url?: string
-}
-export type TicketAgent = { id: string; scope: 'repo' | 'global'; kind: 'classic' | 'persistent' }
-/** Mirrors TicketComment in src/main/ticket-comments.ts. */
-export type TicketComment = {
-  /** ISO-8601 UTC. */
-  at: string
-  /** Human username, or the agent id when `kind` is 'agent'. */
-  author: string
-  kind: 'human' | 'agent'
-  /** engine/model behind an agent comment, e.g. `codex/gpt-5`. */
-  via?: string
-  body: string
-}
-/** A comment as the renderer submits it. `at` is stamped in main, and `author`
- *  defaults to the repo's git identity, so the UI only has to send a body. */
-export type NewTicketComment = {
-  body: string
-  author?: string
-  kind?: 'human' | 'agent'
-  via?: string
-}
-export type TicketAgentRecommendation = {
-  agent: TicketAgent
-  reason: string
-  signals: string[]
-}
-export type TicketRunLink = {
-  id: string
-  source: 'agent' | 'cron' | 'bg' | 'session'
-  sessionId?: string
-  startedAt?: string
-  status?: string
-}
-
-export type ProjectSession = {
-  slug: string
-  id: number
-  title: string
-  status: string
-  goal: string
-  started: string
-  ended: string
-  anchor: string
-  tickets: string[]
-  branches: string[]
-  prs: string[]
-  body?: string
-}
-
-export type NewTicket = {
-  title: string
-  type: string
-  priority: string
-  status: string
-  body: string
-  agent?: Partial<TicketAgent>
-  /** Routing tier. Omitted → 'auto'. */
-  modelTier?: ModelTier
-}
-/** Mirrors ModelTier in src/main/resolve-model.ts — the renderer cannot import
- *  from main, so the union is restated here and must stay in step. */
-export type ModelTier = 'auto' | 'top' | 'cheap-agentic' | 'cheap-raw'
-import type { SavedTicketView } from './ticketViews'
-
-export type TicketProviderKind = 'local' | 'github' | 'linear' | 'obsidian' | 'webview'
-export type ObsidianTicketConfig = { vaultPath: string; ticketsSubdir?: string; vaultName?: string }
-/** A repo whose Tickets tab IS an embedded page — no local backlog, no CRUD.
- *  See WebviewTicketConfig in src/main/ticket-provider.ts for the full contract. */
-export type WebviewTicketConfig = { url: string; label?: string }
-export type TicketProviderConfig = {
-  provider?: TicketProviderKind
-  github?: {
-    statusLabels?: Record<string, string>
-    priorityLabels?: Record<string, string>
-    typeLabels?: Record<string, string>
-  }
-  linear?: {
-    mcp?: { command?: string; args?: string[]; env?: Record<string, string> }
-    tools?: { list?: string; get?: string; create?: string; update?: string }
-    team?: string
-    teamKey?: string
-    listArgs?: Record<string, unknown>
-    /** linear.app workspace URL for the auto-synthesized embedded view. */
-    workspace?: string
-  }
-  obsidian?: ObsidianTicketConfig
-  webview?: WebviewTicketConfig
-  views?: TicketView[]
-  /** Named filter/group/sort lenses. See SavedTicketView in ticketViews.ts. */
-  savedViews?: SavedTicketView[]
-}
-// A read-only embedded web view of an external ticket platform, rendered as a
-// source sub-tab in the Tickets tab. Independent of `provider` — see
-// `TicketView` in src/main/ticket-provider.ts for the full contract.
-export type TicketView = { label: string; url: string; default?: boolean }
-export type TicketProviderTestResult = {
-  ok: boolean
-  provider: TicketProviderKind
-  message: string
-  count?: number
-  teams?: { id: string; name: string; key?: string }[]
-  smoke?: { key?: string; url?: string; status?: string; priority?: string }
-}
-
-export type DocCategory =
-  'changelog' | 'decisions' | 'maintainer' | 'developer' | 'personal' | 'reports' | 'other'
-export type DocEntry = {
-  path: string
-  title: string
-  category: DocCategory
-  managedBy?: string
-  subgroup?: string // for 'reports': the agent name (second path segment)
-}
-export type DocsTree = {
-  categories: { id: DocCategory; label: string; items: DocEntry[] }[]
-}
-
-// From the shared registry — was a third copy of the same union.
-export type Engine = import('../../../shared/engines').EngineId
-export type SessionEngine = import('../../../shared/engines').SessionEngineId
-export type EngineCfg = {
-  path: string
-  defaultModel: string
-  defaultEffort: string
-  baseUrl: string
-}
-export type ForgePref = 'auto' | 'github' | 'gitlab'
-export type TelegramCfg = { notify: boolean; control: boolean; botToken: string; chatId: string }
-/** One outbound webhook destination. `categories` overrides the notification
- *  matrix's `webhook` row for this destination only. */
-export type WebhookCfg = {
-  id: string
-  name: string
-  url: string
-  enabled: boolean
-  categories?: Partial<Record<NotifyCategory, boolean>>
-}
-export type AlertsCfg = {
-  desktop: { enabled: boolean }
-  webhooks: WebhookCfg[]
-}
 export type AlertChannelId = 'telegram' | 'desktop' | 'webhook'
-export type InboxCfg = {
-  completionHook: boolean
-  agentContextPreamble: boolean
-  /** Minimum severity that fires a notification; below it, items are inbox-only. */
-  notifyThreshold: 'urgent' | 'normal' | 'low'
-  /** Where filings surface: in-app Inbox, Slack, or both (shared/slack.ts).
-   *  'slack' still persists items — it only quiets the desktop/Telegram nag. */
-  destination: import('../../../shared/slack').InboxDestination
-}
-/** Slack as an inbox destination — bot token (sealed), not a webhook, so
- *  per-category channels can be created/routed at post time. */
-export type SlackCfg = {
-  botToken: string
-  defaultChannel: string
-  channelPrefix: string
-  autoCreateChannels: boolean
-  /** Slack member id (U…) auto-invited to bot-created channels. '' → skip. */
-  inviteUserId: string
-}
-// Mobile bridge (TerMinal Remote for iOS). Token + TLS cert live outside
-// settings.json — see src/main/bridge/identity.ts.
-export type BridgeCfg = { enabled: boolean; port: number }
-export type DaemonCfg = {
-  projectsDir: string
-  worktreesDir: string
-  harnessDir: string
-  templateRepo: string
-  engines: Record<Engine, EngineCfg>
-  defaultEngine: Engine
-  forge: ForgePref
-}
-export type AppearanceMode = 'dark' | 'light' | 'system'
-export type AppearanceTabLayout = 'horizontal' | 'sidebar'
-export type AppearanceCfg = {
-  mode: AppearanceMode
-  theme: string
-  accent: string
-  uiScale: number
-  tabLayout: AppearanceTabLayout
-}
-export type AppsCfg = { editor: string; browser: string; formatOnSave: boolean }
-export type SuggestionsCfg = {
-  aiEngine: Engine
-  aiModel: string
-  autoEngine: Engine
-  autoModel: string
-}
-export type NoteFolder = { id: string; title: string; path: string }
-export type KnowledgeScope = 'repo' | 'global'
-export type KnowledgeItemKind = 'markdown' | 'link' | 'image' | 'video' | 'file' | 'rag'
-export type KnowledgeCategory = {
-  id: string
-  title: string
-  description?: string
-  order: number
-  createdAt: number
-  updatedAt: number
-}
-export type KnowledgeItem = {
-  id: string
-  categoryId: string
-  kind: KnowledgeItemKind
-  title: string
-  description?: string
-  content?: string
-  url?: string
-  path?: string
-  thumbnailUrl?: string
-  faviconUrl?: string
-  siteName?: string
-  rag?: KnowledgeRagConfig
-  tags: string[]
-  createdAt: number
-  updatedAt: number
-}
-export type KnowledgeRagConfig = {
-  rootDir?: string
-  command?: string
-  args?: string[]
-  category?: string
-  hybridAlpha?: number
-  maxResults?: number
-}
-export type KnowledgeRagStatus = {
-  ok: boolean
-  rootDir: string
-  documentsDir: string
-  dataDir: string
-  command: string
-  args: string[]
-  stats?: unknown
-  error?: string
-}
-export type KnowledgeRagSearchResult = {
-  ok: boolean
-  query: string
-  rootDir: string
-  results: unknown[]
-  raw?: unknown
-  error?: string
-}
-export type KnowledgeBase = {
-  version: 1
-  categories: KnowledgeCategory[]
-  items: KnowledgeItem[]
-}
-export type KnowledgePreview = {
-  ok: boolean
-  url: string
-  title?: string
-  description?: string
-  thumbnailUrl?: string
-  faviconUrl?: string
-  siteName?: string
-  error?: string
-}
-export type RemotePlatform = 'auto' | 'linux' | 'macos'
-export type RemoteHost = {
-  id: string
-  label: string
-  sshTarget: string
-  defaultCwd: string
-  platform: RemotePlatform
-  daemon: DaemonCfg
-}
-export type PinnedPanel = { label: string; url: string }
-export type WorkingDiff = {
-  ok: boolean
-  diff: string
-  base: string
-  branch: string
-  error?: string
-}
-// Git views (Files tab history/branches/stashes/tags) — mirrors src/main/git-views.ts.
-export type GitCommit = {
-  sha: string
-  shortSha: string
-  parents: string[]
-  author: string
-  date: number
-  subject: string
-  refs: string[]
-}
-export type GitLogResult = { ok: true; commits: GitCommit[] } | { ok: false; error: string }
-export type GitCommitFile = {
-  path: string
-  insertions: number
-  deletions: number
-  binary: boolean
-}
-export type GitCommitDetail =
-  | {
-      ok: true
-      sha: string
-      shortSha: string
-      author: string
-      email: string
-      date: number
-      subject: string
-      body: string
-      refs: string[]
-      files: GitCommitFile[]
-      patch: string
-      patchTruncated: boolean
-    }
-  | { ok: false; error: string }
-export type GitBranch = {
-  name: string
-  current: boolean
-  remote: boolean
-  sha: string
-  subject: string
-  date: number
-  upstream: string
-  ahead: number
-  behind: number
-}
-export type GitBranchesResult = { ok: true; branches: GitBranch[] } | { ok: false; error: string }
-export type GitStash = { ref: string; branch: string; subject: string; date: number }
-export type GitStashesResult = { ok: true; stashes: GitStash[] } | { ok: false; error: string }
-export type GitTag = { name: string; sha: string; subject: string; date: number }
-export type GitTagsResult = { ok: true; tags: GitTag[] } | { ok: false; error: string }
-export type GitOpResult = { ok: true } | { ok: false; error: string }
-export type GitPatchResult = { ok: true; patch: string } | { ok: false; error: string }
-export type Settings = {
-  onboarded: boolean
-  projectsDir: string
-  worktreesDir: string
-  engines: Record<Engine, EngineCfg>
-  defaultEngine: Engine
-  forge: ForgePref
-  telegram: TelegramCfg
-  alerts: AlertsCfg
-  inbox: InboxCfg
-  slack: SlackCfg
-  notifications: { matrix: NotifyMatrix }
-  bridge: BridgeCfg
-  appearance: AppearanceCfg
-  apps: AppsCfg
-  suggestions: SuggestionsCfg
-  noteFolders: NoteFolder[]
-  remoteHosts: RemoteHost[]
-  harnessDir: string
-  templateRepo: string
-  pinnedPanels: PinnedPanel[]
-  openrouterApiKey: string
-  openaiCompatApiKey: string
-  /** Allow repo-provided widgets/tabs (.TerMinal/widgets.json + tabs.json).
-   *  Off by default — repo code execution is opt-in, above the trust flow. */
-  allowRepoExtensions: boolean
-  /**
-   * Which sealed secrets are set. `settings:get` masks the VALUES (see
-   * src/main/settings-mask.ts), so this is the only way the UI can tell
-   * "configured" from "not configured". Keyed by the dotted path
-   * (`telegram.botToken`, `alerts.webhook.url`, `openrouterApiKey`, …).
-   * Absent on any Settings object that didn't come from `settings:get`.
-   */
-  secretsSet?: Record<string, boolean>
-}
-export type SettingsPatch = Partial<
-  Omit<
-    Settings,
-    | 'telegram'
-    | 'alerts'
-    | 'inbox'
-    | 'slack'
-    | 'bridge'
-    | 'appearance'
-    | 'engines'
-    | 'apps'
-    | 'suggestions'
-  >
-> & {
-  telegram?: Partial<TelegramCfg>
-  alerts?: {
-    desktop?: Partial<AlertsCfg['desktop']>
-    /** The whole list, always — main replaces it wholesale so deletes stick,
-     *  and restores each entry's saved url when the patch omits it. */
-    webhooks?: (Partial<WebhookCfg> & { id: string })[]
-  }
-  inbox?: Partial<InboxCfg>
-  slack?: Partial<SlackCfg>
-  bridge?: Partial<BridgeCfg>
-  appearance?: Partial<AppearanceCfg>
-  engines?: Partial<Record<Engine, Partial<EngineCfg>>>
-  apps?: Partial<AppsCfg>
-  suggestions?: Partial<SuggestionsCfg>
-  noteFolders?: NoteFolder[]
-}
 
-export type StorageEntry = {
-  path: string
-  bytes: number
-}
-
-export type WorktreeStoreReport = {
-  bytes: number
-  thresholdBytes: number
-  planned: StorageEntry[]
-  deleted: StorageEntry[]
-  protectedRunning: StorageEntry[]
-  protectedDirty: StorageEntry[]
-}
-
-export type TerminalStateSweepReport = {
-  root: string
-  dryRun: boolean
-  totalBytes: number
-  reclaimableBytes: number
-  reclaimedBytes: number
-  worktrees: WorktreeStoreReport
-  agentWorktrees: WorktreeStoreReport & { dir: string }
-  leftovers: {
-    bytes: number
-    planned: StorageEntry[]
-    deleted: StorageEntry[]
-  }
-  logs: {
-    bytes: number
-    maxBytes: number
-    planned: StorageEntry[]
-    rotated: StorageEntry[]
-  }
-  checkpoints: {
-    bytes: number
-    thresholdBytes: number
-    stores: {
-      maxAgeMs: number
-      planned: StorageEntry[]
-      deleted: StorageEntry[]
-    }
-    gc: {
-      planned: StorageEntry[]
-      completed: (StorageEntry & { error?: string })[]
-    }
-    tmpObjects: {
-      planned: StorageEntry[]
-      deleted: StorageEntry[]
-    }
-  }
-  scratch: {
-    bytes: number
-    clearable: boolean
-  }
-}
-
-export type ScratchClearReport = {
-  path: string
-  bytes: number
-  deleted: boolean
-}
-
-/** Tool/engine readiness probed by the main process (env:detect). */
-export type EnvDetect = {
-  codex: { found: boolean; path: string }
-  claude: { found: boolean; path: string }
-  cursor: { found: boolean; path: string }
-  hermes: { found: boolean; path: string }
-  gh: { found: boolean; path: string; authed: boolean; authHost: string }
-  glab: { found: boolean; path: string; authed: boolean; authHost: string }
-  tgScripts: boolean
-  apps: { editors: string[]; browsers: string[] }
-}
 export type RemoteSettingsProbe = {
   ok: boolean
   error?: string
   cwd?: string
   repoRoot?: string
-  engines: Record<Engine, string>
+  /**
+   * Partial: the failure paths (unknown host, unreachable host) answer with no
+   * detections at all, and even a successful probe only reports the engines it
+   * found. `Record<Engine, string>` claimed all eight keys were always present.
+   */
+  engines: Partial<Record<Engine, string>>
   tools: Record<string, string>
 }
-export type ProjectsDirValidation =
-  | { ok: true; dir: string; repoCount?: number }
-  | {
-      ok: false
-      reason: 'is-repo' | 'error'
-      dir: string
-      suggestedParent?: string
-      message: string
-    }
-  | {
-      ok: false
-      reason: 'no-repos-found'
-      dir: string
-      suggestedChild?: string
-      suggestedCount?: number
-      message: string
-    }
 export type ProjectsDirSuggestion = { dir: string; repoCount: number } | null
-export type RemoteDirEntry = { name: string; path: string; dir: true }
-export type RemoteDirList = {
-  cwd: string
-  parent: string
-  entries: RemoteDirEntry[]
-  error?: string
-}
-export type BootstrapStatus = {
-  state: 'full' | 'partial' | 'none'
-  bootstrapped: boolean
-  missing: string[]
-  message: string
-}
-
-export type Agent = {
-  id: string
-  title: string
-  description?: string
-  icon?: string
-  prompt: string
-  opensPr?: boolean
-  engine?: Engine
-  model?: string
-  modelPolicy?: AgentModelPolicy
-  /** Reasoning-effort level for the agent's engine. undefined → engine default. */
-  effort?: string
-  quality?: AgentQuality
-  outputContract?: string
-  acceptanceCriteria?: string[]
-  inPlace?: boolean
-  /** FORCE MODE — bypasses the main-branch push gate. UI shows a red FORCE chip. */
-  force?: boolean
-  source?: 'default' | 'repo-override' | 'global-override' | 'repo' | 'global'
-  hasScript?: boolean
-}
-export type AgentModelPolicy = {
-  default?: string
-  cheap?: string
-  deep?: string
-  judge?: string
-  allowOverride?: boolean
-}
-export type AgentCheck = {
-  id: string
-  title: string
-  command: string
-  cwd?: 'repo' | 'worktree'
-  required?: boolean
-  timeoutMs?: number
-}
-export type AgentJudge = {
-  enabled?: boolean
-  mode?: 'deterministic' | 'llm' | 'hybrid'
-  model?: string
-  rubric?: string[]
-  passThreshold?: number
-}
-export type AgentQuality = {
-  acceptanceCriteria?: string[]
-  requiredArtifacts?: string[]
-  deterministicChecks?: AgentCheck[]
-  judge?: AgentJudge
-}
-export type AgentRunEvaluationCheck = {
-  id: string
-  title: string
-  command?: string
-  status: 'pass' | 'fail' | 'skipped'
-  required?: boolean
-  detail?: string
-}
-export type AgentRunEvaluation = {
-  status: 'pass' | 'fail' | 'incomplete'
-  evaluatedAt: number
-  summary: string
-  checks: AgentRunEvaluationCheck[]
-  judge?: {
-    enabled: boolean
-    mode?: AgentJudge['mode']
-    status: 'not-run'
-    model?: string
-    detail: string
-  }
-}
-export type AgentRunTrace = {
-  ticketSlug?: string
-  ticketId?: number
-  ticketRef?: string
-  prIid?: number
-  prKind?: 'review' | 'iterate'
-  sourceBranch?: string
-}
-export type AgentDefinition = {
-  id: string
-  ref: { id: string; scope: 'repo' | 'global'; kind: 'classic' | 'persistent' }
-  title: string
-  description?: string
-  icon?: string
-  scope: 'repo' | 'global'
-  kind: 'classic' | 'persistent'
-  source: 'default' | 'repo-override' | 'global-override' | 'repo' | 'global' | 'persistent'
-  runtime: {
-    engine?: Engine
-    model?: string
-    modelPolicy?: AgentModelPolicy
-    mode: 'prompt' | 'script' | 'persistent'
-    scriptPath?: string
-    memoryDir?: string
-    inPlace?: boolean
-    opensPr?: boolean
-    force?: boolean
-  }
-  instructions: {
-    prompt?: string
-    system?: string
-    knowledgePolicy?: 'minimal' | 'standard' | 'deep'
-    outputContract?: string
-  }
-  quality: AgentQuality
-  metadata: {
-    tags?: string[]
-    createdAt?: number
-    updatedAt?: number
-    lastRunAt?: number
-  }
-}
-export type PersistentAgentFiles = {
-  instructions: string
-  memory: string
-  state: string
-  journal: string
-}
-export type PersistentAgent = {
-  id: string
-  title: string
-  description?: string
-  engine: Engine
-  model?: string
-  modelPolicy?: AgentModelPolicy
-  quality?: AgentQuality
-  tags: string[]
-  createdAt: number
-  updatedAt: number
-  lastRunAt?: number
-  dir: string
-}
-export type PersistentAgentDetail = PersistentAgent & {
-  files: PersistentAgentFiles
-}
-export type PersistentArtifactFile = {
-  name: string
-  path: string
-  size: number
-  mtime: number
-  kind: 'markdown' | 'json' | 'image' | 'html' | 'text' | 'other'
-}
-export type PersistentArtifact = {
-  id: string
-  title: string
-  kind: string
-  path: string
-  createdAt: number
-  summary?: string
-  runId?: string
-  primaryPath?: string
-  files: PersistentArtifactFile[]
-}
-export type PersistentArtifactRead =
-  | {
-      ok: true
-      kind: PersistentArtifactFile['kind']
-      content: string
-      dataUrl?: string
-      path: string
-    }
-  | { ok: false; reason: string; path?: string }
 // Per-(repo, agent) state sidecar — the runtime owns lastScannedSha /
 // lastScannedRef / lastRunAt / lastRunId; scripts can pin arbitrary
 // string keys beyond that via `terminal-cli state set <key> <value>`.
@@ -1119,213 +202,28 @@ export type AgentStateRecord = {
   lastRunId?: string
   [key: string]: unknown
 }
-export type Persona = {
-  id: string
-  title: string
-  description: string
-  icon?: string
-  prompt: string
-  agentId?: string
-  agentScope?: 'repo' | 'global'
-  agentKind?: 'classic' | 'persistent'
-}
-export type PipelineId = 'single' | 'review' | 'review-iterate'
 export type PipelineInfo = { id: PipelineId; title: string; description: string }
-export type AgentRunStatus = 'running' | 'done' | 'failed' | 'canceled' | 'interrupted'
-export type AgentRun = {
-  id: string
-  agentId: string
-  agentTitle: string
-  engine: Engine
-  model?: string
-  /** The RESOLVED reasoning-effort level the run launched with. */
-  effort?: string
-  persona?: string
-  pipeline?: string
-  status: AgentRunStatus
-  startedAt: number
-  endedAt?: number
-  exitCode?: number
-  repoRoot: string
-  worktree: string
-  branch: string
-  output: string
-  /** Snapshot at run-time of the agent's force flag. */
-  force?: boolean
-  trace?: AgentRunTrace
-  evaluation?: AgentRunEvaluation
-}
-
-export type ScheduleSpec =
-  | { kind: 'calendar'; minute: number; hour: number; weekdays?: number[] }
-  | { kind: 'cron'; expr: string }
 export type ScheduleRetry = { maxRetries: number; backoffSec: number }
-export type ScheduleStatus = 'never' | 'running' | 'done' | 'failed'
 export type ScheduleEnv = Record<string, string>
-export type Schedule = {
-  id: string
-  repoRoot: string
-  repoLabel: string
-  agentId: string
-  agentTitle: string
-  engine: Engine
-  model?: string
-  effort?: string
-  prompt: string
-  spec: ScheduleSpec
-  enabled: boolean
-  env?: ScheduleEnv
-  // Where/how this schedule fires (ADR-0002). host absent → local launchd; a
-  // hostId → that always-on host via systemd. runtime absent/'bare' → engine in
-  // a worktree; 'container' → Docker image (opt-in, #13).
-  host?: string
-  runtime?: 'bare' | 'container' | 'k8s'
-  // Optional flaky-run controls (see main/schedules.ts). Absent → runner defaults.
-  retry?: ScheduleRetry
-  timeoutSec?: number
-  createdAt: number
-  lastRun?: number
-  lastStatus?: ScheduleStatus
-  lastRunId?: string
-  // added by schedules:list
-  describe?: string
-  nextRun?: number | null
-  // Whether launchd has the job loaded. undefined for disabled schedules /
-  // remote lists; false = enabled but dark (won't fire until reconciled).
-  loaded?: boolean
-}
-export type WindowStats = {
-  events: number
-  ticketsFiled: number
-  ticketsClosed: number
-  prsOpened: number
-  prsMerged: number
-  reviews: number
-  testsPass: number
-  testsFail: number
-  agentRuns: number
-  checks: number
-  docs: number
-  blocked: number
-}
-export type RunStats = {
-  total: number
-  done: number
-  failed: number
-  running: number
-  successRate: number
-}
-export type CycleStats = {
-  merged: number
-  medianHours: number | null
-  fileToOpenHours: number | null
-  openToMergeHours: number | null
-}
-export type Funnel = { filed: number; opened: number; merged: number }
-/** A kill-switched schedule, with why + when it went dark. */
-export type DisabledEntry = {
+// Result of a schedule mutation that may cross a network. `refused` = the other
+// side answered no (unknown id); `unreachable` = we never got there. Mirrors
+// src/main/schedule-honesty.ts.
+export type ScheduleMutationResult =
+  { ok: true; warning?: string } | { ok: false; reason: 'refused' | 'unreachable'; error: string }
+// Circuit-breaker state per schedule. `host` set → the entry came from THAT
+// host's disabled.json (its runner tripped the breaker, not ours).
+export type ScheduleDisabledEntry = {
   id: string
   reason?: string
-  /** epoch ms; 0 for legacy records written before reasons existed. */
   disabledAt: number
+  host?: string
+  hostLabel?: string
 }
-/** Per-agent reliability rollup over the last N runs. Computed from the run
- *  stores already on disk — no new collection. */
-export type AgentScorecard = {
-  agentId: string
-  agentTitle: string
-  total: number
-  done: number
-  failed: number
-  running: number
-  /** null when nothing has settled — unknown, not 0% reliable. */
-  successRate: number | null
-  avgCostUsd?: number
-  totalCostUsd?: number
-  avgDurationMs?: number
-  evaluated: number
-  evalPass: number
-  evalFail: number
-  evalIncomplete: number
-  failingChecks: { id: string; title: string; count: number }[]
-  lastRunAt?: number
-  lastStatus?: string
+export type ScheduleDisabledDetail = {
+  entries: ScheduleDisabledEntry[]
+  /** Hosts whose breaker file we could not read — never reported as "clean". */
+  errors: { host: string; hostLabel: string; error: string }[]
 }
-export type CompactionResult = {
-  compacted: boolean
-  reason?: string
-  archivePath?: string
-  bytesBefore?: number
-  bytesAfter?: number
-}
-export type FactoryHealth = {
-  generatedAt: number
-  window24h: WindowStats
-  window7d: WindowStats
-  agents: RunStats
-  cron: RunStats & { recentFailures: number }
-  hitlOpen: number
-  disabled: DisabledEntry[]
-  disabledCount: number
-  cycle: CycleStats
-  funnel: Funnel
-  recentFailures: { title: string; ts: number; repo: string; kind: string }[]
-  daily: { day: string; count: number }[]
-  byRepo: { repo: string; events: number }[]
-}
-export type HitlSource =
-  | 'manual'
-  | 'cron-fail'
-  | 'agent'
-  | 'factory'
-  | 'skill'
-  | 'listener'
-  | 'completion-hook'
-  | 'review-pattern'
-  | 'monitor'
-/** A session currently mirrored to the phone (registered + not ended). */
-export type RemoteActiveSession = {
-  id: string
-  title: string
-  agentSessionId?: string
-  cwd: string
-  status: string
-}
-/** Native CI — mirror of src/main/ci.ts. Forge-agnostic run/job/log views. */
-export type CiRunStatus =
-  'queued' | 'in_progress' | 'success' | 'failed' | 'canceled' | 'skipped' | 'pending'
-export type CiRun = {
-  id: string
-  name: string
-  status: CiRunStatus
-  branch: string
-  shortSha: string
-  event: string
-  webUrl: string
-  createdAt: number
-  updatedAt: number
-  durationMs: number | null
-}
-export type CiTabStep = {
-  name: string
-  status: CiRunStatus
-  number: number
-}
-export type CiTabJob = {
-  id: string
-  name: string
-  stage: string
-  status: CiRunStatus
-  webUrl: string
-  startedAt: number | null
-  finishedAt: number | null
-  durationMs: number | null
-  steps?: CiTabStep[]
-}
-export type CiListResult = { runs: CiRun[]; error?: string }
-export type CiJobsResult = { jobs: CiTabJob[]; error?: string }
-export type CiLogResult = { log: string; truncated?: boolean; error?: string }
-
 export type MonitorSaveResult = {
   ok: boolean
   saved: number
@@ -1333,28 +231,11 @@ export type MonitorSaveResult = {
   error?: string
 }
 
-/** Monitoring subsystem — mirror of src/main/monitors.ts. Deterministic infra
- *  observability, no inference. */
-export type MonitorType = 'http' | 'tls-cert' | 'tcp' | 'dns' | 'command'
-export type MonitorState = 'ok' | 'warn' | 'fail'
-export type MonitorNotify = {
-  onFailure: 'urgent' | 'normal' | 'low' | 'off'
-  onRecovery: boolean
-  renotifyAfterSec: number
-  dailyDigest: boolean
-  digestHour: number
-}
-export type Monitor = {
-  id: string
-  name: string
-  type: MonitorType
-  target: string
-  intervalSec: number
-  enabled: boolean
-  group?: string
-  notify: MonitorNotify
-  config: Record<string, unknown>
-}
+/** Which layer a failing probe failed at — re-exported from the shared flap logic. */
+import type { FailureCategory as MonitorFailureCategory } from '../../../shared/monitor-flap'
+export type { FailureCategory as MonitorFailureCategory } from '../../../shared/monitor-flap'
+/** Daemon verdict on whether THIS machine has connectivity. */
+export type MonitorConnectivity = { offline: boolean; since?: number }
 export type MonitorStatusState = {
   id: string
   status: MonitorState
@@ -1370,152 +251,16 @@ export type MonitorStatusState = {
   since: number
   lastTransition: { from: string; to: string; at: number } | null
   history: { at: number; status: string }[]
+  /** Failed checks in a row, including ones held below the alert threshold. */
+  consecutiveFailures?: number
+  category?: MonitorFailureCategory
+  /** The raw probe verdict — differs from `status` while a blip is held back. */
+  observed?: MonitorState
+  /** The last cycle was discarded for lack of local connectivity. */
+  paused?: boolean
+  pausedSince?: number
 }
 export type MonitorWithState = Monitor & { state: MonitorStatusState | null }
-export type HitlItem = {
-  id: string
-  title: string
-  detail?: string
-  action?: string
-  repo?: string
-  repoRoot?: string
-  source: HitlSource
-  status: 'open' | 'resolved'
-  /** urgent notifies; normal/low are inbox-only. Legacy 'push' reads as urgent. */
-  severity?: 'urgent' | 'normal' | 'low' | 'push'
-  /** Free-form Inbox grouping (ticket 120). Deliberately NOT a union — a caller
-   *  names a category by passing one; absent ⇒ 'Uncategorized'. */
-  category?: string
-  /** When first seen; absent ⇒ unread. */
-  readAt?: number
-  createdAt: number
-  resolvedAt?: number
-  runId?: string
-  runSource?: 'cron' | 'agent' | 'bg' | 'session'
-  ticketPath?: string
-  sessionId?: string
-  terminalKey?: string
-  terminalCwd?: string
-  occurrenceCount?: number
-  lastOccurredAt?: number
-  // Stamped by the remote fan-out for a HITL filed by a host run (#14).
-  hostId?: string
-  hostLabel?: string
-}
-export type BgTask = {
-  id: string
-  repo: string
-  repoRoot: string
-  prompt: string
-  engine: Engine
-  model?: string
-  worktree: string
-  branch: string
-  pid?: number
-  status: 'queued' | 'running' | 'done' | 'failed' | 'canceled'
-  startedAt: number
-  endedAt?: number
-  exitCode?: number
-  logFile: string
-  mrUrl?: string
-  label: string
-}
-
-export type LoopRecord = {
-  id: string
-  repo: string
-  repoRoot: string
-  goal: string
-  mode: 'headless' | 'paired' | 'single'
-  engine: Engine
-  model?: string
-  worktree: string
-  branch: string
-  status: 'idle' | 'running' | 'blocked' | 'done' | 'stopped'
-  phase: 'negotiate' | 'generate' | 'evaluate' | 'decide' | 'done' | 'stopped'
-  nextRole: 'planner' | 'generator' | 'evaluator'
-  iteration: number
-  activeRunId?: string
-  activeRole?: 'planner' | 'generator' | 'evaluator'
-  maxIterations: number
-  createdAt: number
-  updatedAt: number
-}
-
-export type LoopState = {
-  phase: LoopRecord['phase']
-  iteration: number
-  bottleneck: string
-  lastScore: string
-  next: string
-  assertions: { total: number; pass: number; fail: number; todo: number }
-  tail: string[]
-}
-
-export type RunArtifact = {
-  slug: string
-  title: string
-  agent?: string
-  ok?: boolean
-  createdAt?: string
-  reportPath: string
-  summary?: string
-}
-export type UnifiedRun = {
-  id: string
-  source: 'cron' | 'agent' | 'bg' | 'session'
-  agentId: string
-  agentTitle: string
-  engine: string
-  status: string
-  startedAt: number
-  endedAt?: number
-  exitCode?: number
-  repoRoot: string
-  repoLabel: string
-  branch: string
-  worktree: string
-  scheduleId?: string
-  error?: string
-  /** Snapshot at run-time of the agent's force flag. */
-  force?: boolean
-  /** USD cost when the harness reports it (OpenRouter/or-agent runs). */
-  costUsd?: number
-  trace?: AgentRunTrace
-  evaluation?: AgentRunEvaluation
-  /** Remote host this run came from. Undefined = local machine. */
-  hostId?: string
-  hostLabel?: string
-  /** Best-effort two-line "what actually got done", written after the run
-   *  settled. Absent when summarization was skipped or failed. */
-  summary?: string
-}
-
-export type CronRun = {
-  id: string
-  scheduleId: string
-  agentId: string
-  agentTitle: string
-  engine: string
-  status: 'running' | 'done' | 'failed'
-  startedAt: number
-  endedAt?: number
-  exitCode?: number
-  branch: string
-  repoLabel: string
-  worktree: string
-  error?: string
-}
-
-export type ListenerDir = 'new' | 'processing' | 'done' | 'failed' | 'dead-letter'
-// Mobile bridge (TerMinal Remote for iOS). The pairing payload carries the
-// bearer token, so it is fetched on demand for the Settings pane only.
-export type BridgeStatus = {
-  enabled: boolean
-  listening: boolean
-  port: number
-  error?: string
-}
 // Push readiness for the Settings pane. `configured` flips once an APNs key
 // has been dropped next to the bridge identity.
 // The Mac's own tailnet identity, shown in Settings so the phone knows the name
@@ -1537,208 +282,6 @@ export type BridgePairing = {
   fp: string // base64 SHA-256 of the DER cert, pinned by the client
 }
 
-export type ListenerStatus = {
-  enabled: boolean
-  inboxDir: string
-  dirs: Record<ListenerDir, string>
-  counts: Record<ListenerDir, number>
-  listeners: {
-    id: string
-    source: string
-    type: string
-    name?: string
-    total: number
-    new: number
-    processing: number
-    done: number
-    failed: number
-    deadLetter: number
-    lastAt: number
-    lastStatus: ListenerDir
-    lastTitle?: string
-    lastResult?: string
-    lastRunId?: string
-    lastRunSource?: 'agent' | 'bg'
-    repoRoot?: string
-  }[]
-  recent: {
-    file: string
-    dir: ListenerDir
-    id?: string
-    listenerId?: string
-    listenerName?: string
-    source?: string
-    type?: string
-    title?: string
-    repo?: string
-    repoRoot?: string
-    processedAt?: number
-    error?: string
-    action?: string
-    result?: string
-    runId?: string
-    runSource?: 'agent' | 'bg'
-  }[]
-}
-
-export type Review = {
-  number: number
-  overall: number | null
-  verdict: string
-  testStatus: string
-  stale: boolean
-  commitsBehind: number
-  /** Canonical change blast-radius, 0-5 (null if unscored/tests-only). */
-  riskScore: number | null
-  /** Cross-PR triage: high/medium/low (or unscored if absent). Derived from
-   *  riskScore when present, else the legacy risk_tier frontmatter field. */
-  riskTier: 'high' | 'medium' | 'low' | 'unscored'
-}
-
-export type Finding = {
-  id?: string
-  severity?: string
-  title?: string
-  text?: string
-  body?: string
-  file?: string
-  line?: number
-  status?: string
-  agent_fix_prompt?: string
-  category?: string
-} & Record<string, unknown>
-
-export type MrDetail = {
-  iid: number
-  title: string
-  description: string
-  state: string
-  author: string
-  webUrl: string
-  sourceBranch: string
-  targetBranch: string
-  draft: boolean
-  reviewMd: string
-  reviewMeta: Review | null
-  findings: Finding[]
-  suggestions: Finding[]
-  screenshots: Screenshot[]
-  artifactShortSha: string
-  headShort: string
-}
-
-/** Reviewer-captured screenshot embedded in a code-review artifact. Present
- *  only when a visual/UX change made an image worth showing; image bytes ride
- *  along as a data URL so the renderer needs no filesystem access. */
-export type Screenshot = {
-  id: string
-  caption: string
-  kind?: 'before' | 'after' | 'diff' | 'state'
-  findingId?: string
-  dataUrl: string
-}
-
-export type DigestRunState = {
-  iid: number
-  short: string
-  status: 'running' | 'done' | 'failed'
-  startedAt: number
-  endedAt?: number
-  error?: string
-}
-
-// /digest artifact (<short>.chunks.json) — the human-review digest.
-export type DigestDecision = {
-  id: string
-  title: string
-  category: string
-  files: string[]
-  what: string | null
-  why: string | null
-  alternatives: string | null
-  reversibility: 'low' | 'medium' | 'high'
-}
-export type DigestChunk = {
-  id: string
-  file: string
-  old_path: string | null
-  kind: string
-  risk: 'green' | 'yellow' | 'red'
-  risk_reason: string
-  status: string
-  added: number
-  deleted: number
-  green_label: string | null
-  summary: string | null
-  note: string | null
-  confidence: string | null
-  decision_signals: string[]
-  hunks: {
-    header: string
-    old_start: number
-    new_start: number
-    mechanical: boolean
-    label: string
-  }[]
-}
-// Result of a per-file structural (difft) diff. `output` is raw ANSI meant to
-// be written straight into an xterm instance in the renderer.
-export type StructuralDiffResult =
-  | { ok: true; output: string }
-  | { ok: false; reason: 'difft-missing' | 'binary' | 'fetch-failed' | 'error'; message?: string }
-
-export type DigestArtifact = {
-  pr: string | null
-  short_sha: string | null
-  generated: string
-  generator: string
-  joint: { member_mrs: string[] } | false
-  brief: string | null
-  blast_radius: string | null
-  diagrams: { title: string; kind: string; mermaid: string }[]
-  double_check: { file: string; why: string }[]
-  decisions: DigestDecision[]
-  stats: {
-    files: number
-    chunks: number
-    green: number
-    yellow: number
-    red: number
-    llm_chunks: number
-    added: number
-    deleted: number
-    decisions?: number
-  }
-  chunks: DigestChunk[]
-}
-
-export type Mr = {
-  iid: number
-  title: string
-  state: string
-  author: string
-  webUrl: string
-  sourceBranch: string
-  draft: boolean
-  review: Review | null
-  labels: string[]
-  /** Model(s) that wrote this MR, cross-referenced from the linked ticket's worked_by. */
-  workedBy: string[]
-}
-
-export type SkillScope = 'project' | 'personal' | 'plugin'
-export type SkillInfo = {
-  name: string
-  description: string
-  scope: SkillScope
-  namespace?: string
-  platforms: Engine[]
-}
-
-export type CiJob = { id: number; name: string; stage: string; status: string; webUrl: string }
-export type CiInfo = { status: string; webUrl: string; jobs: CiJob[] }
-export type MrListResult = { mrs: Mr[]; error?: string }
-
 export type TabContext = {
   cwd: string
   sessionId: string
@@ -1756,22 +299,11 @@ export type TabContext = {
   forgeLabel: 'PR' | 'MR'
   forgeSym: '#' | '!'
   hasBacklog: boolean
-  ticketProvider: 'local' | 'github' | 'linear'
+  ticketProvider: TicketProviderKind
   ticketProviderLabel: string
   hasSessions: boolean
   hasAgents: boolean
   capabilities?: Record<string, boolean>
-}
-
-export type SessionMeta = {
-  id: string
-  engine: Engine
-  cwd: string
-  gitBranch: string
-  model: string
-  turns: number
-  firstUserText: string
-  mtime: number
 }
 
 export type FleetSession = {
@@ -1791,28 +323,6 @@ export type FleetSession = {
   lastAction: { tool: string; detail: string } | null
 }
 
-export type StartOpts = {
-  mode: 'new' | 'resume'
-  engine?: SessionEngine
-  sessionId?: string
-  cwd?: string
-  name?: string
-  initialInput?: string
-  ticketSlug?: string
-  remote?: RemoteSession
-  cols: number
-  rows: number
-}
-
-export type RemoteSession = {
-  hostId: string
-  label: string
-  sshTarget: string
-  cwd?: string
-  platform?: RemotePlatform
-  daemon?: DaemonCfg
-}
-
 export type SessionInfo = {
   sessionId: string
   cwd: string
@@ -1821,51 +331,6 @@ export type SessionInfo = {
   engine: SessionEngine
   remote?: RemoteSession
   claude: string
-}
-
-export type PromptSnippet = {
-  id: string
-  title: string
-  prompt: string
-  description?: string
-  group?: string
-  source?: 'preset' | 'global' | 'repo'
-}
-
-export type WorkspaceSearchKind =
-  'file' | 'ticket' | 'mr' | 'activity' | 'doc' | 'run' | 'snippet' | 'agent-artifact'
-export type WorkspaceSearchResult = {
-  id: string
-  kind: WorkspaceSearchKind
-  title: string
-  subtitle?: string
-  detail?: string
-  path?: string
-  line?: number
-  ts?: number
-  payload?: Record<string, unknown>
-}
-export type WorkspaceSearchResponse = {
-  results: WorkspaceSearchResult[]
-  error?: string
-}
-
-export type PresetKind = 'agents' | 'snippets'
-export type PresetPrefs = {
-  version: number
-  hidden: Record<PresetKind, string[]>
-}
-
-export type TddInfo = {
-  ok: boolean
-  repo: string
-  number: number
-  overall: number | null
-  verdict: string
-  testStatus: string
-  stale: boolean
-  commitsBehind: number
-  ts: number
 }
 
 // Global tm plugin install state (src/main/plugin-install.ts): the canonical
@@ -1879,6 +344,12 @@ export type RepoStateStatus = {
   commits: number
   path: string
   pending: number
+  /**
+   * Is the gradual-migration window still open (src/shared/migration-sunset.ts)?
+   * False retires the AMBIENT half — the unprompted banner — while `pending`
+   * and the manual migrate stay available from Settings.
+   */
+  migrationOpen: boolean
   /** Per-repo skill/bin/hook copies the global tm plugin now serves. */
   legacyCopies: number
 }
@@ -1893,34 +364,16 @@ export type TmPluginStatus = {
   shadowedBy?: string
 }
 
-// Installed-build update check (src/main/update-check.ts). status 'behind'
-// means the installed app's baked commit is an ancestor of origin/main with
-// commits on top; 'diverged' means it was built from unmerged/branch code.
-export type UpdateCheckResult = {
-  buildSha: string // short sha as baked, -dirty suffix stripped ('' → uncomparable)
-  buildDirty: boolean // build came from an uncommitted working tree
-  status: 'up-to-date' | 'behind' | 'diverged' | 'unknown'
-  behindBy: number
-  latestSha: string
-  source: 'git' | 'github' | 'none'
-  checkedAt: number
-  repoPath?: string
-  checkoutBranch?: string
-  checkoutDirty?: boolean
-  error?: string
-}
-
 export type GtApi = {
   listSessions: (engine?: Engine) => Promise<SessionMeta[]>
   startSession: (
     key: string,
     opts: StartOpts,
-  ) => Promise<{ sessionId: string; cwd: string; remote?: boolean; seeded?: boolean }>
+  ) => Promise<{ sessionId: string; cwd: string; remote?: RemoteSession; seeded?: boolean }>
   setActiveSession: (key: string) => Promise<void>
   stopSession: (key: string) => Promise<void>
   fleet: () => Promise<FleetSession[]>
   pickDir: () => Promise<string | null>
-  projectDirs: () => Promise<{ name: string; path: string }[]>
   detectEnv: () => Promise<EnvDetect>
   installGtNotify: () => Promise<{ ok: boolean; path?: string; error?: string }>
   scaffoldProject: (
@@ -2013,7 +466,7 @@ export type GtApi = {
     ) => Promise<{ ok: boolean; error?: string; note?: string }>
   }
   cheapLlm: (opts: {
-    messages: { role: string; content: string }[]
+    messages: CheapMessage[]
     model?: string
     engine?: Engine
     route?: 'auto' | 'claude-p'
@@ -2022,21 +475,6 @@ export type GtApi = {
     temperature?: number
     timeoutMs?: number
   }) => Promise<{ ok: boolean; text?: string; model?: string; route?: string; error?: string }>
-  classify: {
-    ci: (rawLog: string) => Promise<{
-      class: string
-      confidence: string
-      evidence: string[]
-      isCheapClass: boolean
-      source: string
-    }>
-    risk: (input: { files: string[]; diffLines?: number; title?: string }) => Promise<{
-      tier: 'low' | 'medium' | 'high'
-      confidence: string
-      evidence: string[]
-      source: string
-    }>
-  }
   agents: {
     allRuns: () => Promise<UnifiedRun[]>
     /** Count of running non-session runs — badge polling without the 400-row payload. */
@@ -2176,9 +614,13 @@ export type GtApi = {
       timeoutSec?: number
       host?: string // hostId → fire on that host via systemd (ADR-0002); absent → local launchd
       runtime?: 'bare' | 'container' | 'k8s'
-    }) => Promise<{ ok: true; id: string } | { error: string }>
-    remove: (id: string) => Promise<boolean>
-    toggle: (id: string, enabled: boolean) => Promise<boolean>
+      // A remote-attached save installs no recurring timer, so `enabled: true` is
+      // rejected on that path (src/main/schedule-honesty.ts).
+    }) => Promise<{ ok: true; id: string; warning?: string } | { error: string }>
+    // `warning` = it changed here, but a trigger elsewhere was NOT torn down or
+    // updated (usually a host we could not reach).
+    remove: (id: string) => Promise<ScheduleMutationResult>
+    toggle: (id: string, enabled: boolean) => Promise<ScheduleMutationResult>
     runNow: (id: string, hostId?: string) => Promise<{ ok: true } | { error: string }>
     runs: (id?: string) => Promise<CronRun[]>
     runLog: (runId: string) => Promise<string>
@@ -2186,9 +628,10 @@ export type GtApi = {
       | { loaded: number; removed: number; failed: { id: string; error: string }[] }
       | { ok: false; error: string }
     >
-    removeAll: () => Promise<{ removed: number }>
-    disabledList: () => Promise<string[]>
-    disabledToggle: (id: string, disabled: boolean) => Promise<string[]>
+    /** Breaker state with WHY/WHEN, including each assigned host's own
+     *  disabled.json — the host's runner trips the breaker there, not here. */
+    disabledDetail: () => Promise<ScheduleDisabledDetail>
+    disabledToggle: (id: string, disabled: boolean) => Promise<ScheduleMutationResult>
     disabledAll: (disabled: boolean) => Promise<string[]>
     design: (text: string, engine: Engine) => Promise<AgentRun | { error: string }>
   }
@@ -2202,17 +645,6 @@ export type GtApi = {
   }
   listeners: {
     status: () => Promise<ListenerStatus>
-    process: () => Promise<{
-      processed: number
-      failed: number
-      skipped: number
-      status: ListenerStatus
-    }>
-    toggle: (enabled: boolean) => Promise<ListenerStatus>
-    openDir: () => Promise<string>
-  }
-  remote: {
-    active: () => Promise<RemoteActiveSession[]>
   }
   monitors: {
     list: () => Promise<MonitorWithState[]>
@@ -2221,34 +653,31 @@ export type GtApi = {
      *  should not. */
     save: (list: Monitor[]) => Promise<MonitorSaveResult>
     run: (id: string) => Promise<MonitorWithState[]>
+    /** Whether the daemon has established that THIS machine is offline. */
+    connectivity: () => Promise<MonitorConnectivity>
   }
   ci: {
     list: (repoRoot: string, limit?: number) => Promise<CiListResult>
     jobs: (repoRoot: string, runId: string) => Promise<CiJobsResult>
     log: (repoRoot: string, jobId: string) => Promise<CiLogResult>
   }
+  /** Pre-rename alias of `inbox`'s item methods (ticket 0123). Same channels'
+   *  implementations; kept forever so existing callers keep working. */
   hitl: {
     list: () => Promise<HitlItem[]>
     remoteAll: () => Promise<{
       items: HitlItem[]
       errors: { hostId: string; label: string; error: string }[]
     }>
-    file: (item: Omit<HitlItem, 'id' | 'status' | 'createdAt'>) => Promise<HitlItem>
     resolve: (id: string, resolved?: boolean, hostId?: string) => Promise<boolean>
     remove: (id: string, hostId?: string) => Promise<boolean>
     markRead: (ids: string[], hostId?: string, read?: boolean) => Promise<number>
     markAllRead: () => Promise<number>
   }
-  factory: {
-    health: () => Promise<FactoryHealth>
-    start: (engine: Engine) => Promise<AgentRun | { error: string }>
-  }
   agentInsights: {
     scorecard: (agentId: string) => Promise<AgentScorecard | null>
-    scorecards: () => Promise<AgentScorecard[]>
     disabledDetail: () => Promise<DisabledEntry[]>
     setDisabled: (id: string, disabled: boolean, reason?: string) => Promise<DisabledEntry[]>
-    compactMemory: (id: string) => Promise<CompactionResult>
   }
   activity: {
     list: () => Promise<ActivityEvent[]>
@@ -2294,14 +723,11 @@ export type GtApi = {
   tickets: {
     list: () => Promise<Ticket[]>
     get: (slug: string) => Promise<Ticket | null>
-    providerGet: () => Promise<TicketProviderConfig | { error: string }>
-    providerSave: (cfg: TicketProviderConfig) => Promise<TicketProviderConfig | { error: string }>
-    providerTest: (cfg: TicketProviderConfig, smoke?: boolean) => Promise<TicketProviderTestResult>
-    linearTeams: (
-      cfg?: TicketProviderConfig,
-    ) => Promise<{ id: string; name: string; key?: string }[]>
+    providerGet: () => Promise<RepoTicketsConfig | { error: string }>
+    providerSave: (cfg: RepoTicketsConfig) => Promise<RepoTicketsConfig | { error: string }>
+    providerTest: (cfg: RepoTicketsConfig, smoke?: boolean) => Promise<TicketProviderTestResult>
+    linearTeams: (cfg?: RepoTicketsConfig) => Promise<{ id: string; name: string; key?: string }[]>
     openInObsidian: (slug: string) => Promise<boolean>
-    create: (input: NewTicket) => Promise<Ticket>
     recommendAgent: (input: {
       title?: string
       type?: string
@@ -2338,6 +764,10 @@ export type GtApi = {
   listMrs: () => Promise<MrListResult>
   getMr: (iid: number) => Promise<MrDetail | null>
   getMrDiff: (iid: number) => Promise<string>
+  /** Pre-diff read of an MR: per-file churn, noise classification, and the
+   *  aggregates computed both raw and noise-filtered. Derived from the same
+   *  diff `getMrDiff` returns — no extra forge call. */
+  getMrOverview: (iid: number) => Promise<PrOverview>
   getWorkingDiff: () => Promise<WorkingDiff>
   /** A file's content at HEAD — the base for a per-file working diff. */
   getFileAtHead: (rel: string) => Promise<{ ok: boolean; content: string; reason?: string }>
@@ -2359,10 +789,8 @@ export type GtApi = {
   /** Per-turn workspace snapshots, in a shadow git repo (never the user's). */
   checkpoints: {
     list: () => Promise<{ sha: string; at: number; label: string }[]>
-    create: (label: string) => Promise<{ ok: boolean; sha: string }>
     restore: (sha: string) => Promise<{ ok: boolean; error?: string; backup?: string }>
     /** A file's content at a checkpoint ('' where it didn't exist). */
-    file: (sha: string, rel: string) => Promise<{ ok: boolean; content: string }>
     /** Line ranges a checkpoint touched per file — the AI-attribution source. */
     ranges: (sha: string) => Promise<Record<string, { from: number; to: number }[]>>
     /** The checkpoint baseline Review mode should diff `buffer` against. */
@@ -2413,17 +841,6 @@ export type GtApi = {
     ) => Promise<{ moved: number; skipped: string[]; sweptCopies: number; error?: string }>
   }
   observability: {
-    summary: (range?: 'today' | 'week' | 'month' | 'all') => Promise<{
-      totalUsd: number
-      totalRuns: number
-      byModel: Record<
-        string,
-        { runs: number; usd: number; inputTokens: number; outputTokens: number }
-      >
-      bySource: Record<string, { runs: number; usd: number }>
-      byAgent: Record<string, { runs: number; usd: number }>
-      byRepo: Record<string, { runs: number; usd: number }>
-    }>
     byAgent: (range?: 'today' | 'week' | 'month' | 'all') => Promise<
       {
         agentId: string
@@ -2432,9 +849,6 @@ export type GtApi = {
         outcomes: { prOpened: number; ticketFiled: number; merged: number; none: number }
       }[]
     >
-    daily: (
-      days?: number,
-    ) => Promise<{ date: string; usd: number; runs: number; byModel: Record<string, number> }[]>
     runs: (limit?: number) => Promise<
       {
         id: string
@@ -2454,7 +868,6 @@ export type GtApi = {
         exitCode?: number
       }[]
     >
-    models: () => Promise<string[]>
     indexStatus: () => Promise<ObservabilityIndexStatus>
     rebuildIndex: (limit?: number) => Promise<ObservabilityIndexBuildResult>
     indexQuery: (
@@ -2464,14 +877,44 @@ export type GtApi = {
     ) => Promise<ObservabilityIndexQueryResult>
     filterOptions: () => Promise<{ repos: string[]; engines: string[]; models: string[] }>
   }
+  /** GitHub-native PR review. Every method answers `supported: false` (or an
+   *  error result) off GitHub — see src/main/github-review.ts. */
+  githubReview: {
+    checks: (repoRoot: string, iid: number) => Promise<PrChecks>
+    checksSummaries: (repoRoot: string) => Promise<PrChecksSummaries>
+    conversation: (repoRoot: string, iid: number) => Promise<PrConversation>
+    submit: (
+      repoRoot: string,
+      iid: number,
+      event: PrReviewEvent,
+      body: string,
+    ) => Promise<PrActionResult>
+    comment: (repoRoot: string, iid: number, body: string) => Promise<PrActionResult>
+    reply: (
+      repoRoot: string,
+      iid: number,
+      replyToId: number,
+      body: string,
+    ) => Promise<PrActionResult>
+  }
   stacks: {
     list: (repoRoot: string, repoPath: string) => Promise<{ stacks: PrStack[]; error?: string }>
     extension: (repoRoot: string) => Promise<boolean>
     merge: (repoRoot: string, iid: number) => Promise<{ ok: boolean; error?: string }>
   }
   inbox: {
+    /** The cross-repo Inbox. Items carry an open-ended `category`; HITL is one
+     *  of them, not the whole surface (ticket 0123). */
+    list: () => Promise<HitlItem[]>
+    remoteAll: () => Promise<{
+      items: HitlItem[]
+      errors: { hostId: string; label: string; error: string }[]
+    }>
+    resolve: (id: string, resolved?: boolean, hostId?: string) => Promise<boolean>
+    remove: (id: string, hostId?: string) => Promise<boolean>
+    markRead: (ids: string[], hostId?: string, read?: boolean) => Promise<number>
+    markAllRead: () => Promise<number>
     snoozes: () => Promise<Record<string, number>>
-    snoozePresets: () => Promise<{ id: string; label: string; until: number }[]>
     snooze: (id: string, until: number) => Promise<Record<string, number>>
     unsnooze: (id: string) => Promise<Record<string, number>>
     deliveryLog: (channel?: string, limit?: number) => Promise<DeliveryRecord[]>
@@ -2487,15 +930,6 @@ export type GtApi = {
     ) => Promise<ObservabilityTranscriptWindow | null>
   }
   bg: {
-    list: () => Promise<BgTask[]>
-    get: (id: string) => Promise<BgTask | null>
-    log: (id: string) => Promise<string>
-    spawn: (input: {
-      repoRoot: string
-      prompt: string
-      engine?: Engine
-      model?: string
-    }) => Promise<BgTask | { error: string }>
     cancel: (id: string) => Promise<{ ok: boolean; error?: string }>
   }
   loops: {
@@ -2506,7 +940,7 @@ export type GtApi = {
       repoRoot?: string
       goal: string
       mode?: 'headless' | 'paired' | 'single'
-      engine?: Engine
+      engine?: LoopEngine
       model?: string
       maxIterations?: number
     }) => Promise<LoopRecord | { error: string }>
@@ -2530,12 +964,6 @@ export type GtApi = {
   notes: {
     read: (scope: 'repo' | 'global') => Promise<string>
     write: (scope: 'repo' | 'global', content: string) => Promise<boolean>
-    folderList: (id: string, rel: string) => Promise<FileEntry[]>
-    folderRead: (
-      id: string,
-      rel: string,
-    ) => Promise<{ ok: boolean; content: string; reason?: string }>
-    folderWrite: (id: string, rel: string, content: string) => Promise<boolean>
   }
   knowledge: {
     read: (scope: KnowledgeScope) => Promise<KnowledgeBase>
@@ -2564,6 +992,13 @@ export type GtApi = {
       item: KnowledgeItem,
       query: string,
     ) => Promise<KnowledgeRagSearchResult>
+  }
+  favicons: {
+    /** Download this page's favicon into the local cache; resolves to the cache
+     *  filename, or '' when anything failed (caller keeps the globe). */
+    cache: (pageUrl: string, iconUrl: string) => Promise<string>
+    /** Cached icon as a data URL, or '' when it is gone. */
+    read: (name: string) => Promise<string>
   }
   files: {
     list: (rel: string) => Promise<FileEntry[]>
@@ -2611,22 +1046,6 @@ export type GtApi = {
 
 // ---- transcript search (src/main/session-search.ts) -------------------------
 
-export type TranscriptHit = {
-  line: number
-  role: 'user' | 'assistant' | 'tool' | 'other'
-  timestamp?: number
-  preview: string
-}
-
-export type SessionSearchResult = {
-  sessionId: string
-  engine: string
-  cwd: string
-  mtime: number
-  firstUserText?: string
-  hits: TranscriptHit[]
-}
-
 export type TranscriptSearchResponse = {
   results: SessionSearchResult[]
   totalHits: number
@@ -2635,7 +1054,6 @@ export type TranscriptSearchResponse = {
 }
 
 export type FileEntry = { name: string; path: string; dir: boolean; ignored?: boolean }
-export type SearchHit = { file: string; line: number; text: string }
 export type FilesSearchOptions = {
   regex?: boolean
   caseSensitive?: boolean
@@ -2645,15 +1063,6 @@ export type FilesSearchOptions = {
   /** Comma-separated glob patterns to exclude, e.g. "**\/*.test.ts, dist/**" */
   exclude?: string
 }
-export type GitStatus = {
-  ok: boolean
-  branch: string
-  ahead: number
-  behind: number
-  dirty: number
-  upstream: boolean
-}
-
 /** A full-screen tab. Auto-discovered from src/renderer/src/tabs/<id>/index.tsx. */
 export type Tab = {
   id: string

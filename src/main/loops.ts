@@ -31,46 +31,12 @@ import { decideOutcome } from './loop-decide'
 import { localDay } from './local-day'
 import { readJsonState, updateJsonState } from './atomic-write'
 import { configPath, terminalConfigDir } from './config-dir'
+import type { LoopRecord, LoopState } from '../shared/types/runs'
+export type { LoopRecord, LoopState } from '../shared/types/runs'
+import type { LoopEngine, LoopMode, LoopRole } from '../shared/types/runs'
+export type { LoopEngine, LoopMode, LoopPhase, LoopRole, LoopStatus } from '../shared/types/runs'
 
 const LOOPS_FILE = (): string => configPath('loops.json')
-
-export type LoopEngine = 'claude' | 'codex' | 'cursor' | 'hermes'
-export type LoopRole = 'planner' | 'generator' | 'evaluator'
-export type LoopPhase = 'negotiate' | 'generate' | 'evaluate' | 'decide' | 'done' | 'stopped'
-export type LoopStatus = 'idle' | 'running' | 'blocked' | 'done' | 'stopped'
-// Three execution modes over the SAME loop state (contract.md, events.jsonl, …):
-//   headless — TerMinal auto-steps one-shot role turns (stepLoop + watcher).
-//   paired   — two live interactive sessions (a driver + a worker) drive the
-//              roles themselves; the auto-stepper stays out of their way.
-//   single   — ONE live generator session (planner+generator hat) plus an
-//              ephemeral evaluator spawned by TerMinal after each of its turns.
-//              The live session keeps warm context; the grader is always a fresh
-//              context (the one non-negotiable: code is never graded by its
-//              author). Driven by loop-listener's singleTick. Termination is
-//              guaranteed by the maxIterations cap in decide() — see
-//              singleDecide below.
-export type LoopMode = 'headless' | 'paired' | 'single'
-
-export type LoopRecord = {
-  id: string
-  repo: string // basename for display
-  repoRoot: string
-  goal: string
-  mode: LoopMode
-  engine: LoopEngine
-  model?: string
-  worktree: string
-  branch: string
-  status: LoopStatus
-  phase: LoopPhase
-  nextRole: LoopRole
-  iteration: number
-  activeRunId?: string
-  activeRole?: LoopRole
-  maxIterations: number
-  createdAt: number
-  updatedAt: number
-}
 
 function ensure(): void {
   if (!existsSync(terminalConfigDir())) mkdirSync(terminalConfigDir(), { recursive: true })
@@ -157,17 +123,6 @@ function initState(rec: LoopRecord): void {
 function logLine(rec: LoopRecord, line: string): void {
   const date = localDay()
   appendFileSync(join(loopDir(rec), 'log.md'), `## [${date}] ${line}\n`)
-}
-
-/** Bounded view of loop state for the cockpit widget. */
-export type LoopState = {
-  phase: LoopPhase
-  iteration: number
-  bottleneck: string
-  lastScore: string
-  next: string
-  assertions: { total: number; pass: number; fail: number; todo: number }
-  tail: string[] // last few log lines
 }
 
 export function readLoopState(id: string): LoopState | { error: string } {
@@ -358,7 +313,13 @@ const ROLE_DIRECTIVE: Record<LoopRole, string> = {
     'Adversarially grade: run the app, mark each touched assertion pass/fail with evidence, and (for taste work) write scores/NNNN.md. Prove it is broken.',
 }
 
-function buildTurnCommand(
+/**
+ * The binary + argv for one headless role turn. Exported for the test that
+ * pins one branch per engine the loop picker offers: the tail of this function
+ * is a codex fallthrough, so a missing branch runs codex under another
+ * engine's name rather than failing.
+ */
+export function buildTurnCommand(
   rec: LoopRecord,
   role: LoopRole,
   prompt: string,
@@ -392,6 +353,17 @@ function buildTurnCommand(
         ...(model ? ['--model', model] : []),
         prompt,
       ],
+    }
+  if (rec.engine === 'pi')
+    return {
+      // Pi has no workspace flag — it runs on the process cwd, which
+      // spawnRoleTurn sets to `dir`. Plain text (NOT the `--mode json` the
+      // agent runtime uses) because a role turn is read back by looking for a
+      // literal `LOOP-DONE:` line in the log. `--no-session` keeps one-shot
+      // role turns out of the interactive store the Sessions tab lists; `-a`
+      // trusts project-local extensions, per the registry's baseArgs.
+      bin: enginePath('pi'),
+      args: ['-p', '--no-session', '-a', ...(model ? ['--model', model] : []), prompt],
     }
   if (rec.engine === 'hermes')
     return {

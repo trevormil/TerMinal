@@ -38,6 +38,10 @@ describe('needsConfirmation', () => {
 // be proven against bin/terminal-monitor itself, not a mirror of it.
 const DAEMON = resolve(import.meta.dir, '../../bin/terminal-monitor')
 
+// minConsecutiveFailures is pinned to 1 here on purpose: this file is about the
+// WITHIN-tick confirm re-probe, and the default threshold of 2 would otherwise
+// mask it. The across-tick threshold has its own suite
+// (monitor-threshold.test.ts).
 function sandbox(target: string): { cfg: string; stateFile: string } {
   const cfg = mkdtempSync(join(tmpdir(), 'tm-monitor-confirm-'))
   mkdirSync(join(cfg, 'monitor-state'), { recursive: true })
@@ -51,6 +55,7 @@ function sandbox(target: string): { cfg: string; stateFile: string } {
         target,
         intervalSec: 60,
         enabled: true,
+        minConsecutiveFailures: 1,
         notify: { onFailure: 'urgent', onRecovery: true, renotifyAfterSec: 0 },
         config: { confirmDelayMs: 0 },
       },

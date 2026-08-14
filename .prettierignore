@@ -11,6 +11,9 @@ templates
 .TerMinal
 # extensionless TS bin scripts — prettier can't infer the parser
 bin
+# generated verbatim from src/main/repo-state-inline.ts; every copy of the block
+# must stay byte-identical, so no formatter may touch it
+src/runner/repo-state-block.js
 # prose docs are hand-maintained (anchored headings, tables) — not prettier-owned
 *.md
 **/*.md

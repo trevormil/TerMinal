@@ -21,7 +21,7 @@ single one-off request, use `/automation-inbox` instead.
 3. Enqueue requests with `terminal-cli inbox enqueue`.
 4. Use stable `--source-id`, event `id`, and `dedupeKey` values.
 5. Keep arbitrary shell out of inbox events; trigger an existing agent/script or
-   file HITL for approval.
+   file an Inbox item for approval.
 6. Document how to run, stop, and inspect the source.
 
 ## Command Shape

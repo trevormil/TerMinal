@@ -4,6 +4,8 @@ import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { enginePath } from './settings'
 import { detectApps } from './apps'
+import type { EnvDetect } from '../shared/types/app'
+export type { EnvDetect } from '../shared/types/app'
 
 // Finder/dock-launched macOS apps inherit only a minimal PATH
 // (/usr/bin:/bin:/usr/sbin:/sbin), so Homebrew-installed CLIs (glab, gh, codex,
@@ -80,17 +82,6 @@ function authProbe(cli: string): Promise<AuthInfo> {
       resolve({ authed: !!m || !err, host: m?.[1] || '' })
     })
   })
-}
-
-export type EnvDetect = {
-  codex: { found: boolean; path: string }
-  claude: { found: boolean; path: string }
-  cursor: { found: boolean; path: string }
-  hermes: { found: boolean; path: string }
-  gh: { found: boolean; path: string; authed: boolean; authHost: string }
-  glab: { found: boolean; path: string; authed: boolean; authHost: string }
-  tgScripts: boolean
-  apps: { editors: string[]; browsers: string[] }
 }
 
 /** Probe which engines/forge CLIs are installed + (for forges) authenticated. */

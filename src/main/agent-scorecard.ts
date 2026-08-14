@@ -3,6 +3,10 @@
 // collects nothing new and writes nothing. "Which of my agents actually
 // succeeds" is answered entirely from history the app already keeps.
 
+import type { AgentScorecard } from '../shared/types/agents'
+export type { AgentScorecard } from '../shared/types/agents'
+import type { FailingCheck } from '../shared/types/agents'
+export type { FailingCheck } from '../shared/types/agents'
 /** The slice of a run this module needs. Structurally satisfied by UnifiedRun
  *  (cron-runs.ts) and AgentRun (agents.ts) alike. */
 export type ScorecardRun = {
@@ -21,33 +25,6 @@ export type ScorecardRun = {
 
 /** How many of the most recent runs a scorecard considers. */
 export const SCORECARD_WINDOW = 30
-
-export type FailingCheck = { id: string; title: string; count: number }
-
-export type AgentScorecard = {
-  agentId: string
-  agentTitle: string
-  /** Runs inside the window. */
-  total: number
-  done: number
-  /** failed + canceled + interrupted — every settled run that wasn't a success. */
-  failed: number
-  running: number
-  /** Percent of SETTLED runs that succeeded. null when nothing has settled —
-   *  a brand-new agent is unknown, not 0% reliable. */
-  successRate: number | null
-  avgCostUsd?: number
-  totalCostUsd?: number
-  avgDurationMs?: number
-  evaluated: number
-  evalPass: number
-  evalFail: number
-  evalIncomplete: number
-  /** Deterministic checks that failed, most frequent first. */
-  failingChecks: FailingCheck[]
-  lastRunAt?: number
-  lastStatus?: string
-}
 
 const UNSUCCESSFUL = new Set(['failed', 'canceled', 'interrupted', 'error'])
 
@@ -114,18 +91,4 @@ export function scoreAgentRuns(runs: ScorecardRun[], window = SCORECARD_WINDOW):
     lastRunAt: newest?.startedAt,
     lastStatus: newest?.status,
   }
-}
-
-/** One scorecard per agent, busiest first. */
-export function scoreAllAgents(runs: ScorecardRun[], window = SCORECARD_WINDOW): AgentScorecard[] {
-  const byAgent = new Map<string, ScorecardRun[]>()
-  for (const r of runs) {
-    if (!r.agentId) continue
-    const list = byAgent.get(r.agentId)
-    if (list) list.push(r)
-    else byAgent.set(r.agentId, [r])
-  }
-  return [...byAgent.entries()]
-    .map(([agentId, list]) => ({ ...scoreAgentRuns(list, window), agentId }))
-    .sort((a, b) => b.total - a.total || a.agentId.localeCompare(b.agentId))
 }

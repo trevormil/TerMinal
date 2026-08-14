@@ -1,12 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { configPath } from './config-dir'
-
-export type PresetKind = 'agents' | 'snippets'
-export type PresetPrefs = {
-  version: number
-  hidden: Record<PresetKind, string[]>
-}
+import type { PresetKind, PresetPrefs } from '../shared/types/app'
+export type { PresetKind, PresetPrefs } from '../shared/types/app'
 
 const FILE = (): string => configPath('presets.json')
 const VERSION = 1

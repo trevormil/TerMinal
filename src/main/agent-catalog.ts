@@ -32,7 +32,7 @@ export const DEFAULT_AGENTS: Agent[] = [
     opensPr: false,
     inPlace: true,
     prompt:
-      'Act as the /factory orchestrator for THIS repository, following the project\'s /factory skill exactly. This is a no-handoff loop: continuously turn the backlog into REVIEWED, merge-ready PRs by reconciling with /merge-sync, running /stacked-mr passes (build a stack TDD-first → batch-review to the bar → handle verdicts), compacting/migrating context at phase boundaries, then continuing with any runnable independent lane. NEVER stop with "tell me when you\'re ready" language. Stop only if the user explicitly stops you, the goal is actually complete, or every remaining lane is blocked on human-only action. NEVER merge to main/master — the human merges. Park any TRUE human-need (decision, approval, creds, hard blocker) to the global HITL inbox with ~/.config/TerMinal/plugin/bin/hitl, then continue other work. Skip tickets blocked by depends_on (any dependency whose status is not closed). Emit an activity event at each checkpoint. Do not invent scope. End only when the factory loop has no runnable work left.',
+      'Act as the /factory orchestrator for THIS repository, following the project\'s /factory skill exactly. This is a no-handoff loop: continuously turn the backlog into REVIEWED, merge-ready PRs by reconciling with /merge-sync, running /stacked-mr passes (build a stack TDD-first → batch-review to the bar → handle verdicts), compacting/migrating context at phase boundaries, then continuing with any runnable independent lane. NEVER stop with "tell me when you\'re ready" language. Stop only if the user explicitly stops you, the goal is actually complete, or every remaining lane is blocked on human-only action. NEVER merge to main/master — the human merges. Park any TRUE human-need (decision, approval, creds, hard blocker) to the global Inbox with ~/.config/TerMinal/plugin/bin/inbox-item, then continue other work. Skip tickets blocked by depends_on (any dependency whose status is not closed). Emit an activity event at each checkpoint. Do not invent scope. End only when the factory loop has no runnable work left.',
   },
   {
     id: '1000x-ai-engineer',
@@ -210,7 +210,7 @@ export const DEFAULT_AGENTS: Agent[] = [
     prompt:
       'Act as a dead-code cleanup agent for this repository. Find unused exports, unreachable branches, orphaned files, and stale feature flags. Remove only what is provably unused (verify with a references/usage search and the type checker/build), keeping changes surgical and reversible. Run the test suite and build to confirm nothing breaks, then open a PR. For anything you suspect is dead but cannot prove safely, file a backlog ticket instead of deleting. End with a summary of what you removed and the PR URL.',
   },
-  // ━━ Generic daily-loop presets (modeled on Trevor's old BitBadges daily) ━━
+  // ━━ Generic daily-loop presets ━━
   // Each preset is repo-agnostic and ticket/PR-driven. Skipping presets that
   // overlap existing defaults (auto-docs → docs, auto-test → test-coverage,
   // security-audit → security-sweep, perf-infra → perf-pass, dependabot →

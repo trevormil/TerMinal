@@ -18,6 +18,8 @@ import { spawnBgTask } from './bg-tasks'
 import { resolvedProjectsDir, resolvedWorktreesDir } from './settings'
 import { isRepoRootWithin } from './repo-allowlist'
 import { terminalConfigDir } from './config-dir'
+import type { ListenerDir, ListenerStatus } from '../shared/types/app'
+export type { ListenerDir, ListenerStatus } from '../shared/types/app'
 
 function assertRepoRootAllowed(repoRoot: string): void {
   if (!isRepoRootWithin(repoRoot, [resolvedProjectsDir(), resolvedWorktreesDir()]))
@@ -28,9 +30,14 @@ const CFG = (): string => terminalConfigDir()
 const ROOT = (): string => join(CFG(), 'automation-inbox')
 const SETTINGS = (): string => join(ROOT(), 'settings.json')
 const PROCESSED = (): string => join(ROOT(), 'processed.json')
-const DIRS = ['new', 'processing', 'done', 'failed', 'dead-letter'] as const
+const DIRS = [
+  'new',
+  'processing',
+  'done',
+  'failed',
+  'dead-letter',
+] as const satisfies readonly ListenerDir[]
 
-export type ListenerDir = (typeof DIRS)[number]
 export type ListenerAction =
   | { kind: 'activity'; activityKind?: ActivityKind; title?: string; detail?: string }
   | { kind: 'file-ticket'; title?: string; body?: string; type?: string; priority?: string }
@@ -78,50 +85,6 @@ export type ListenerProcessedFile = ListenerEnvelope & {
   }
 }
 
-export type ListenerStatus = {
-  enabled: boolean
-  inboxDir: string
-  dirs: Record<ListenerDir, string>
-  counts: Record<ListenerDir, number>
-  listeners: {
-    id: string
-    source: string
-    type: string
-    name?: string
-    total: number
-    new: number
-    processing: number
-    done: number
-    failed: number
-    deadLetter: number
-    lastAt: number
-    lastStatus: ListenerDir
-    lastTitle?: string
-    lastResult?: string
-    lastRunId?: string
-    lastRunSource?: 'agent' | 'bg'
-    repoRoot?: string
-  }[]
-  recent: {
-    file: string
-    dir: ListenerDir
-    id?: string
-    listenerId?: string
-    listenerName?: string
-    source?: string
-    type?: string
-    title?: string
-    repo?: string
-    repoRoot?: string
-    processedAt?: number
-    error?: string
-    action?: string
-    result?: string
-    runId?: string
-    runSource?: 'agent' | 'bg'
-  }[]
-}
-
 const shq = (s: string) => `'${s.replace(/'/g, "'\\''")}'`
 
 function ensure(): void {
@@ -148,17 +111,6 @@ export function readListenerSettings(): ListenerSettings {
   // Opt-in by default: the inbox auto-runs full-access agents on any dropped
   // file, so it must be enabled deliberately (never on for a fresh install).
   return { enabled: raw.enabled === true }
-}
-
-export function setListenerEnabled(enabled: boolean): ListenerSettings {
-  const s = { ...readListenerSettings(), enabled }
-  writeJson(SETTINGS(), s)
-  emitActivity({
-    kind: 'check',
-    title: `Listener inbox ${enabled ? 'enabled' : 'paused'}`,
-    detail: ROOT(),
-  })
-  return s
 }
 
 function processedKeys(): string[] {

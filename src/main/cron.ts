@@ -9,6 +9,8 @@
 // predictable cron. `*/N` in a cron field is still fine; it expands to concrete
 // calendar minutes (0, N, 2N, …), which fire at the same wall-clock time daily.
 
+import type { ScheduleSpec } from '../shared/types/schedules'
+export type { ScheduleSpec } from '../shared/types/schedules'
 export type CalendarDict = {
   Minute?: number
   Hour?: number
@@ -18,12 +20,6 @@ export type CalendarDict = {
 }
 // launchd trigger — always a set of StartCalendarInterval dicts.
 export type LaunchdTrigger = { kind: 'calendar'; entries: CalendarDict[] }
-
-// Stored timing spec. `calendar` → one or more StartCalendarInterval dicts;
-// `cron` → a raw 5-field expression parsed to the same.
-export type ScheduleSpec =
-  | { kind: 'calendar'; minute: number; hour: number; weekdays?: number[] }
-  | { kind: 'cron'; expr: string }
 
 const WEEKDAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const MAX_CALENDAR_ENTRIES = 500 // guard against expansion blow-ups

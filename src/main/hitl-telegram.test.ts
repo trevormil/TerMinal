@@ -23,7 +23,7 @@ describe('HITL Telegram payloads', () => {
     expect(hitlActivityKind('agent')).toBe('blocked')
     expect(hitlNotifyKind('agent')).toBe('blocked')
     expect(hitlTelegramText({ source: 'agent', title: 'Needs approval' })).toBe(
-      '⛔ HITL · Needs approval',
+      '⛔ Inbox · Needs approval',
     )
   })
 

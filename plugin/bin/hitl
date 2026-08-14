@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# hitl — raise a TRUE human-in-the-loop item to the GLOBAL TerMinal Inbox.
+# hitl — file an item to the GLOBAL TerMinal Inbox (typically a TRUE
+# human-in-the-loop blocker). `inbox-item` is the documented spelling of this
+# same command; `hitl` is its pre-rename name and stays supported forever.
 #
 #   hitl "<title>" ["<action needed>"] ["<detail>"]
 #
@@ -59,7 +61,7 @@ try:
     with open(act_file, "a") as f:
         f.write(json.dumps({
             "id": str(uuid.uuid4()), "ts": int(time.time() * 1000), "kind": "blocked",
-            "title": "HITL · " + title, "detail": action or detail, "repo": repo, "repoRoot": root,
+            "title": "Inbox · " + title, "detail": action or detail, "repo": repo, "repoRoot": root,
             "suppressTelegram": True,
         }) + "\n")
 except Exception:
@@ -73,7 +75,7 @@ try:
     if s.get("botToken") and s.get("chatId"):
         body = json.dumps({
             "chat_id": s["chatId"],
-            "text": "⛔ HITL · " + title + ((" — " + action) if action else ""),
+            "text": "⛔ Inbox · " + title + ((" — " + action) if action else ""),
             "reply_markup": {
                 "inline_keyboard": [[
                     {"text": "✅ Resolve", "callback_data": "hitl:resolve:" + item["id"]}

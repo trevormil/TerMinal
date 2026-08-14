@@ -9,6 +9,8 @@ import {
   tokenMatches,
   type BridgeIdentity,
 } from './identity'
+import type { BridgeStatus } from '../../shared/types/app'
+export type { BridgeStatus } from '../../shared/types/app'
 
 // The mobile bridge: a small authenticated JSON API over the sessions that have
 // REGISTERED themselves for remote control (see src/main/remote-sessions.ts).
@@ -273,12 +275,6 @@ export type SpawnInput = {
   effort?: string
   /** What the new agent should do first. Optional — omit for a bare session. */
   task?: string
-}
-
-export type BridgeStatus = {
-  listening: boolean
-  port: number
-  error?: string
 }
 
 const MAX_BODY = 12 * 1024 * 1024 // room for a screenshot or two

@@ -22,12 +22,12 @@ record stuck at `status: running` for longer than 2 hours and finalizes it:
 - marks the record `status: failed` with `error: "stale: runner exited without
   finalizing the run (swept by watchdog)"`
 - updates the schedule's `lastStatus`
-- files a global HITL item with a link to the run id, branch, and worktree
+- files a global Inbox item with a link to the run id, branch, and worktree
 - files a backlog ticket on the affected repo (best-effort — only if the repo
   has a `$TERMINAL_BACKLOG_DIR/` folder, or a legacy `backlog/` folder) with `type: bug · priority: high`
 
 **2. Cadence check** (one-shot mode only). For each enabled `interval`
-schedule whose `lastRun` is more than 2× its cadence ago, file a HITL: the
+schedule whose `lastRun` is more than 2× its cadence ago, file an Inbox item: the
 LaunchAgent should have fired by now and didn't. Calendar/cron-spec schedules
 are skipped (a "missed firing" doesn't generalize cleanly outside intervals).
 
@@ -58,5 +58,5 @@ The watchdog has no per-run worktree, no PR, no `reports/watchdog/<sha>.md`
 artifact — it's runtime plumbing, not a scheduled work item. If you want a
 visible artifact, schedule the `terminal-cron watchdog` one-shot via the
 Schedules tab and it'll emit an `activity` event each tick
-(`Watchdog · swept N stale · M overdue`); HITL items provide the only "loud"
+(`Watchdog · swept N stale · M overdue`); Inbox items provide the only "loud"
 output paths.

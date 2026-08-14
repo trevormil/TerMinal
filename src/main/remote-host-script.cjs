@@ -58,6 +58,15 @@ const CFG =
    script uses every helper, and the copies must stay byte-identical. */
 const SIDECAR_AREAS = ['backlog', 'sessions', 'reviews', 'checks', 'reports']
 const repoStateKeyCache = new Map()
+// The legacy in-repo READ has an end date — see src/shared/migration-sunset.ts.
+// The CLI has to cut over on exactly the same day as the app: if one side kept
+// reading the repo a day longer, it would keep resurrecting (and appending
+// beside) state the other had already stopped seeing. The date is pinned
+// against the app's constant by src/main/repo-state-parity.test.ts.
+const MIGRATION_SUNSET_MS = Date.parse('2026-10-13T00:00:00Z')
+function migrationWindowOpen() {
+  return Date.now() < MIGRATION_SUNSET_MS
+}
 function repoStateDir() {
   return process.env.TERMINAL_REPO_STATE_DIR?.trim() || join(CFG, 'repos')
 }
@@ -123,14 +132,16 @@ function sidecarAreaPath(root, area) {
 }
 // Reads merge sidecar + in-repo so state already committed stays visible;
 // writes always go to the sidecar so a shared repo stops accreting state.
+// The in-repo half is the migration's compatibility layer and ends with it.
 function areaPathsFor(root, area, candidates) {
   const out = []
   const sidecar = sidecarAreaPath(root, area)
   if (sidecar && existsSync(sidecar)) out.push(sidecar)
-  for (const rel of candidates) {
-    const p = join(root, rel)
-    if (existsSync(p)) out.push(p)
-  }
+  if (migrationWindowOpen())
+    for (const rel of candidates) {
+      const p = join(root, rel)
+      if (existsSync(p)) out.push(p)
+    }
   return out
 }
 function areaWritePath(root, area, candidates, isV2) {
@@ -174,15 +185,16 @@ function statePathForRead(root, rel) {
   const sidecar = statePathForWrite(root, rel)
   if (sidecar && existsSync(sidecar)) return sidecar
   const legacy = join(root, '.TerMinal', rel)
-  if (existsSync(legacy)) return legacy
+  if (migrationWindowOpen() && existsSync(legacy)) return legacy
   return sidecar || legacy
 }
 // STICKY variant for live runtime dirs (loops/<id>): legacy wins while it
 // exists, so an in-flight legacy loop never flips to a half-written sidecar
-// copy mid-run. Mirrors repoStatePathSticky in src/main/repo-state.ts.
+// copy mid-run. Mirrors repoStatePathSticky in src/main/repo-state.ts —
+// including degrading to the write path once the migration window closes.
 function statePathSticky(root, rel) {
   const legacy = join(root, '.TerMinal', rel)
-  if (existsSync(legacy)) return legacy
+  if (migrationWindowOpen() && existsSync(legacy)) return legacy
   return statePathForWrite(root, rel) || legacy
 }
 // Env handed to a spawned agent/script: the same TERMINAL_<AREA>_DIR values
@@ -1614,6 +1626,57 @@ function scheduleToggle(id, enabled) {
   })
   return found
 }
+// --- host-side kill-switch / circuit-breaker ---------------------------------
+// The host's OWN terminal-cron trips this after N consecutive failures, and the
+// Mac UI has to read the HOST's copy (not its own) or a dark schedule renders
+// healthy. Shape mirrors src/main/agents-disabled.ts: scheduleIds is the source
+// of truth (terminal-cron's plain reader depends on that key), reasons is a
+// side-car so a dark agent can explain itself.
+function disabledFileHost() {
+  return path.join(cfg(), 'agents', 'disabled.json')
+}
+function disabledNormalize(a) {
+  const rawIds = Array.isArray(a) ? a : a && Array.isArray(a.scheduleIds) ? a.scheduleIds : []
+  const ids = rawIds.filter((x) => typeof x === 'string')
+  const rawReasons =
+    a && !Array.isArray(a) && a.reasons && typeof a.reasons === 'object' ? a.reasons : {}
+  const reasons = {}
+  for (const id of ids) {
+    const r = rawReasons[id]
+    if (r && typeof r === 'object')
+      reasons[id] = {
+        reason: typeof r.reason === 'string' && r.reason.trim() ? r.reason.trim() : undefined,
+        at: typeof r.at === 'number' ? r.at : 0,
+      }
+  }
+  return { scheduleIds: ids, reasons }
+}
+function disabledRead() {
+  return disabledNormalize(readJson(disabledFileHost(), null))
+}
+// Read-modify-write under the SAME advisory lock terminal-cron takes on this
+// file: both sides toggle the kill-switch, and an unlocked write from a stale
+// snapshot silently re-enables an agent the other side just disabled.
+function disabledSet(id, disabled, reason) {
+  const f = disabledFileHost()
+  withFileLockShared(f, () => {
+    const s = disabledNormalize(readJson(f, null))
+    if (disabled) {
+      if (!s.scheduleIds.includes(id)) s.scheduleIds.push(id)
+      // Preserve the ORIGINAL reason — why it broke must survive a later toggle.
+      if (!s.reasons[id])
+        s.reasons[id] = {
+          reason: reason && reason.trim() ? reason.trim() : undefined,
+          at: Date.now(),
+        }
+    } else {
+      s.scheduleIds = s.scheduleIds.filter((x) => x !== id)
+      delete s.reasons[id]
+    }
+    writeJsonAtomicShared(f, s)
+  })
+  return true
+}
 function out(v) {
   process.stdout.write(JSON.stringify(v))
 }
@@ -1842,6 +1905,9 @@ try {
   else if (op === 'schedules.save') out(schedulesSave(input.schedule))
   else if (op === 'schedules.remove') out(scheduleRemove(input.id))
   else if (op === 'schedules.toggle') out(scheduleToggle(input.id, input.enabled))
+  else if (op === 'schedules.disabled') out(disabledRead())
+  else if (op === 'schedules.setDisabled')
+    out(disabledSet(input.id, !!input.disabled, input.reason))
   else if (op === 'schedules.runNow') {
     const s = schedules().find((x) => x.id === input.id)
     if (!s) out({ error: 'schedule not found' })

@@ -8,7 +8,7 @@ sessions with a software-factory layer on top: tabs for tickets, MRs, scheduled
 agents, runs, HITL, docs, and per-session plugin widgets. See
 [`README.md`](./README.md) and [`docs/architecture.md`](./docs/architecture.md).
 
-**Status:** Shipped, actively iterating. Daily-driver tool — Trevor uses it as
+**Status:** Shipped, actively iterating. It is the maintainer's daily driver —
 the primary terminal across every other local project.
 
 ## TerMinal follows the full PR + human-merge flow (global §8)
@@ -68,12 +68,23 @@ bunx tsc --noEmit         # typecheck
   with `appliesTo` + `Component` + optional `badge`.
 - `src/renderer/src/lib/nav.ts` — cross-tab navigation bus
   (`navigateTo(tabId, payload?)`). Used for HITL → Runs, Activity → Tickets, etc.
-- `bin/terminal-cron` — the headless runner launchd fires. Self-contained Bun
-  script; reads `~/.config/TerMinal/schedules.json`.
-- `bin/terminal-cli` — helper script exposed inside agent `.sh` bodies for
+- The standalone processes are typed modules under `src/`, each BUILT to a
+  single self-contained bundle in `bin/` by `bun run build:bin`
+  (`scripts/build-bin.ts` holds the table), which `bun run build`/`dist` do for
+  you: `src/runner/` → `bin/terminal-cron`, `src/monitor/` →
+  `bin/terminal-monitor`, `src/cli/` → `bin/terminal-cli`, `src/mcp/` →
+  `bin/terminal-mcp-server`. Edit the TS, never the artifact; the artifacts stay
+  committed because host-provision, the agent image and the app all copy them out
+  of a checkout, and `src/bin-build-sync.test.ts` fails if any is stale.
+  Bundling is also what lets them IMPORT the shared modules
+  (`src/runner/state-io.ts` for the crash-safe lock,
+  `src/runner/repo-state.ts` for sidecar resolution, `src/shared/monitor-*.ts`
+  for the monitor logic) instead of carrying hand-copies — the bundler inlines
+  those at build time, so the artifact still resolves nothing at runtime.
+- `bin/terminal-cli` — helper exposed inside agent `.sh` bodies for
   ticket/hitl/activity/notify/state subcommands plus MCP passthroughs such as
   `terminal-cli mcp list_agents ...` and
-  `terminal-cli mcp request_agent_artifact ...`.
+  `terminal-cli mcp request_agent_artifact ...`. Source: `src/cli/`.
 - `~/.config/TerMinal/` — runtime state (schedules, cron-runs, agent-state,
   hitl, settings). Use Settings → Open TerMinal config dir to inspect.
 
@@ -114,9 +125,9 @@ CLAUDE.md §14). This is also where the persona/lanes machinery
 
 | You're touching | Read |
 |---|---|
-| A new IPC | `src/main/index.ts` (handler) + `src/preload/index.ts` + `src/renderer/src/lib/types.ts` (Gt API surface) — all three must agree |
+| A new IPC | `src/main/ipc/<domain>.ts` (handler — index.ts registers zero of its own; it only calls the registrars) + `src/preload/index.ts` + `src/renderer/src/lib/types.ts` (Gt API surface) — all three must agree. Register via the typed `handle` from `src/main/typed-ipc.ts`; raw `ipcMain.handle` is a closed list enforced by `src/main/ipc-channels.test.ts` |
 | Agent runtime | `src/main/agents.ts` is the heart; `runSpec` is the spawn entry |
-| Schedules | `src/main/schedules.ts` + `bin/terminal-cron` — keep state shapes in sync |
+| Schedules | `src/main/schedules.ts` + `src/runner/` (built to `bin/terminal-cron`) — keep state shapes in sync, and rebuild the artifact |
 | Per-(repo, agent) state | `plugin/agents/scripts.md` — the canonical convention doc, shipped with the plugin like every other contract |
 | Where tickets/reviews/sessions live | `src/main/repo-state.ts` (sidecar resolution) + [ADR-0020](./docs/decisions/0020-workflow-state-in-a-per-project-sidecar.md). State is NOT in the repo. **Write** via `$TERMINAL_<AREA>_DIR` / `tm-state-dir <area>` — unconditionally, with no "legacy repo" branch. **Read** via `tm-state-dirs <area>`, which merges whatever has not migrated yet. Never a literal path in either spelling — `src/state-path-hygiene.test.ts` fails the build on those, and this row names none of them precisely because it would fail on itself |
 | An agent's contract (`.agents/<kind>.md`) | `plugin/bin/tm-agent-spec` + [ADR-0021](./docs/decisions/0021-agent-contracts-ship-with-the-plugin.md). Defaults ship in `plugin/agents/`; a repo carries one only when it overrides. Resolve with `tm-agent-spec <kind>` — never a hardcoded path, and never a second resolver in TS |

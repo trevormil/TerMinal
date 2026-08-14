@@ -13,11 +13,14 @@ import type { CiInfo } from './forge'
 import type { WorkspaceSearchKind, WorkspaceSearchResponse } from './workspace-search'
 import type { Agent, AgentRun } from './agents'
 import type { Schedule } from './schedules'
+import type { ProjectsDirValidation } from '../shared/types/settings'
 import type { HitlItem } from './hitl'
 import type { CronRun, UnifiedRun } from './cron-runs'
 import type { ProjectSession } from './sessions'
 import type { NotesScope } from './notes'
 import type { Engine } from './agents'
+import type { RemoteDirList } from '../shared/types/sessions'
+export type { RemoteDirEntry, RemoteDirList } from '../shared/types/sessions'
 
 export type RemoteSessionRef = {
   hostId: string
@@ -43,23 +46,14 @@ export type RemoteRunStartInput = {
   scheduleId?: string
   contextPreamble?: boolean
 }
-export type RemoteDirEntry = { name: string; path: string; dir: true }
-export type RemoteDirList = {
-  cwd: string
-  parent: string
-  entries: RemoteDirEntry[]
-  error?: string
-}
 export type RemoteScaffoldResult = { ok: boolean; path?: string; error?: string }
-export type RemoteProjectsDirValidation =
-  | { ok: true; dir: string }
-  | {
-      ok: false
-      reason: 'is-repo' | 'error'
-      dir: string
-      suggestedParent?: string
-      message: string
-    }
+/**
+ * The remote host script answers the same question `settings:validate-projects-dir`
+ * answers locally, so it answers with the same type. It was forked once and the
+ * two drifted: this half grew a bare `'error'` reason and dropped `repoCount`,
+ * and the renderer — which reads the OTHER half — never heard about either.
+ */
+export type RemoteProjectsDirValidation = ProjectsDirValidation
 export type RemoteBootstrapStatus = {
   state: 'full' | 'partial' | 'none'
   bootstrapped: boolean
@@ -244,6 +238,16 @@ export const remoteSchedules = {
     remoteJson<CronRun[]>(remote, { op: 'schedules.runs', id }),
   runLog: (remote: RemoteSessionRef, runId: string) =>
     remoteJson<string>(remote, { op: 'schedules.runLog', runId }),
+  // The HOST's kill-switch / circuit-breaker file. The host's own runner trips it
+  // after N consecutive failures, so the Mac has to read the host's copy to know
+  // a schedule went dark (src/main/host-disabled.ts).
+  disabled: (remote: RemoteSessionRef) =>
+    remoteJson<{ scheduleIds: string[]; reasons: Record<string, { reason?: string; at: number }> }>(
+      remote,
+      { op: 'schedules.disabled' },
+    ),
+  setDisabled: (remote: RemoteSessionRef, id: string, disabled: boolean, reason?: string) =>
+    remoteJson<boolean>(remote, { op: 'schedules.setDisabled', id, disabled, reason }),
 }
 export const remoteHitl = {
   list: (remote: RemoteSessionRef) => remoteJson<HitlItem[]>(remote, { op: 'hitl.list' }),

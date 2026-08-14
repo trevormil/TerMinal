@@ -151,20 +151,20 @@ Body (prose goes **after** the closing `---`):
 <Bugs only.>
 ```
 
-### 4. If it needs a human, raise a HITL item separately
+### 4. If it needs a human, raise an Inbox item separately
 
-Tickets track work; HITL is for human-only blockers (decisions, approvals,
+Tickets track work; the Inbox is for human-only blockers (decisions, approvals,
 creds, OAuth/browser flows). Raise to the global inbox (CLAUDE.md [4.2]):
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/bin/hitl "<title>" "<exact action + any url/options>"
 ```
 
-Lead with the action; include the url. The HITL helper is append-only from the
+Lead with the action; include the url. The Inbox helper is append-only from the
 agent side: it files the Inbox item, emits activity, and pings Telegram. Do not
-edit `~/.config/TerMinal/hitl.json` directly, and do not resolve your own HITL
+edit `~/.config/TerMinal/hitl.json` directly, and do not resolve your own Inbox
 item. If waiting on the human, query the Inbox/list status or periodically
-re-check the original blocker; continue when it no longer blocks. Reserve HITL
+re-check the original blocker; continue when it no longer blocks. Reserve Inbox items
 for true human-needs — not review feedback or test fails inside a workflow
 (those iterate).
 

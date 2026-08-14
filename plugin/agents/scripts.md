@@ -29,8 +29,8 @@ inspectable — you can `cat` an agent definition and read what it does.
 .agents/<id>.json                            # per-repo metadata (sidecar)
 ```
 
-The default script agents (health, drift, coverage, ticket-ideas,
-ci-watchdog) ship with the tm plugin (`plugin/scripts/`) and are seeded once
+The default script agents (health, drift, coverage, ticket-ideas)
+ship with the tm plugin (`plugin/scripts/`) and are seeded once
 into the global dir by the plugin install — repos are not seeded with copies.
 A repo carries `.agents/<id>.sh` only for a genuinely repo-specific agent or
 a deliberate override of a global one (per-repo wins on id collision).
@@ -85,7 +85,7 @@ if bunx tsc --noEmit -p tsconfig.json \
 fi
 
 # Failed precheck — escalate
-claude -p "The health check failed. Diagnose and either apply a safe fix and open a PR, or file a HITL with the failure context." \
+claude -p "The health check failed. Diagnose and either apply a safe fix and open a PR, or file an Inbox item with the failure context." \
   --permission-mode auto \
   --model "${TERMINAL_MODEL:-haiku}"
 ```
@@ -116,17 +116,17 @@ PATH is augmented to include the TerMinal CLI helpers:
 
 ```
 ~/.config/TerMinal/bin/terminal-cli ticket "<title>" "<body>"
-~/.config/TerMinal/bin/terminal-cli hitl "<title>" "<action>"
+~/.config/TerMinal/bin/terminal-cli inbox-item "<title>" "<action>"
 ~/.config/TerMinal/bin/terminal-cli activity "<kind>" "<title>" "<detail>"
 ~/.config/TerMinal/bin/terminal-cli notify "<message>"
 ~/.config/TerMinal/bin/terminal-cli listener enqueue '<json-envelope>'
 ~/.config/TerMinal/bin/terminal-cli state {get-sha,mark-main,get,set,set-sha}
 ```
 
-So a script can file a HITL with `terminal-cli hitl "Auth keys missing" "rotate in 1password"` — no need to hardcode the JSON file location.
+So a script can file an Inbox item with `terminal-cli inbox-item "Auth keys missing" "rotate in 1password"` — no need to hardcode the JSON file location.
 Treat this API as append-only from agent code: it writes Inbox, emits activity,
 and pings Telegram; only the human/operator resolves the item. To wait, query
-HITL status or periodically re-check the original blocker.
+Inbox status or periodically re-check the original blocker.
 
 Use `terminal-cli listener enqueue` when a script should request follow-up work
 without running it inline. It writes a durable JSON event to
@@ -292,7 +292,7 @@ recent=$(terminal-cli state get proposedIdeas | jq --argjson c "$cutoff" \
 ```
 
 **Fail CLOSED on a corrupt ledger.** Distinguish *absent* (first run — proceed
-normally) from *present but unparseable* (something is wrong — file a HITL and
+normally) from *present but unparseable* (something is wrong — file an Inbox item and
 exit 0). Treating a corrupt ledger as empty is the worst option available: it
 silently re-proposes every idea the human has ever rejected, which is precisely
 the failure the ledger exists to prevent.
@@ -339,21 +339,23 @@ stream output to the run log.
 
 ## Compatibility & migration
 
-Phase 1 (now):
-- The current `.agents/agents.json` + `prompt` model continues to work.
-- New: the runner checks for `.agents/<id>.sh` first; if found, executes it
-  with the env above; if not, falls back to building the configured engine prompt command.
+Both models are live and neither is deprecated:
 
-Phase 2:
-- A `/migrate-agents` skill converts every entry in `.agents/agents.json`
-  into a matching `.agents/<id>.sh` + `.agents/<id>.json` sidecar.
-- The body of each `.sh` is just the single `claude -p` / `codex exec` / `cursor-agent -p`
-  line built from the prompt + engine + model. After migration the json
-  blob is just metadata.
+- `.agents/agents.json` + `prompt` works, and is still where `saveAgent` writes
+  a repo's agent overrides. `readAgents` layers it in as the `repo` layer
+  (defaults → global → repo) and emits **no** deprecation warning.
+- Script agents work alongside it: the runner checks for `.agents/<id>.sh`
+  first; if found it executes it with the env above, otherwise it builds the
+  configured engine prompt command from the JSON entry.
+- `/migrate-agents` converts JSON entries into `.agents/<id>.sh` +
+  `.agents/<id>.json` sidecars for anyone who wants scripts. The `.sh` body is
+  the single `claude -p` / `codex exec` / `cursor-agent -p` line built from the
+  prompt + engine + model; after migration the JSON blob is just metadata.
+  It is an option, not a required migration.
 
-Phase 3:
-- `.agents/agents.json` deprecated; readAgents emits a warning when it sees
-  one and suggests `/migrate-agents`.
+An earlier draft of this doc planned a third phase that deprecated
+`agents.json` and warned on sight. That was never implemented and is not
+planned — the two models coexist.
 
 ## Designer UX
 

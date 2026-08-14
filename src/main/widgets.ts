@@ -3,6 +3,8 @@ import { readFileSync, existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { homedir } from 'node:os'
 import { configPath } from './config-dir'
+import type { CommandResult, CommandWidget } from '../shared/types/app'
+export type { CommandResult, CommandWidget } from '../shared/types/app'
 
 // ---------------------------------------------------------------------------
 // Command widgets — the extensibility standard.
@@ -22,16 +24,6 @@ import { configPath } from './config-dir'
 //     drawer. Editing the file re-prompts, because the approval is keyed on a
 //     hash of the command set.
 // ---------------------------------------------------------------------------
-
-export type CommandWidget = {
-  id: string
-  title: string
-  icon?: string
-  command: string
-  intervalMs: number
-  mode: 'text' | 'big' | 'kv'
-  source: 'global' | 'repo'
-}
 
 const GLOBAL_CFG = (): string => configPath('widgets.json')
 
@@ -79,8 +71,6 @@ export function listCommandWidgets(cwd: string): CommandWidget[] {
   const repo = root ? loadFile(join(root, '.TerMinal', 'widgets.json'), 'repo', root) : []
   return [...global, ...repo]
 }
-
-export type CommandResult = { ok: boolean; stdout: string; code: number }
 
 export function runCommand(command: string, cwd: string): Promise<CommandResult> {
   return new Promise((resolve) => {

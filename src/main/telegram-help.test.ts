@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { COMMAND_SPECS } from './telegram-commands'
 
-// The Settings → Telegram command reference (SettingsPanel.tsx) silently
+// The Settings → Telegram command reference (settings/telegram.tsx) silently
 // rotted — it was missing /bg and /budget long before /feature was added.
 // The dispatcher, /help and the NL prompt are held to the COMMAND_SPECS
 // registry by telegram-commands.test.ts; this file covers the one surface
@@ -13,7 +13,7 @@ import { COMMAND_SPECS } from './telegram-commands'
 
 const repoRoot = join(import.meta.dir, '..', '..')
 const settingsSrc = readFileSync(
-  join(repoRoot, 'src/renderer/src/components/SettingsPanel.tsx'),
+  join(repoRoot, 'src/renderer/src/components/settings/telegram.tsx'),
   'utf8',
 )
 

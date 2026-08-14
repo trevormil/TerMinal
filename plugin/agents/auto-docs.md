@@ -85,7 +85,7 @@ ticket closed or a new ADR landed — check each category independently.
 - `weekly-summary.md` — what shipped (merges, closed tickets) since last run.
 - `decisions-log.md` — ADRs in chronological order with one-line summaries.
 - `active-work.md` — open branches + PRs with status + age.
-- `cycle-time.md` (TerMinal-aware; only if factory-health is reachable).
+- `cycle-time.md` (TerMinal-aware; only if the `factory_health` MCP tool is reachable).
 
 ## Decisions
 

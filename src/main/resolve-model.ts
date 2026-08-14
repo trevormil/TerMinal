@@ -1,4 +1,6 @@
 import type { AgentModelPolicy } from './agents'
+import type { ModelTier } from '../shared/types/agents'
+export type { ModelTier } from '../shared/types/agents'
 
 // The one seam that turns the declared routing fields (Ticket.modelTier +
 // AgentModelPolicy) into the concrete model a run launches with. Pure — every
@@ -13,12 +15,8 @@ const TIER_TO_POLICY = {
   top: 'deep',
   'cheap-agentic': 'cheap',
   'cheap-raw': 'cheap',
-} as const satisfies Record<string, keyof Omit<AgentModelPolicy, 'allowOverride'>>
+} as const satisfies Record<ModelTier, keyof Omit<AgentModelPolicy, 'allowOverride'>>
 
-/** The tiers a ticket may declare. The single source of truth — writers
- *  validate against this so a tier that resolveModel cannot route never
- *  reaches a ticket file. */
-export type ModelTier = keyof typeof TIER_TO_POLICY
 export const MODEL_TIERS = Object.keys(TIER_TO_POLICY) as ModelTier[]
 
 export function isModelTier(value: unknown): value is ModelTier {

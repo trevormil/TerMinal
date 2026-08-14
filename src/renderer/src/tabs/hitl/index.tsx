@@ -3,6 +3,7 @@ import {
   ALL,
   categoryDepth,
   categoryLeaf,
+  chipCategory,
   deriveCategories,
   filterByCategory,
   hasChildren,
@@ -33,6 +34,20 @@ import type { Tab, TabContext, HitlItem } from '../../lib/types'
 import { relativeTime } from '../../lib/time'
 import { ageColor, ageLabel, ageTierOf, untilLabel } from '../../lib/inboxAge'
 import { snoozePresets } from '../../../../shared/snooze'
+import { usePolled } from '../../lib/usePolled'
+import { getPref, setPref, usePref } from '../../lib/prefs'
+
+/** The row stamp. Derived from the item's own string — nothing to register. */
+function CategoryChip({ name }: { name: string }) {
+  return (
+    <span
+      title={name}
+      className="shrink-0 truncate rounded-full border border-[var(--gt-border)] px-1.5 py-px text-[9.5px] font-medium text-zinc-500"
+    >
+      {categoryLeaf(name)}
+    </span>
+  )
+}
 
 // Alert loudness, shown as a tag. Mirrors src/main/hitl-severity.ts; legacy
 // 'push' reads as urgent.
@@ -158,30 +173,17 @@ export function InboxDrawer({
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
   // Persisted, so it survives a reload — which is exactly why resolveSelection
   // has to cope with the category having disappeared meanwhile.
-  const [category, setCategory] = useState<string>(
-    () => localStorage.getItem('gt.inbox.category') || ALL,
-  )
-  const pickCategory = (name: string) => {
-    setCategory(name)
-    localStorage.setItem('gt.inbox.category', name)
-  }
+  const [category, pickCategory] = usePref('inboxCategory')
   // Which parents are folded shut. Persisted alongside the selection so the
   // sidebar you arranged is the sidebar you come back to.
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
-    try {
-      const raw = localStorage.getItem('gt.inbox.collapsed')
-      return new Set<string>(raw ? JSON.parse(raw) : [])
-    } catch {
-      // A corrupt value must not take the Inbox down with it — worst case the
-      // tree opens fully expanded, which is the default anyway.
-      return new Set()
-    }
-  })
+  // A corrupt stored value must not take the Inbox down with it; the registry
+  // falls back to [] there, so the tree opens fully expanded — the default anyway.
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set(getPref('inboxCollapsed')))
   const toggleCollapsed = (name: string) => {
     setCollapsed((prev) => {
       const next = new Set(prev)
       next.has(name) ? next.delete(name) : next.add(name)
-      localStorage.setItem('gt.inbox.collapsed', JSON.stringify([...next]))
+      setPref('inboxCollapsed', [...next])
       return next
     })
   }
@@ -214,8 +216,8 @@ export function InboxDrawer({
   // Best-effort: an unreachable host is dropped, never blocks the local view.
   const reload = () =>
     Promise.all([
-      window.gt.hitl.list(),
-      window.gt.hitl
+      window.gt.inbox.list(),
+      window.gt.inbox
         .remoteAll()
         .then((r) => r.items)
         .catch(() => [] as HitlItem[]),
@@ -226,23 +228,16 @@ export function InboxDrawer({
       .then(setSnoozes)
       .catch(() => {})
   useEffect(() => {
-    void reload()
-    void reloadSnoozes()
-    // pick up newly auto-filed items (e.g. a failed cron) live
+    // pick up newly auto-filed items (e.g. a failed cron) live — the initial
+    // load is the poll's own immediate first fetch, below.
     const off = window.gt.activity.onEvent((ev) => {
       if (ev.kind === 'blocked' || ev.kind === 'task-complete') void reload()
     })
-    const t = setInterval(() => {
-      void reload()
-      // Also re-reads snoozes, so an item that comes due reappears in the main
-      // list within one poll rather than waiting for a manual refresh.
-      void reloadSnoozes()
-    }, 15_000)
-    return () => {
-      off()
-      clearInterval(t)
-    }
+    return () => off()
   }, [])
+  // Poll the list. Also re-reads snoozes, so an item that comes due reappears
+  // in the main list within one poll rather than waiting for a manual refresh.
+  usePolled(async () => Promise.all([reload(), reloadSnoozes()]), { intervalMs: 15_000 })
 
   // One axis: read vs unread. No archive. Legacy items already resolved before
   // this change stay hidden (they were archived); everything else shows, newest
@@ -285,13 +280,13 @@ export function InboxDrawer({
       (prev || []).map((h) => (freshIds.includes(h.id) ? { ...h, readAt: Date.now() } : h)),
     )
     for (const [hostId, hostIds] of byHost(fresh))
-      void window.gt.hitl.markRead(hostIds, hostId).catch(() => 0)
+      void window.gt.inbox.markRead(hostIds, hostId).catch(() => 0)
   }
   // Email parity: put an item back on the unread pile (and return to the list,
   // like a mail client does).
   const markUnread = (h: HitlItem) => {
     setItems((prev) => (prev || []).map((x) => (x.id === h.id ? { ...x, readAt: undefined } : x)))
-    void window.gt.hitl.markRead([h.id], h.hostId, false).catch(() => 0)
+    void window.gt.inbox.markRead([h.id], h.hostId, false).catch(() => 0)
     setReading(null)
   }
   /**
@@ -313,22 +308,22 @@ export function InboxDrawer({
     const remote = targets.filter((h) => h.hostId)
     await Promise.all([
       activeCategory === ALL
-        ? window.gt.hitl.markAllRead()
-        : window.gt.hitl
+        ? window.gt.inbox.markAllRead()
+        : window.gt.inbox
             .markRead(
               targets.filter((h) => !h.hostId).map((h) => h.id),
               undefined,
             )
             .catch(() => 0),
       ...[...byHost(remote)].map(([hostId, hostIds]) =>
-        window.gt.hitl.markRead(hostIds, hostId).catch(() => 0),
+        window.gt.inbox.markRead(hostIds, hostId).catch(() => 0),
       ),
     ])
   }
   const remove = async (h: HitlItem) => {
     setItems((prev) => (prev || []).filter((x) => x.id !== h.id))
     setReading(null)
-    await window.gt.hitl.remove(h.id, h.hostId).catch(() => false)
+    await window.gt.inbox.remove(h.id, h.hostId).catch(() => false)
   }
 
   const snooze = async (ids: string[], until: number) => {
@@ -366,7 +361,7 @@ export function InboxDrawer({
     setItems((prev) => (prev || []).filter((h) => !selectedIds.includes(h.id)))
     setSelected(new Set())
     await Promise.all(
-      targets.map((h) => window.gt.hitl.resolve(h.id, true, h.hostId).catch(() => false)),
+      targets.map((h) => window.gt.inbox.resolve(h.id, true, h.hostId).catch(() => false)),
     )
   }
 
@@ -710,6 +705,7 @@ export function InboxDrawer({
                 const tier = ageTierOf(h.createdAt, now)
                 const tierColor = ageColor(tier)
                 const picked = selected.has(h.id)
+                const chip = chipCategory(h, activeCategory)
                 return (
                   <div
                     key={h.id}
@@ -747,6 +743,7 @@ export function InboxDrawer({
                           >
                             {h.title}
                           </span>
+                          {chip && <CategoryChip name={chip} />}
                           <SeverityTag sev={severityOf(h)} />
                           <Badge tone={SOURCE_TONE[h.source] || 'mute'}>{h.source}</Badge>
                           {(h.occurrenceCount || 1) > 1 && h.source !== 'completion-hook' && (
@@ -835,7 +832,7 @@ const tab: Tab = {
   // otherwise "ask me tomorrow" still nags you today.
   badge: async (gt) => {
     const [items, snoozes, settings] = await Promise.all([
-      gt.hitl.list(),
+      gt.inbox.list(),
       gt.inbox.snoozes().catch(() => ({}) as Record<string, number>),
       gt.settings.get().catch(() => null),
     ])

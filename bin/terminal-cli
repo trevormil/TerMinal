@@ -1,1153 +1,419 @@
 #!/usr/bin/env bun
-// terminal-cli — self-contained TerMinal helpers exposed inside scheduled-agent
-// scripts (.agents/<id>.sh) so the script body can file tickets, raise HITL,
-// emit activity events, send Telegram pings, and persist run-to-run state
-// (last-scanned SHA, arbitrary key/value) without hand-coding the JSON.
-//
-// The runner injects ~/.config/TerMinal/bin into PATH and sets TERMINAL_REPO /
-// TERMINAL_AGENT_ID / TERMINAL_RUN_ID before exec-ing scripts.
-//
-// Subcommands:
-//   terminal-cli ticket "<title>" "<body>"              file a ticket on TERMINAL_REPO's configured provider
-//   terminal-cli hitl "<title>" "<action>"              file a global HITL item + Telegram ping
-//                    [--severity=urgent|normal|low] [--category=<Name>]
-//                    --category is free-form: any name groups the Inbox sidebar.
-//   terminal-cli activity <kind> "<title>" "<detail>"   emit one activity-feed event
-//   terminal-cli deploy "<env>" "[sha]" "[detail]"      emit a deploy activity event
-//   terminal-cli notify "<message>"                     send a Telegram message (raw)
-//   terminal-cli inbox enqueue '<json>'                 queue local automation inbox request
-//   terminal-cli inbox enqueue --source x --type y      queue via flags (less shell quoting)
-//   terminal-cli inbox status|dir|example               inspect automation inbox helpers
-//
-//   terminal-cli state                                  print this agent's full state JSON
-//   terminal-cli state get-sha                          print lastScannedSha (empty if first run)
-//   terminal-cli state set-sha <sha>                    set lastScannedSha + bump lastRunAt
-//   terminal-cli state get <key>                        print a single state field
-//   terminal-cli state set <key> <value>                set a single state field (JSON-decoded if possible)
-//
-// State file path is ~/.config/TerMinal/agent-state/<repo-basename>/<agent-id>.json
-// (state lives outside the repo so cron runs don't dirty the working tree).
-//
-// SELF-CONTAINED: no imports from the TerMinal app bundle, only ~/.config/TerMinal/*.
+// @bun
+// GENERATED — do not edit. Built from src/cli/ by scripts/build-bin.ts.
+// Edit the TypeScript modules there, then run `bun run build:bin`.
 
+// src/cli/agent-state.ts
+import { execSync } from "child_process";
+import { mkdirSync as mkdirSync2, readFileSync as readFileSync3 } from "fs";
+import { dirname as dirname2, join as join3 } from "path";
+
+// src/runner/state-io.ts
 import {
-  readFileSync,
-  writeFileSync,
-  existsSync,
-  mkdirSync,
-  appendFileSync,
-  openSync,
   closeSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
   renameSync,
   unlinkSync,
-  readdirSync,
-} from 'node:fs'
-import { join, basename, dirname } from 'node:path'
-import { homedir } from 'node:os'
-import { createHash, randomUUID } from 'node:crypto'
-import { execSync, execFile, execFileSync, spawn } from 'node:child_process'
-
-// --- crash-safe shared-state writes (ticket 0068) ----------------------------
-//
-// Canonical implementation + tests: src/main/atomic-write.ts. This is inlined
-// rather than imported because host-provision.ts copies this file to remote
-// hosts on its own and docker/build-agent-image.sh bakes it into an image with
-// no sibling modules — keep the two in sync.
-//
-// Why it matters here: this process and the desktop app both read-modify-write
-// schedules.json and hitl.json. Without a lock, stamping lastRun from a snapshot
-// read before the user disabled a schedule writes `enabled: true` back and the
-// job keeps firing.
+  writeFileSync
+} from "fs";
+import { dirname } from "path";
+import { randomUUID } from "crypto";
 function writeJsonAtomicShared(file, value) {
-  mkdirSync(dirname(file), { recursive: true })
-  const tmp = `${file}.${process.pid}.tmp`
+  mkdirSync(dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
   try {
-    writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`)
-    renameSync(tmp, file)
+    writeFileSync(tmp, `${JSON.stringify(value, null, 2)}
+`);
+    renameSync(tmp, file);
   } catch (e) {
     try {
-      unlinkSync(tmp)
+      unlinkSync(tmp);
     } catch {}
-    throw e
+    throw e;
   }
 }
 function sleepSyncShared(ms) {
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 function readLockShared(lockPath) {
   try {
-    const p = JSON.parse(readFileSync(lockPath, 'utf8'))
-    return typeof p?.token === 'string' ? p : null
+    const p = JSON.parse(readFileSync(lockPath, "utf8"));
+    return typeof p?.token === "string" ? p : null;
   } catch {
-    return null
+    return null;
   }
 }
 function pidAliveShared(pid) {
-  if (!Number.isInteger(pid) || pid <= 0) return false
+  if (!Number.isInteger(pid) || pid <= 0)
+    return false;
   try {
-    process.kill(pid, 0)
-    return true
+    process.kill(pid, 0);
+    return true;
   } catch (e) {
-    return e?.code === 'EPERM'
+    return e?.code === "EPERM";
   }
 }
-/** Advisory cross-process lock. Crash-safe: a lock whose owner died, or that
- *  outlives staleMs, is stolen; the acquire itself times out rather than wedge. */
 function withFileLockShared(file, fn, { timeoutMs = 5000, staleMs = 30000 } = {}) {
-  const lockPath = `${file}.lock`
-  const token = randomUUID()
-  mkdirSync(dirname(file), { recursive: true })
-  const deadline = Date.now() + timeoutMs
-  for (;;) {
-    let took = false
+  const lockPath = `${file}.lock`;
+  const token = randomUUID();
+  mkdirSync(dirname(file), { recursive: true });
+  const deadline = Date.now() + timeoutMs;
+  for (;; ) {
+    let took = false;
     try {
-      const fd = openSync(lockPath, 'wx')
+      const fd = openSync(lockPath, "wx");
       try {
-        writeFileSync(fd, JSON.stringify({ pid: process.pid, at: Date.now(), token }))
+        writeFileSync(fd, JSON.stringify({ pid: process.pid, at: Date.now(), token }));
       } finally {
-        closeSync(fd)
+        closeSync(fd);
       }
-      sleepSyncShared(2)
-      took = readLockShared(lockPath)?.token === token
+      sleepSyncShared(2);
+      took = readLockShared(lockPath)?.token === token;
     } catch {}
-    if (took) break
-    const held = readLockShared(lockPath)
-    if (
-      held === null ||
-      !pidAliveShared(held.pid) ||
-      Date.now() - held.at > staleMs ||
-      Date.now() > deadline
-    ) {
+    if (took)
+      break;
+    const held = readLockShared(lockPath);
+    if (held === null || !pidAliveShared(held.pid) || Date.now() - held.at > staleMs || Date.now() > deadline) {
       try {
-        unlinkSync(lockPath)
+        unlinkSync(lockPath);
       } catch {}
-      continue
+      continue;
     }
-    sleepSyncShared(10)
+    sleepSyncShared(10);
   }
   try {
-    return fn()
+    return fn();
   } finally {
     if (readLockShared(lockPath)?.token === token) {
       try {
-        unlinkSync(lockPath)
+        unlinkSync(lockPath);
       } catch {}
     }
   }
 }
-/** Locked read-modify-write of a JSON list. `update` receives the value as it is
- *  on disk AT LOCK TIME. A present-but-unparseable file is quarantined to
- *  <name>.corrupt-<ts> and the write is REFUSED — returning [] and writing that
- *  back is how a torn file silently deletes every entry. Returns true if written. */
 function updateJsonListShared(file, update) {
   return withFileLockShared(file, () => {
-    let raw = null
+    let raw = null;
     try {
-      raw = readFileSync(file, 'utf8')
+      raw = readFileSync(file, "utf8");
     } catch {}
-    let cur = []
-    if (raw !== null && raw.trim() !== '') {
-      let parsed
+    let cur = [];
+    if (raw !== null && raw.trim() !== "") {
+      let parsed;
       try {
-        parsed = JSON.parse(raw)
+        parsed = JSON.parse(raw);
       } catch {
-        parsed = undefined
+        parsed = undefined;
       }
       if (!Array.isArray(parsed)) {
-        const dest = `${file}.corrupt-${Date.now()}`
-        renameSync(file, dest)
-        throw new Error(`corrupt state file ${file}; moved aside to ${dest}`)
+        const dest = `${file}.corrupt-${Date.now()}`;
+        renameSync(file, dest);
+        throw new Error(`corrupt state file ${file}; moved aside to ${dest}`);
       }
-      cur = parsed
+      cur = parsed;
     }
-    const next = update(cur)
-    if (next === undefined) return false
-    writeJsonAtomicShared(file, next)
-    return true
-  })
+    const next = update(cur);
+    if (next === undefined)
+      return false;
+    writeJsonAtomicShared(file, next);
+    return true;
+  });
 }
 
-// Single resolution point for the config dir, honouring TERMINAL_CONFIG_DIR the
-// same way src/main/config-dir.ts does. These are SEPARATE PROCESSES writing the
-// same files as the app, so a sandboxed run that only redirected the app would
-// still have this script clobbering real state — which is precisely how an agent
-// script would do it (ticket 108). Eager is fine here and not in the app: each
-// invocation is a fresh short-lived process that reads the env at startup.
-const CFG =
-  process.env.TERMINAL_CONFIG_DIR?.trim() || join(homedir(), '.config', 'TerMinal')
-const ACTIVITY = join(CFG, 'activity.jsonl')
-const HITL_FILE = join(CFG, 'hitl.json')
-const SETTINGS_FILE = join(CFG, 'settings.json')
-const AGENT_STATE_DIR = join(CFG, 'agent-state')
-const LISTENER_ROOT = join(CFG, 'automation-inbox')
-const LEGACY_TG_SCRIPT = join(homedir(), '.claude', 'bin', 'telegram-notify.sh')
+// src/cli/env.ts
+import { readFileSync as readFileSync2 } from "fs";
+import { basename, join as join2 } from "path";
+import { homedir as homedir2 } from "os";
 
-const repo = process.env.TERMINAL_REPO || ''
-const repoLabel = repo ? basename(repo) : ''
-const runId = process.env.TERMINAL_RUN_ID || ''
-const agentId = process.env.TERMINAL_AGENT_ID || ''
-
-// --- BEGIN repo-state (canonical: src/main/repo-state-inline.ts — do not edit by hand) ---
-/* eslint-disable @typescript-eslint/no-unused-vars -- one shared block; not every
-   script uses every helper, and the copies must stay byte-identical. */
-const SIDECAR_AREAS = ['backlog', 'sessions', 'reviews', 'checks', 'reports']
-const repoStateKeyCache = new Map()
-function repoStateDir() {
-  return process.env.TERMINAL_REPO_STATE_DIR?.trim() || join(CFG, 'repos')
-}
-function gitOut(root, args) {
-  try {
-    return execFileSync('git', ['-C', root, ...args], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim()
-  } catch {
-    return ''
-  }
-}
-// URL → host/path, mirroring src/main/repo.ts parseRemote: any scheme with an
-// optional port (stripped — ssh://git@ssh.github.com:443/owner/repo must not
-// yield "443/owner/repo"), else scp-like. Trailing slashes and .git dropped.
-function parseRemoteKey(url) {
-  const u = (url || '')
-    .trim()
-    .replace(/\/+$/, '')
-    .replace(/\.git$/, '')
-  const m =
-    u.match(/^[a-z][a-z0-9+.-]*:\/\/(?:[^@/]+@)?([^/:]+)(?::\d+)?\/(.+)$/i) ||
-    u.match(/^[\w.-]+@([^:/]+)[:/](.+)$/)
-  return m ? m[1] + '/' + m[2] : ''
-}
-// The key becomes a filesystem path under <config>/repos — a crafted origin
-// URL must not traverse out of it.
-function safeStateKey(key) {
-  if (!key) return ''
-  const parts = key.split('/')
-  if (parts.some((p) => p === '' || p === '.' || p === '..')) return ''
-  return key
-}
-function repoStateKey(root) {
-  if (!root) return ''
-  const hit = repoStateKeyCache.get(root)
-  if (hit !== undefined) return hit
-  // Raw configured URL first, exactly like src/main/repo.ts repoForCwd:
-  // "remote get-url" applies url.<base>.insteadOf, which can rewrite a real
-  // forge URL into an ssh alias or local mirror path that keys differently
-  // (or not at all). The rewritten form stays as the fallback for the
-  // opposite setup, where only the expanded URL names a repo.
-  let key = safeStateKey(parseRemoteKey(gitOut(root, ['config', '--get', 'remote.origin.url'])))
-  if (!key) key = safeStateKey(parseRemoteKey(gitOut(root, ['remote', 'get-url', 'origin'])))
-  if (!key) {
-    // No (usable) origin → hash the MAIN checkout's path, not the worktree's:
-    // rev-parse --git-common-dir names the shared .git so every worktree of a
-    // local-only repo lands on one sidecar, matching the origin-keyed case.
-    let canonical = gitOut(root, ['rev-parse', '--show-toplevel']) || root
-    const common = gitOut(root, ['rev-parse', '--path-format=absolute', '--git-common-dir'])
-    if (common && common.endsWith('/.git')) canonical = common.slice(0, -'/.git'.length)
-    const hash = createHash('sha256').update(canonical).digest('hex').slice(0, 12)
-    key = 'local/' + basename(canonical) + '-' + hash
-  }
-  repoStateKeyCache.set(root, key)
-  return key
-}
-function sidecarAreaPath(root, area) {
-  if (!root || !SIDECAR_AREAS.includes(area)) return ''
-  const key = repoStateKey(root)
-  return key ? join(repoStateDir(), key, area) : ''
-}
-// Reads merge sidecar + in-repo so state already committed stays visible;
-// writes always go to the sidecar so a shared repo stops accreting state.
-function areaPathsFor(root, area, candidates) {
-  const out = []
-  const sidecar = sidecarAreaPath(root, area)
-  if (sidecar && existsSync(sidecar)) out.push(sidecar)
-  for (const rel of candidates) {
-    const p = join(root, rel)
-    if (existsSync(p)) out.push(p)
-  }
-  return out
-}
-function areaWritePath(root, area, candidates, isV2) {
-  const sidecar = sidecarAreaPath(root, area)
-  if (sidecar) return sidecar
-  const existing = areaPathsFor(root, area, candidates)
-  if (existing.length) return existing[0]
-  // candidates[1] is the canonical v1 rel (e.g. checks has a third, bare
-  // legacy variant that must never become a write target).
-  return join(root, isV2 ? candidates[0] : candidates[1] || candidates[0])
-}
-// IDs must be unique across EVERY dir an area reads from. A fresh sidecar
-// beside a repo that still holds 0001-0042 would otherwise restart at 0001,
-// producing two tickets with the same id and shadowing the originals.
-function maxAreaId(dirs) {
-  let max = 0
-  for (const dir of dirs) {
-    if (!dir) continue
-    let entries = []
-    try {
-      entries = readdirSync(dir)
-    } catch {
-      continue
-    }
-    for (const f of entries) {
-      const m = /^(\d{4})-/.exec(f)
-      if (m) max = Math.max(max, parseInt(m[1], 10))
-    }
-  }
-  return max
-}
-// Personal state files/dirs formerly at <repo>/.TerMinal/<rel>, now at the
-// sidecar ROOT. Reads prefer the sidecar, fall back to the legacy in-repo
-// copy; writes always target the sidecar. Mirrors repoStatePathForRead/Write.
-function statePathForWrite(root, rel) {
-  if (!root) return ''
-  const key = repoStateKey(root)
-  return key ? join(repoStateDir(), key, rel) : ''
-}
-function statePathForRead(root, rel) {
-  const sidecar = statePathForWrite(root, rel)
-  if (sidecar && existsSync(sidecar)) return sidecar
-  const legacy = join(root, '.TerMinal', rel)
-  if (existsSync(legacy)) return legacy
-  return sidecar || legacy
-}
-// STICKY variant for live runtime dirs (loops/<id>): legacy wins while it
-// exists, so an in-flight legacy loop never flips to a half-written sidecar
-// copy mid-run. Mirrors repoStatePathSticky in src/main/repo-state.ts.
-function statePathSticky(root, rel) {
-  const legacy = join(root, '.TerMinal', rel)
-  if (existsSync(legacy)) return legacy
-  return statePathForWrite(root, rel) || legacy
-}
-// Env handed to a spawned agent/script: the same TERMINAL_<AREA>_DIR values
-// the app injects, so a scheduled run resolves state identically to an
-// interactive one. Scripts reference these instead of literal paths.
-function repoStateEnv(root) {
-  const out = {}
-  if (!root) return out
-  const key = repoStateKey(root)
-  if (!key) return out
-  const base = join(repoStateDir(), key)
-  out.TERMINAL_STATE_DIR = base
-  for (const area of SIDECAR_AREAS) {
-    out['TERMINAL_' + area.toUpperCase() + '_DIR'] = join(base, area)
-  }
-  return out
-}
-/* eslint-enable @typescript-eslint/no-unused-vars */
-// --- END repo-state ---
-
-function areaCandidates(area) {
-  return (
-    {
-      backlog: ['.TerMinal/backlog', 'backlog'],
-      sessions: ['.TerMinal/sessions', 'sessions'],
-      reviews: ['.TerMinal/reviews', '.reviews'],
-      checks: ['.TerMinal/checks', '.checks', 'checks'],
-      reports: ['.TerMinal/reports', 'reports'],
-    }[area] || [area]
-  )
+// src/runner/config.ts
+import { homedir } from "os";
+import { join } from "path";
+function CFG() {
+  return process.env.TERMINAL_CONFIG_DIR?.trim() || join(homedir(), ".config", "TerMinal");
 }
 
-// v2 by default: v1 only on positive evidence of root-level v1 state dirs
-// (mirrors src/main/project-layout.ts detectProjectLayout).
-function hasV2Layout(root) {
-  const areas = ['backlog', 'sessions', 'reviews', 'checks', 'reports']
-  if (existsSync(join(root, '.TerMinal', 'template.json'))) return true
-  if (areas.some((area) => existsSync(join(root, areaCandidates(area)[0])))) return true
-  return !areas.some((area) => {
-    const rels = areaCandidates(area)
-    return rels.length > 1 && existsSync(join(root, rels[1]))
-  })
-}
-
-function areaPath(root, area) {
-  return areaWritePath(root, area, areaCandidates(area), hasV2Layout(root))
-}
-
-/** Every dir an area's content may live in (sidecar first), for reads. */
-function areaReadPaths(root, area) {
-  return areaPathsFor(root, area, areaCandidates(area))
-}
-
-const TG_SIDECAR = join(CFG, 'telegram.local.json')
-// Resolve usable Telegram creds: the app seals its token in settings.json via
-// Electron safeStorage, which a plain Bun script can't decrypt — so the app
-// mirrors decrypted creds to a 0600 sidecar we read here. A sealed
-// {__terminalSecret} object is skipped (not a usable string token). Canonical
-// impl + tests: src/main/settings.ts:resolveTelegramCreds — keep in sync.
-function tgCreds() {
-  const pick = (o) => {
-    const bt = o?.botToken
-    const ci = o?.chatId
-    return typeof bt === 'string' && bt && typeof ci === 'string' && ci
-      ? { botToken: bt, chatId: ci }
-      : null
-  }
-  let sc = null
-  let st = null
-  try {
-    sc = JSON.parse(readFileSync(TG_SIDECAR, 'utf8'))
-  } catch {}
-  try {
-    st = JSON.parse(readFileSync(SETTINGS_FILE, 'utf8'))?.telegram
-  } catch {}
-  return pick(sc) ?? pick(st)
-}
-
-function pingTelegram(text, inlineKeyboard) {
-  const t = tgCreds()
-  if (t) {
-    fetch(`https://api.telegram.org/bot${t.botToken}/sendMessage`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: t.chatId,
-        text,
-        ...(inlineKeyboard ? { reply_markup: { inline_keyboard: inlineKeyboard } } : {}),
-      }),
-      signal: AbortSignal.timeout(8000),
-    }).catch(() => {})
-    return
-  }
-  if (existsSync(LEGACY_TG_SCRIPT)) {
-    try {
-      const child = spawn(LEGACY_TG_SCRIPT, ['--kind=blocked', text], { stdio: 'ignore' })
-      child.on('error', () => {})
-      child.unref()
-    } catch {
-      /* best effort — missing/broken Telegram must not block HITL */
-    }
-  }
-}
-
-function hitlButtons(item) {
-  const row = [{ text: '✅ Resolve', callback_data: `hitl:resolve:${item.id}` }]
-  if (item.runId) row.push({ text: '🪵 Tail run', callback_data: `run:tail:${item.runId}` })
-  return [row]
-}
-
-// ── slack inbox destination ──────────────────────────────────────────────
-// Canonical impl + tests: src/shared/slack.ts + src/main/slack-mirror.ts —
-// keep in sync (inlined: standalone script, no sibling modules). The app
-// mirrors the decrypted bot token + channel config to a 0600 sidecar
-// (slack.local.json) whenever inbox.destination posts to Slack; no sidecar
-// means Slack is off and everything below is a no-op.
-const SLACK_SIDECAR = join(CFG, 'slack.local.json')
-function slackCfg() {
-  try {
-    const c = JSON.parse(readFileSync(SLACK_SIDECAR, 'utf8'))
-    return typeof c?.botToken === 'string' && c.botToken ? c : null
-  } catch {
-    return null
-  }
-}
-// In 'slack' mode Slack is the sole nag surface — the Telegram ping goes quiet.
-function slackQuietsTelegram() {
-  return slackCfg()?.destination === 'slack'
-}
-function slackSlug(raw) {
-  return String(raw || '')
-    .toLowerCase()
-    .replace(/[/\s]+/g, '-')
-    .replace(/[^a-z0-9_-]+/g, '')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-}
-function slackChannelFor(category, cfg) {
-  const fallback = slackSlug(cfg.defaultChannel).slice(0, 80) || 'terminal-inbox'
-  const slug = category && category !== 'Uncategorized' ? slackSlug(category) : ''
-  if (!slug) return fallback
-  const prefix = slackSlug(cfg.channelPrefix)
-  return (prefix ? `${prefix}-${slug}` : slug).slice(0, 80)
-}
-function slackApi(token, method, body) {
-  return fetch(`https://slack.com/api/${method}`, {
-    method: 'POST',
-    headers: {
-      authorization: `Bearer ${token}`,
-      'content-type': 'application/json; charset=utf-8',
-    },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(8000),
-  }).then((r) => r.json())
-}
-// Post a filing to its category's channel (create-on-miss, default-channel
-// fallback), then stamp the message ref back onto the stored item so the app
-// can thread recurrences + react on resolve. Best-effort, never blocks filing.
-function mirrorHitlToSlack(item) {
-  const cfg = slackCfg()
-  if (!cfg) return
-  ;(async () => {
-    const channel = slackChannelFor(item.category, cfg)
-    const fallback = slackChannelFor(undefined, cfg)
-    const marker = item.source === 'completion-hook' ? '✅' : '⛔'
-    const text = `${marker} ${item.title}${item.action ? ` — ${item.action}` : ''}`
-    const post = (to) => slackApi(cfg.botToken, 'chat.postMessage', { channel: to, text })
-    let res = await post(`#${channel}`)
-    if (!res?.ok && res?.error === 'channel_not_found' && cfg.autoCreateChannels) {
-      const created = await slackApi(cfg.botToken, 'conversations.create', { name: channel })
-      if (created?.ok && created.channel?.id) {
-        // Invite the operator: a bot-created channel appears in nobody's
-        // sidebar until joined. Best-effort — never blocks the post.
-        if (cfg.inviteUserId)
-          await slackApi(cfg.botToken, 'conversations.invite', {
-            channel: created.channel.id,
-            users: cfg.inviteUserId,
-          }).catch(() => {})
-        res = await post(created.channel.id)
-      }
-    }
-    if (!res?.ok && channel !== fallback) res = await post(`#${fallback}`)
-    if (res?.ok && typeof res.channel === 'string' && typeof res.ts === 'string') {
-      updateJsonListShared(HITL_FILE, (list) =>
-        list.map((h) =>
-          h.id === item.id ? { ...h, slackChannel: res.channel, slackTs: res.ts } : h,
-        ),
-      )
-    }
-  })().catch(() => {})
-}
-
-// Deterministic kind inference — mirrors src/main/event-classifier.ts.
-// Saves agent scripts from having to memorize the activity-kind enum:
-// terminal-cli activity check "Drift · 3 findings" → kind:'check' automatically.
-const KIND_PATTERNS = [
-  [/^session\s+started?/i, 'session-start'],
-  [/^session\s+(end|closed?|wrapped)/i, 'session-end'],
-  [/^(deploy|deployed|ship|shipped|publish|published|release|released)\b/i, 'deploy'],
-  [/^ticket\s+(filed|created|opened)/i, 'ticket-filed'],
-  [/^ticket\s+(closed|resolved|done)/i, 'ticket-closed'],
-  [/^(pr|mr)\s+(?:[!#]?\d+\s+)?(opened|created|filed)/i, 'pr-opened'],
-  [/^(pr|mr)\s+(?:[!#]?\d+\s+)?merged/i, 'pr-merged'],
-  [/^(pr|mr|review)\s+(?:[!#]?\d+\s+)?(verdict|reviewed|review)/i, 'pr-verdict'],
-  [/^tests?\s+(pass(ed|ing)?|green)/i, 'tests-pass'],
-  [/^tests?\s+(fail(ed|ing)?|red)/i, 'tests-fail'],
-  [/^(check|drift|coverage|deps|deps-quality|dead-code|perf|health)\b/i, 'check'],
-  [/^scheduled\s+/i, 'agent-run'],
-  [/^(doc|docs|adr|changelog)\b/i, 'doc'],
-  [/^hitl\b/i, 'blocked'],
-  [/\b(blocked|blocker|need(s)?\s+human|waiting\s+on\s+human)\b/i, 'blocked'],
-  [/\bfail(ed|ing)?\b|\berror\b|\bexit\s+\d+\b/i, 'error'],
-  [/\b(crash|crashed|panic|exception)\b/i, 'error'],
-  [/^(task|run|agent)\s+(complete|done|finished)/i, 'task-complete'],
-  [/^agent\s+(started|running)/i, 'agent-run'],
-]
-function inferKind(title) {
-  if (!title) return 'info'
-  for (const [pat, k] of KIND_PATTERNS) if (pat.test(title)) return k
-  return 'info'
-}
-
-function emitActivity(kind, title, detail, opts = {}) {
-  mkdirSync(CFG, { recursive: true })
-  // If caller passed 'info' (the default fallback) AND the title matches a
-  // pattern, upgrade to the specific kind. Explicit kinds stay as-is.
-  const resolvedKind = !kind || kind === 'info' ? inferKind(title) : kind
-  const ev = {
-    id: randomUUID(),
-    ts: Date.now(),
-    kind: resolvedKind,
-    title: title || '',
-    detail: detail || '',
-    repo: repoLabel,
-    repoRoot: repo,
-    // runId is auto-attached so the Activity tab can click-jump to the run
-    // that emitted the event. runSource is 'cron' because terminal-cli is the
-    // helper scripts use, which only run inside cron-fired bash bodies.
-    ...(runId ? { runId, runSource: 'cron' } : {}),
-    ...(opts.suppressTelegram ? { suppressTelegram: true } : {}),
-  }
-  appendFileSync(ACTIVITY, JSON.stringify(ev) + '\n')
-}
-
-function emitDeploy(env, sha, detail) {
-  const target = String(env || '').trim()
-  if (!target) {
-    console.error('terminal-cli deploy: environment/name is required')
-    process.exit(2)
-  }
-  const version = String(sha || '').trim()
-  const extra = String(detail || '').trim()
-  emitActivity('deploy', `Deploy · ${target}`, [version, extra].filter(Boolean).join(' · '))
-}
-
-const SEVERITY_RANK = { urgent: 3, normal: 2, low: 1 }
-
-function fileHitl(title, action, opts = {}) {
-  const severity = SEVERITY_RANK[opts.severity] ? opts.severity : undefined
-  const category = normalizeCategoryShared(opts.category)
-  const item = {
-    id: randomUUID(),
-    title: title || 'untitled',
-    action: action || '',
-    repo: repoLabel,
-    repoRoot: repo,
-    source: opts.source || 'skill',
-    status: 'open',
-    createdAt: Date.now(),
-    ...(severity ? { severity } : {}),
-    ...(category ? { category } : {}),
-    ...(runId ? { runId, runSource: 'cron' } : {}),
-    sessionId: process.env.GT_TERMINAL_SESSION_ID || '',
-    terminalKey: process.env.GT_TERMINAL_SESSION_KEY || '',
-    terminalCwd: process.env.GT_TERMINAL_CWD || repo,
-  }
-  updateJsonListShared(HITL_FILE, (cur) => [item, ...cur])
-  mirrorHitlToSlack(item)
-  emitActivity('blocked', `HITL · ${item.title}`, item.action, { suppressTelegram: true })
-  // Without an explicit severity, HITL always pings Telegram (legacy policy).
-  // With one, the ping honors the same inbox.notifyThreshold gate the desktop
-  // applies, so e.g. a 'normal' digest lands in the inbox without a ping.
-  const threshold = readSettings()?.inbox?.notifyThreshold
-  const loud = !severity || (SEVERITY_RANK[severity] || 3) >= (SEVERITY_RANK[threshold] || 3)
-  if (loud && !slackQuietsTelegram())
-    pingTelegram(
-      `⛔ HITL · ${item.title}${item.action ? ` — ${item.action}` : ''}`,
-      hitlButtons(item),
-    )
-  console.log(item.id)
-}
-
-// Category normalization (ticket 120). Inlined rather than imported: these are
-// standalone Bun scripts copied to remote hosts with no sibling modules.
-// Canonical impl + tests: src/shared/inbox-categories.ts — keep in sync.
-function normalizeCategoryShared(raw) {
-  if (typeof raw !== 'string') return undefined
-  const clean = raw.replace(/[\x00-\x1f\x7f]/g, '').trim()
-  return clean ? clean.slice(0, 40) : undefined
-}
-
-// ── monitor ──────────────────────────────────────────────────────────────
-// Manage the Monitoring subsystem's config from the CLI/scripts. The daemon
-// (terminal-monitor) does the probing; this only edits ~/.config/TerMinal/
-// monitors.json and triggers a one-off run.
-const MONITORS_FILE = join(CFG, 'monitors.json')
-const MONITOR_STATE_DIR = join(CFG, 'monitor-state')
-const MONITOR_TYPES = ['http', 'tls-cert', 'tcp', 'dns', 'command']
-
-function readMonitors() {
-  try {
-    const a = JSON.parse(readFileSync(MONITORS_FILE, 'utf8'))
-    return Array.isArray(a) ? a : []
-  } catch {
-    return []
-  }
-}
-function writeMonitors(list) {
-  mkdirSync(CFG, { recursive: true })
-  updateJsonListShared(MONITORS_FILE, () => list)
-}
-
-function monitorCli(args) {
-  const sub = args[0]
-  const flag = (n) => args.find((a) => a.startsWith(`--${n}=`))?.slice(n.length + 3)
-  const list = readMonitors()
-
-  if (sub === 'list' || !sub) {
-    for (const m of list) {
-      let st = ''
-      try {
-        st = JSON.parse(readFileSync(join(MONITOR_STATE_DIR, `${m.id}.json`), 'utf8')).status
-      } catch {}
-      console.log(`${m.enabled === false ? '○' : '●'} ${m.id}  [${m.type}]  ${st || '—'}  ${m.name}`)
-    }
-    return
-  }
-  if (sub === 'status') {
-    for (const m of list) {
-      try {
-        const s = JSON.parse(readFileSync(join(MONITOR_STATE_DIR, `${m.id}.json`), 'utf8'))
-        console.log(`${m.id}: ${s.status} — ${s.summary}`)
-      } catch {
-        console.log(`${m.id}: (no data yet)`)
-      }
-    }
-    return
-  }
-  if (sub === 'add') {
-    const type = flag('type')
-    const name = flag('name') || flag('target')
-    const target = flag('target')
-    if (!MONITOR_TYPES.includes(type) || !target) {
-      console.error(
-        `usage: terminal-cli monitor add --type=<${MONITOR_TYPES.join('|')}> --target=<t> [--name=..] [--interval=60] [--group=..] [--on-failure=urgent|normal|low|off] [--config-json='{}']`,
-      )
-      process.exit(2)
-    }
-    const id = (flag('id') || name || target)
-      .toLowerCase()
-      .replace(/[^\w-]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-      .slice(0, 48)
-    if (list.some((m) => m.id === id)) {
-      console.error(`monitor "${id}" already exists`)
-      process.exit(2)
-    }
-    let config = {}
-    const cj = flag('config-json')
-    if (cj)
-      try {
-        config = JSON.parse(cj)
-      } catch {
-        console.error('bad --config-json')
-        process.exit(2)
-      }
-    list.push({
-      id,
-      name: name || id,
-      type,
-      target,
-      intervalSec: Number(flag('interval')) || 60,
-      enabled: true,
-      group: flag('group') || undefined,
-      notify: {
-        onFailure: flag('on-failure') || 'urgent',
-        onRecovery: flag('on-recovery') !== 'false',
-        renotifyAfterSec: Number(flag('renotify')) || 3600,
-        dailyDigest: flag('daily-digest') === 'true',
-        digestHour: Number(flag('digest-hour')) || 9,
-      },
-      config,
-    })
-    writeMonitors(list)
-    console.log(id)
-    return
-  }
-  const id = args[1]
-  if (sub === 'remove') {
-    writeMonitors(list.filter((m) => m.id !== id))
-    try {
-      const p = join(MONITOR_STATE_DIR, `${id}.json`)
-      if (existsSync(p)) writeFileSync(p, '') // best-effort clear; daemon prunes
-    } catch {}
-    console.log(`removed ${id}`)
-    return
-  }
-  if (sub === 'enable' || sub === 'disable') {
-    const m = list.find((x) => x.id === id)
-    if (!m) {
-      console.error(`monitor ${id} not found`)
-      process.exit(1)
-    }
-    m.enabled = sub === 'enable'
-    writeMonitors(list)
-    console.log(`${id} ${m.enabled ? 'enabled' : 'disabled'}`)
-    return
-  }
-  if (sub === 'check') {
-    const bin = join(CFG, 'bin', 'terminal-monitor')
-    try {
-      execFileSync(bin, ['run', id], { stdio: 'inherit' })
-    } catch {
-      process.exit(1)
-    }
-    return
-  }
-  console.error('usage: terminal-cli monitor <list|status|add|remove|enable|disable|check>')
-  process.exit(2)
-}
-
+// src/cli/env.ts
+var ACTIVITY = () => join2(CFG(), "activity.jsonl");
+var HITL_FILE = () => join2(CFG(), "hitl.json");
+var SETTINGS_FILE = () => join2(CFG(), "settings.json");
+var AGENT_STATE_DIR = () => join2(CFG(), "agent-state");
+var LISTENER_ROOT = () => join2(CFG(), "automation-inbox");
+var TG_SIDECAR = () => join2(CFG(), "telegram.local.json");
+var SLACK_SIDECAR = () => join2(CFG(), "slack.local.json");
+var MONITORS_FILE = () => join2(CFG(), "monitors.json");
+var MONITOR_STATE_DIR = () => join2(CFG(), "monitor-state");
+var REMOTE_DIR = () => join2(CFG(), "remote");
+var LOOPS_FILE = () => join2(CFG(), "loops.json");
+var TERMINAL_BIN = (name) => join2(CFG(), "bin", name);
+var LEGACY_TG_SCRIPT = () => join2(homedir2(), ".claude", "bin", "telegram-notify.sh");
+var repo = () => process.env.TERMINAL_REPO || "";
+var repoLabel = () => repo() ? basename(repo()) : "";
+var runId = () => process.env.TERMINAL_RUN_ID || "";
+var agentId = () => process.env.TERMINAL_AGENT_ID || "";
 function readSettings() {
   try {
-    return JSON.parse(readFileSync(SETTINGS_FILE, 'utf8'))
+    return JSON.parse(readFileSync2(SETTINGS_FILE(), "utf8"));
   } catch {
-    return {}
+    return {};
   }
 }
 
-function completionHookEnabled() {
-  const settings = readSettings()
-  return settings?.inbox?.completionHook !== false
-}
-
-function safeBasename(path) {
-  try {
-    return basename(path || '')
-  } catch {
-    return ''
-  }
-}
-
-function completionHitl(engine) {
-  const input = readFileSync(0, 'utf8')
-  if (!completionHookEnabled()) return
-
-  let payload = {}
-  try {
-    payload = input.trim() ? JSON.parse(input) : {}
-  } catch {
-    payload = {}
-  }
-
-  const cwd = payload.cwd || process.env.PWD || ''
-  if (String(cwd).includes('/.claude-mem')) return
-
-  const project = safeBasename(cwd) || repoLabel || 'workspace'
-  const transcript = payload.transcript_path || payload.transcriptPath || ''
-  const lastMessage = String(payload.last_assistant_message || payload.last_message || '')
-    .replace(/\s+/g, ' ')
-    .slice(0, 300)
-  const hashInput = JSON.stringify({
-    engine: engine || 'agent',
-    cwd,
-    transcript,
-    lastMessage,
-    session:
-      payload.session_id ||
-      payload.sessionId ||
-      process.env.GT_TERMINAL_SESSION_ID ||
-      payload.conversation_id ||
-      payload.conversationId ||
-      '',
-    terminalKey: process.env.GT_TERMINAL_SESSION_KEY || '',
-  })
-  const id = `completion-${createHash('sha256').update(hashInput).digest('hex').slice(0, 16)}`
-
-  const item = {
-    id,
-    title: `${engine || 'Agent'} completion · ${project}`,
-    action: 'Review the completed agent turn.',
-    detail: lastMessage || (transcript ? `transcript: ${transcript}` : ''),
-    repo: project,
-    repoRoot: cwd,
-    source: 'completion-hook',
-    status: 'open',
-    createdAt: Date.now(),
-    sessionId: payload.session_id || payload.sessionId || process.env.GT_TERMINAL_SESSION_ID || '',
-    terminalKey: process.env.GT_TERMINAL_SESSION_KEY || '',
-    terminalCwd: process.env.GT_TERMINAL_CWD || cwd,
-    ...(transcript ? { transcriptPath: transcript } : {}),
-  }
-  mkdirSync(CFG, { recursive: true })
-  // The dedup check happens INSIDE the lock: this hook fires from every engine
-  // turn, so two overlapping invocations both reading "no such id" is exactly
-  // the race that files the same completion twice.
-  const filed = updateJsonListShared(HITL_FILE, (cur) =>
-    cur.some((h) => h.id === id) ? undefined : [item, ...cur],
-  )
-  if (!filed) {
-    console.log(id)
-    return
-  }
-  mirrorHitlToSlack(item)
-  emitActivity('blocked', `Inbox · ${item.title}`, item.action, { suppressTelegram: true })
-  if (!slackQuietsTelegram())
-    pingTelegram(
-      `⛔ HITL · ${item.title}${item.action ? ` — ${item.action}` : ''}`,
-      hitlButtons(item),
-    )
-  console.log(id)
-}
-
-// ---------------------------------------------------------------------------
-// state — per-(repo, agent) JSON sidecar at
-//   ~/.config/TerMinal/agent-state/<repo-basename>/<agent-id>.json
-//
-// Canonical fields the harness owns:
-//   lastScannedSha   sha of main/master at the end of the previous successful
-//                    scan. Agents use this to compute `git log <sha>..HEAD` and
-//                    only act on new commits.
-//   lastRunAt        ms epoch of the run that set lastScannedSha.
-//   lastRunId        run id (matches TERMINAL_RUN_ID) of the same run.
-//
-// Beyond those, scripts can set/get arbitrary string keys via `state set` /
-// `state get`. Values are stored as-is on disk; the writer JSON-parses when
-// possible so booleans/numbers/arrays round-trip cleanly.
-// ---------------------------------------------------------------------------
+// src/cli/agent-state.ts
 function stateFile() {
-  if (!repo) {
-    console.error(
-      'terminal-cli state: TERMINAL_REPO not set — scripts must be invoked by the TerMinal runner',
-    )
-    process.exit(2)
+  if (!repo()) {
+    console.error("terminal-cli state: TERMINAL_REPO not set \u2014 scripts must be invoked by the TerMinal runner");
+    process.exit(2);
   }
-  if (!agentId) {
-    console.error(
-      'terminal-cli state: TERMINAL_AGENT_ID not set — pass --agent <id> or invoke via the runner',
-    )
-    process.exit(2)
+  if (!agentId()) {
+    console.error("terminal-cli state: TERMINAL_AGENT_ID not set \u2014 pass --agent <id> or invoke via the runner");
+    process.exit(2);
   }
-  const slug = repoLabel || 'unknown'
-  return join(AGENT_STATE_DIR, slug, `${agentId}.json`)
+  const slug = repoLabel() || "unknown";
+  return join3(AGENT_STATE_DIR(), slug, `${agentId()}.json`);
 }
 function readState() {
   try {
-    return JSON.parse(readFileSync(stateFile(), 'utf8'))
+    return JSON.parse(readFileSync3(stateFile(), "utf8"));
   } catch {
-    return {}
+    return {};
   }
 }
 function writeState(obj) {
-  const f = stateFile()
-  mkdirSync(dirname(f), { recursive: true })
-  withFileLockShared(f, () => writeJsonAtomicShared(f, obj))
+  const f = stateFile();
+  mkdirSync2(dirname2(f), { recursive: true });
+  withFileLockShared(f, () => writeJsonAtomicShared(f, obj));
 }
 function coerce(v) {
-  if (v === undefined) return undefined
+  if (v === undefined)
+    return;
   try {
-    return JSON.parse(v)
+    return JSON.parse(v);
   } catch {
-    return v
+    return v;
   }
 }
 function mainBranchSha() {
   try {
-    // Prefer origin/main if the repo has one, else origin/master, else local
-    // main/master. Falls through to HEAD if none of those exist.
-    const candidates = ['origin/main', 'origin/master', 'main', 'master', 'HEAD']
+    const candidates = ["origin/main", "origin/master", "main", "master", "HEAD"];
     for (const ref of candidates) {
       try {
         const sha = execSync(`git rev-parse --verify --quiet ${ref}`, {
-          cwd: repo,
-          stdio: ['ignore', 'pipe', 'ignore'],
-        })
-          .toString()
-          .trim()
-        if (sha) return { ref, sha }
-      } catch {
-        /* try next */
-      }
-    }
-  } catch {}
-  return { ref: '', sha: '' }
-}
-function stateCommand(sub, rest) {
-  if (!sub || sub === 'get') {
-    const key = rest[0]
-    const s = readState()
-    if (key) {
-      const v = s[key]
-      console.log(v === undefined ? '' : typeof v === 'string' ? v : JSON.stringify(v))
-    } else {
-      console.log(JSON.stringify(s, null, 2))
-    }
-    return
-  }
-  if (sub === 'get-sha') {
-    console.log(readState().lastScannedSha || '')
-    return
-  }
-  if (sub === 'set-sha') {
-    const sha = rest[0]
-    if (!sha) {
-      console.error('terminal-cli state set-sha: missing <sha> argument')
-      process.exit(2)
-    }
-    const s = readState()
-    s.lastScannedSha = sha
-    s.lastRunAt = Date.now()
-    if (runId) s.lastRunId = runId
-    writeState(s)
-    return
-  }
-  if (sub === 'mark-main') {
-    // Convenience: fetch + record origin/main (or fallback) tip as
-    // lastScannedSha. The canonical "I've scanned trunk through here" call.
-    try {
-      execSync('git fetch --quiet origin', { cwd: repo, stdio: 'ignore' })
-    } catch {
-      /* offline / no remote — fall back to local ref */
-    }
-    const { ref, sha } = mainBranchSha()
-    if (!sha) {
-      console.error('terminal-cli state mark-main: no main/master ref resolvable in this repo')
-      process.exit(2)
-    }
-    const s = readState()
-    s.lastScannedSha = sha
-    s.lastScannedRef = ref
-    s.lastRunAt = Date.now()
-    if (runId) s.lastRunId = runId
-    writeState(s)
-    console.log(sha)
-    return
-  }
-  if (sub === 'set') {
-    const key = rest[0]
-    const val = rest[1]
-    if (!key) {
-      console.error('terminal-cli state set: missing <key>')
-      process.exit(2)
-    }
-    const s = readState()
-    s[key] = coerce(val)
-    writeState(s)
-    return
-  }
-  console.error(
-    'usage: terminal-cli state [get [key] | get-sha | set <key> <value> | set-sha <sha> | mark-main]',
-  )
-  process.exit(2)
-}
-
-// terminal-cli mcp <tool> [k=v k=v ...] — shell-friendly invocation of the
-// MCP server's tools so bash agent scripts can call them without a JSON-RPC
-// client. Spawns the MCP server, sends initialize + tools/call, prints the
-// result text, exits.
-function mcpCommand(tool, kvArgs) {
-  if (!tool) {
-    console.error(
-      'usage: terminal-cli mcp <tool> [k=v k=v ...]\n' +
-        'examples:\n' +
-        '  terminal-cli mcp file_ticket repo=vellum-project title="fix flaky test" type=bug\n' +
-        '  terminal-cli mcp list_hitl status=open\n' +
-        '  terminal-cli mcp set_run_outcome runId=$TERMINAL_RUN_ID outcome=pr-opened\n',
-    )
-    process.exit(2)
-  }
-  // Parse k=v args. Values are JSON-parsed when possible so booleans/numbers
-  // round-trip; otherwise treated as strings.
-  const params = {}
-  for (const a of kvArgs) {
-    const eq = a.indexOf('=')
-    if (eq < 0) continue
-    const key = a.slice(0, eq)
-    const raw = a.slice(eq + 1)
-    let val = raw
-    try {
-      val = JSON.parse(raw)
-    } catch {
-      /* leave as string */
-    }
-    params[key] = val
-  }
-  // Spawn the MCP server as a subprocess
-  const serverBin = join(CFG, 'bin', 'terminal-mcp-server')
-  if (!existsSync(serverBin)) {
-    console.error(`terminal-cli mcp: server not installed at ${serverBin}`)
-    process.exit(2)
-  }
-  const mcpTimeout =
-    tool === 'request_agent_artifact'
-      ? Math.max(30_000, Math.min(Number(params.timeoutMs || 180_000) + 30_000, 630_000))
-      : 30_000
-  const child = execFile(serverBin, [], { timeout: mcpTimeout }, (err, stdout) => {
-    if (err && err.code === 'ETIMEDOUT') {
-      console.error('terminal-cli mcp: server timeout')
-      process.exit(1)
-    }
-    // Parse the responses — initialize + tools/call (we sent them as two
-    // requests). The last one is the result we want.
-    let result = null
-    for (const line of (stdout || '').split('\n')) {
-      if (!line.trim()) continue
-      try {
-        const r = JSON.parse(line)
-        if (r.id === 2) result = r
+          cwd: repo(),
+          stdio: ["ignore", "pipe", "ignore"]
+        }).toString().trim();
+        if (sha)
+          return { ref, sha };
       } catch {}
     }
-    if (!result) {
-      console.error('terminal-cli mcp: no response')
-      process.exit(1)
+  } catch {}
+  return { ref: "", sha: "" };
+}
+function stateCommand(sub, rest) {
+  if (!sub || sub === "get") {
+    const key = rest[0];
+    const s = readState();
+    if (key) {
+      const v = s[key];
+      console.log(v === undefined ? "" : typeof v === "string" ? v : JSON.stringify(v));
+    } else {
+      console.log(JSON.stringify(s, null, 2));
     }
-    if (result.error) {
-      console.error(`terminal-cli mcp: ${result.error.message}`)
-      process.exit(1)
+    return;
+  }
+  if (sub === "get-sha") {
+    console.log(readState().lastScannedSha || "");
+    return;
+  }
+  if (sub === "set-sha") {
+    const sha = rest[0];
+    if (!sha) {
+      console.error("terminal-cli state set-sha: missing <sha> argument");
+      process.exit(2);
     }
-    // Tool results come as { content: [{ type:'text', text:'<json>' }] }
-    const text = result.result?.content?.[0]?.text
-    if (text) console.log(text)
-    process.exit(0)
-  })
-  child.stdin.write(
-    JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize' }) +
-      '\n' +
-      JSON.stringify({
-        jsonrpc: '2.0',
-        id: 2,
-        method: 'tools/call',
-        params: { name: tool, arguments: params },
-      }) +
-      '\n',
-  )
-  child.stdin.end()
+    const s = readState();
+    s.lastScannedSha = sha;
+    s.lastRunAt = Date.now();
+    if (runId())
+      s.lastRunId = runId();
+    writeState(s);
+    return;
+  }
+  if (sub === "mark-main") {
+    try {
+      execSync("git fetch --quiet origin", { cwd: repo(), stdio: "ignore" });
+    } catch {}
+    const { ref, sha } = mainBranchSha();
+    if (!sha) {
+      console.error("terminal-cli state mark-main: no main/master ref resolvable in this repo");
+      process.exit(2);
+    }
+    const s = readState();
+    s.lastScannedSha = sha;
+    s.lastScannedRef = ref;
+    s.lastRunAt = Date.now();
+    if (runId())
+      s.lastRunId = runId();
+    writeState(s);
+    console.log(sha);
+    return;
+  }
+  if (sub === "set") {
+    const key = rest[0];
+    const val = rest[1];
+    if (!key) {
+      console.error("terminal-cli state set: missing <key>");
+      process.exit(2);
+    }
+    const s = readState();
+    s[key] = coerce(val);
+    writeState(s);
+    return;
+  }
+  console.error("usage: terminal-cli state [get [key] | get-sha | set <key> <value> | set-sha <sha> | mark-main]");
+  process.exit(2);
 }
 
-// terminal-cli classify <ci|risk|kind> <input> — wraps the harness
-// classifiers for shell scripts. ci reads a log file path; risk takes
-// space-separated file paths + optional --diff-lines=N; kind just runs the
-// deterministic title→kind regex catalog locally.
-function classifyCommand(kind, args) {
-  if (kind === 'kind') {
-    const title = args.join(' ')
-    console.log(inferKind(title))
-    return
+// src/cli/activity.ts
+import { appendFileSync, mkdirSync as mkdirSync3 } from "fs";
+import { randomUUID as randomUUID2 } from "crypto";
+var KIND_PATTERNS = [
+  [/^session\s+started?/i, "session-start"],
+  [/^session\s+(end|closed?|wrapped)/i, "session-end"],
+  [/^(deploy|deployed|ship|shipped|publish|published|release|released)\b/i, "deploy"],
+  [/^ticket\s+(filed|created|opened)/i, "ticket-filed"],
+  [/^ticket\s+(closed|resolved|done)/i, "ticket-closed"],
+  [/^(pr|mr)\s+(?:[!#]?\d+\s+)?(opened|created|filed)/i, "pr-opened"],
+  [/^(pr|mr)\s+(?:[!#]?\d+\s+)?merged/i, "pr-merged"],
+  [/^(pr|mr|review)\s+(?:[!#]?\d+\s+)?(verdict|reviewed|review)/i, "pr-verdict"],
+  [/^tests?\s+(pass(ed|ing)?|green)/i, "tests-pass"],
+  [/^tests?\s+(fail(ed|ing)?|red)/i, "tests-fail"],
+  [/^(check|drift|coverage|deps|deps-quality|dead-code|perf|health)\b/i, "check"],
+  [/^scheduled\s+/i, "agent-run"],
+  [/^(doc|docs|adr|changelog)\b/i, "doc"],
+  [/^hitl\b/i, "blocked"],
+  [/\b(blocked|blocker|need(s)?\s+human|waiting\s+on\s+human)\b/i, "blocked"],
+  [/\bfail(ed|ing)?\b|\berror\b|\bexit\s+\d+\b/i, "error"],
+  [/\b(crash|crashed|panic|exception)\b/i, "error"],
+  [/^(task|run|agent)\s+(complete|done|finished)/i, "task-complete"],
+  [/^agent\s+(started|running)/i, "agent-run"]
+];
+function inferKind(title) {
+  if (!title)
+    return "info";
+  for (const [pat, k] of KIND_PATTERNS)
+    if (pat.test(title))
+      return k;
+  return "info";
+}
+function emitActivity(kind, title, detail, opts = {}) {
+  mkdirSync3(CFG(), { recursive: true });
+  const resolvedKind = !kind || kind === "info" ? inferKind(title) : kind;
+  const ev = {
+    id: randomUUID2(),
+    ts: Date.now(),
+    kind: resolvedKind,
+    title: title || "",
+    detail: detail || "",
+    repo: repoLabel(),
+    repoRoot: repo(),
+    ...runId() ? { runId: runId(), runSource: "cron" } : {},
+    ...opts.suppressTelegram ? { suppressTelegram: true } : {}
+  };
+  appendFileSync(ACTIVITY(), JSON.stringify(ev) + `
+`);
+}
+function emitDeploy(env, sha, detail) {
+  const target = String(env || "").trim();
+  if (!target) {
+    console.error("terminal-cli deploy: environment/name is required");
+    process.exit(2);
   }
-  if (kind === 'ci') {
-    const logPath = args[0]
+  const version = String(sha || "").trim();
+  const extra = String(detail || "").trim();
+  emitActivity("deploy", `Deploy \xB7 ${target}`, [version, extra].filter(Boolean).join(" \xB7 "));
+}
+
+// src/cli/classify.ts
+import { readFileSync as readFileSync4 } from "fs";
+function classifyCommand(kind, args) {
+  if (kind === "kind") {
+    const title = args.join(" ");
+    console.log(inferKind(title));
+    return;
+  }
+  if (kind === "ci") {
+    const logPath = args[0];
     if (!logPath) {
-      console.error('usage: terminal-cli classify ci <log-file>')
-      process.exit(2)
+      console.error("usage: terminal-cli classify ci <log-file>");
+      process.exit(2);
     }
-    let rawLog = ''
+    let rawLog = "";
     try {
-      rawLog = readFileSync(logPath, 'utf8')
+      rawLog = readFileSync4(logPath, "utf8");
     } catch (e) {
-      console.error(`terminal-cli classify ci: ${e.message}`)
-      process.exit(1)
+      console.error(`terminal-cli classify ci: ${e.message}`);
+      process.exit(1);
     }
-    // Heuristic catalog mirrors src/main/ci-failure-classifier.ts. Skip the
-    // LLM fallback here — for shell scripts the deterministic answer is
-    // what's useful; scripts can call `terminal-cli mcp classify_ci` for the
-    // full version (TODO: wire that MCP tool later).
     const PATTERNS = [
       {
-        class: 'prettier-formatting',
-        re: /\[warn\]\s+Code style issues found|prettier --check.*failed|files would be reformatted/i,
+        class: "prettier-formatting",
+        re: /\[warn\]\s+Code style issues found|prettier --check.*failed|files would be reformatted/i
       },
-      { class: 'eslint-fixable', re: /\d+\s+(error|problem)s?.*eslint|eslint.*\d+\s+error/i },
-      { class: 'typecheck-isolated', re: /error TS\d+:|TS\d+\s+:|TypeScript:.*error/ },
+      { class: "eslint-fixable", re: /\d+\s+(error|problem)s?.*eslint|eslint.*\d+\s+error/i },
+      { class: "typecheck-isolated", re: /error TS\d+:|TS\d+\s+:|TypeScript:.*error/ },
       {
-        class: 'snapshot-mismatch',
-        re: /snapshot file.*was not written|snapshot.*does not match|toMatchSnapshot.*fail|obsolete snapshot/i,
-      },
-      {
-        class: 'test-real',
-        re: /\d+\s+failing|\d+\s+failed|FAIL\s+|✗\s+|AssertionError|Expected.*Received/,
+        class: "snapshot-mismatch",
+        re: /snapshot file.*was not written|snapshot.*does not match|toMatchSnapshot.*fail|obsolete snapshot/i
       },
       {
-        class: 'build-config',
-        re: /(rollup|vite|webpack|esbuild|tsup).*(error|failed)|Module not found|Cannot resolve|Cannot find module/i,
+        class: "test-real",
+        re: /\d+\s+failing|\d+\s+failed|FAIL\s+|\u2717\s+|AssertionError|Expected.*Received/
       },
       {
-        class: 'lockfile-drift',
-        re: /(lockfile|bun\.lock|package-lock).*out of (date|sync)|frozen-lockfile.*failed|lockfile mismatch/i,
+        class: "build-config",
+        re: /(rollup|vite|webpack|esbuild|tsup).*(error|failed)|Module not found|Cannot resolve|Cannot find module/i
       },
       {
-        class: 'dependency',
-        re: /npm ERR! code E\d+|EPEERINVALID|404 Not Found.*\.tgz|peer dep|ETIMEDOUT.*registry/i,
+        class: "lockfile-drift",
+        re: /(lockfile|bun\.lock|package-lock).*out of (date|sync)|frozen-lockfile.*failed|lockfile mismatch/i
       },
       {
-        class: 'flake-network',
-        re: /ECONNRESET|ETIMEDOUT|503 Service Unavailable|429 Too Many Requests|connection refused/i,
+        class: "dependency",
+        re: /npm ERR! code E\d+|EPEERINVALID|404 Not Found.*\.tgz|peer dep|ETIMEDOUT.*registry/i
       },
       {
-        class: 'deploy-infra',
-        re: /(ImagePullBackOff|CrashLoopBackOff|kubectl.*error|helm.*failed|docker push.*denied|terraform.*error)/i,
+        class: "flake-network",
+        re: /ECONNRESET|ETIMEDOUT|503 Service Unavailable|429 Too Many Requests|connection refused/i
       },
-    ]
-    const stripped = rawLog.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '')
+      {
+        class: "deploy-infra",
+        re: /(ImagePullBackOff|CrashLoopBackOff|kubectl.*error|helm.*failed|docker push.*denied|terraform.*error)/i
+      }
+    ];
+    const stripped = rawLog.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "");
     for (const p of PATTERNS) {
       if (p.re.test(stripped)) {
-        console.log(p.class)
-        return
+        console.log(p.class);
+        return;
       }
     }
-    console.log('ambiguous')
-    return
+    console.log("ambiguous");
+    return;
   }
-  if (kind === 'risk') {
-    // terminal-cli classify risk file1 file2 ... --diff-lines=N
-    const files = []
-    let diffLines = 0
+  if (kind === "risk") {
+    const files = [];
+    let diffLines = 0;
     for (const a of args) {
-      if (a.startsWith('--diff-lines=')) diffLines = parseInt(a.slice(13), 10) || 0
-      else files.push(a)
+      if (a.startsWith("--diff-lines="))
+        diffLines = parseInt(a.slice(13), 10) || 0;
+      else
+        files.push(a);
     }
     if (!files.length) {
-      console.error('usage: terminal-cli classify risk <file> [<file> ...] [--diff-lines=N]')
-      process.exit(2)
+      console.error("usage: terminal-cli classify risk <file> [<file> ...] [--diff-lines=N]");
+      process.exit(2);
     }
     const HIGH = [
       /(^|\/)migrations?\//i,
@@ -1158,8 +424,8 @@ function classifyCommand(kind, args) {
       /(^|\/)k8s\/|(^|\/)kubernetes\/|(^|\/)helm\/|deployment\.ya?ml$/i,
       /(^|\/)terraform\/|\.tf$/i,
       /\bsecrets?\b|\.env(\.|$)|credentials/i,
-      /(^|\/)\.github\/workflows\//i,
-    ]
+      /(^|\/)\.github\/workflows\//i
+    ];
     const LOW = [
       /\.md$/i,
       /(^|\/)docs?\//i,
@@ -1169,298 +435,282 @@ function classifyCommand(kind, args) {
       /(^|\/)\.editorconfig$/i,
       /(^|\/)LICENSE/i,
       /(^|\/)\.prettierrc/i,
-      /(^|\/)snapshots?\//i,
-    ]
+      /(^|\/)snapshots?\//i
+    ];
     for (const f of files)
       for (const p of HIGH)
         if (p.test(f)) {
-          console.log('high')
-          return
+          console.log("high");
+          return;
         }
     if (diffLines > 500) {
-      console.log('medium')
-      return
+      console.log("medium");
+      return;
     }
     if (files.every((f) => LOW.some((p) => p.test(f))) && diffLines <= 50) {
-      console.log('low')
-      return
+      console.log("low");
+      return;
     }
     if (files.every((f) => LOW.some((p) => p.test(f)))) {
-      console.log('low')
-      return
+      console.log("low");
+      return;
     }
-    console.log('medium')
-    return
+    console.log("medium");
+    return;
   }
-  console.error('usage: terminal-cli classify <ci|risk|kind> <args>')
-  process.exit(2)
+  console.error("usage: terminal-cli classify <ci|risk|kind> <args>");
+  process.exit(2);
 }
 
-// The user's LOCAL calendar day, not UTC. `toISOString().slice(0,10)` is the UTC
-// date, so any evening edit west of UTC stamps TOMORROW. Must agree with
-// src/main/local-day.ts: the app and this script write the same ticket
-// `updated:` field, and a mismatch made them disagree by a day every evening.
-const localDay = (at = new Date()) =>
-  `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}-${String(at.getDate()).padStart(2, '0')}`
+// src/cli/hitl.ts
+import { mkdirSync as mkdirSync4, readFileSync as readFileSync6 } from "fs";
+import { basename as basename2 } from "path";
+import { createHash, randomUUID as randomUUID3 } from "crypto";
 
-// Mirrors ModelTier in src/main/resolve-model.ts. An unroutable tier resolves
-// through the default (expensive) policy slot, so normalise rather than trust.
-const MODEL_TIERS = ['auto', 'top', 'cheap-agentic', 'cheap-raw']
-const normalizeModelTier = (value) => (MODEL_TIERS.includes(value) ? value : 'auto')
-
-function fileTicket(title, body, modelTier) {
-  if (!repo) {
-    console.error(
-      'terminal-cli ticket: TERMINAL_REPO not set — scripts must be invoked by the TerMinal runner',
-    )
-    process.exit(2)
-  }
-  const cfg = readTicketConfig()
-  if (cfg.provider === 'github') return fileGithubIssue(title, body, cfg.github || {})
-  if (cfg.provider === 'linear') {
-    console.error(
-      'terminal-cli ticket: Linear repos must file through the configured Linear MCP/CLI, not local backlog markdown',
-    )
-    process.exit(2)
-  }
-  if (cfg.provider === 'webview') {
-    console.error(
-      'terminal-cli ticket: this repo has no ticket store — its Tickets tab is a webview, not a queryable backlog',
-    )
-    process.exit(2)
-  }
-  // Obsidian repos keep tickets in their vault, not the repo's local backlog.
-  // A misconfigured vault fails closed — never silently fall back to the repo.
-  if (cfg.provider === 'obsidian' && !obsidianTicketsDir(cfg)) {
-    console.error(
-      'terminal-cli ticket: Obsidian vault path is not configured for this repo (.TerMinal/tickets.json)',
-    )
-    process.exit(2)
-  }
-  const vault = obsidianTicketsDir(cfg)
-  const backlog = vault || areaPath(repo, 'backlog')
-  mkdirSync(backlog, { recursive: true })
-  // Allocate across every dir the repo READS from, so a fresh sidecar beside a
-  // repo that still holds 0001-0042 does not restart at 0001.
-  const maxId = maxAreaId(vault ? [vault] : areaReadPaths(repo, 'backlog').concat(backlog))
-  const id = String(maxId + 1).padStart(4, '0')
-  const slug =
-    (title || 'untitled')
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '')
-      .slice(0, 50) || 'untitled'
-  const today = localDay()
-  const assignedAgent = agentId || 'factory'
-  const fm = `---
-id: ${id}
-title: ${JSON.stringify(title || 'Untitled')}
-status: open
-priority: medium
-type: feature
-source: script
-created: ${today}
-updated: ${today}
-model_tier: ${normalizeModelTier(modelTier)}
-agent_id: ${assignedAgent}
-agent_scope: ${agentId ? 'repo' : 'global'}
-agent_kind: classic
----
-
-${body || ''}
-`
-  const path = join(backlog, `${id}-${slug}.md`)
-  writeFileSync(path, fm)
-  emitActivity('ticket-filed', `Ticket filed · #${id}`, title || '')
-  console.log(path)
-}
-
-// Append to a ticket's `## Log` — the durable per-ticket context an agent run
-// leaves behind for the next one. Mirrors appendComment in
-// src/main/ticket-comments.ts; kept in sync by the round-trip tests.
-function commentOnTicket(slug, body) {
-  if (!repo) {
-    console.error(
-      'terminal-cli ticket comment: TERMINAL_REPO not set — scripts must be invoked by the TerMinal runner',
-    )
-    process.exit(2)
-  }
-  const text = String(body || '').trim()
-  if (!text) {
-    console.error('terminal-cli ticket comment: empty comment body')
-    process.exit(2)
-  }
-  const cfg = readTicketConfig()
-  if (cfg.provider === 'github' || cfg.provider === 'linear') {
-    console.error(
-      `terminal-cli ticket comment: ${cfg.provider} repos must comment through their own CLI/MCP, not local backlog markdown`,
-    )
-    process.exit(2)
-  }
-  if (cfg.provider === 'webview') {
-    console.error(
-      'terminal-cli ticket comment: this repo has no ticket store — its Tickets tab is a webview, not a queryable backlog',
-    )
-    process.exit(2)
-  }
-  // Look across every store the repo reads from (sidecar + any state still
-  // committed in-repo), not just where new tickets are written — otherwise
-  // commenting on a ticket that predates the sidecar would fail.
-  const vault = obsidianTicketsDir(cfg)
-  const dirs = vault ? [vault] : areaReadPaths(repo, 'backlog')
-  const writeDir = vault || areaPath(repo, 'backlog')
-  const safe = String(slug || '').replace(/[^\w-]/g, '')
-  const path = safe ? dirs.map((d) => join(d, `${safe}.md`)).find((p) => existsSync(p)) : ''
-  if (!path) {
-    console.error(
-      `terminal-cli ticket comment: no such ticket "${slug}" in ${dirs.join(', ') || writeDir}`,
-    )
-    process.exit(2)
-  }
-  const md = readFileSync(path, 'utf8')
-  const m = md.match(/^(---\n[\s\S]*?\n---\n?)([\s\S]*)$/)
-  if (!m) {
-    console.error(`terminal-cli ticket comment: ${safe}.md has no frontmatter block`)
-    process.exit(2)
-  }
-  const header = `### ${new Date().toISOString()} · agent:${agentId || 'factory'}${
-    process.env.TERMINAL_ENGINE ? ` (${process.env.TERMINAL_ENGINE})` : ''
-  }`
-  // Appending never needs to parse the existing log — only to find whether one
-  // has been opened yet — so the parser stays in exactly one place.
-  const hasLog = /^## Log$/m.test(m[2])
-  const prose = m[2].trim()
-  const next = hasLog
-    ? `${m[1]}\n${prose}\n\n${header}\n${text}\n`
-    : `${m[1]}\n${prose ? `${prose}\n\n` : ''}## Log\n\n${header}\n${text}\n`
-  writeFileSync(path, next.replace(/^(updated:[ \t]*).*$/m, `$1${localDay()}`))
-  console.log(path)
-}
-
-function readTicketConfig() {
+// src/cli/notify.ts
+import { existsSync, readFileSync as readFileSync5 } from "fs";
+import { spawn } from "child_process";
+function tgCreds() {
+  const pick = (o) => {
+    const bt = o?.botToken;
+    const ci = o?.chatId;
+    return typeof bt === "string" && bt && typeof ci === "string" && ci ? { botToken: bt, chatId: ci } : null;
+  };
+  let sc = null;
+  let st = null;
   try {
-    // Personal config — sidecar first, legacy in-repo copy as fallback.
-    const p = statePathForRead(repo, 'tickets.json')
-    if (!existsSync(p)) return {}
-    const parsed = JSON.parse(readFileSync(p, 'utf8'))
-    return parsed && typeof parsed === 'object' ? parsed : {}
+    sc = JSON.parse(readFileSync5(TG_SIDECAR(), "utf8"));
+  } catch {}
+  try {
+    st = JSON.parse(readFileSync5(SETTINGS_FILE(), "utf8"))?.telegram;
+  } catch {}
+  return pick(sc) ?? pick(st);
+}
+function pingTelegram(text, inlineKeyboard) {
+  const t = tgCreds();
+  if (t) {
+    fetch(`https://api.telegram.org/bot${t.botToken}/sendMessage`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        chat_id: t.chatId,
+        text,
+        ...inlineKeyboard ? { reply_markup: { inline_keyboard: inlineKeyboard } } : {}
+      }),
+      signal: AbortSignal.timeout(8000)
+    }).catch(() => {});
+    return;
+  }
+  if (existsSync(LEGACY_TG_SCRIPT())) {
+    try {
+      const child = spawn(LEGACY_TG_SCRIPT(), ["--kind=blocked", text], { stdio: "ignore" });
+      child.on("error", () => {});
+      child.unref();
+    } catch {}
+  }
+}
+function hitlButtons(item) {
+  const row = [{ text: "\u2705 Resolve", callback_data: `hitl:resolve:${item.id}` }];
+  if (item.runId)
+    row.push({ text: "\uD83E\uDEB5 Tail run", callback_data: `run:tail:${item.runId}` });
+  return [row];
+}
+function slackCfg() {
+  try {
+    const c = JSON.parse(readFileSync5(SLACK_SIDECAR(), "utf8"));
+    return typeof c?.botToken === "string" && c.botToken ? c : null;
   } catch {
-    return {}
+    return null;
   }
 }
-
-// Obsidian tickets live in <vaultPath>/<ticketsSubdir||tickets>, not the repo.
-// Returns null unless the repo is configured for the obsidian provider.
-function obsidianTicketsDir(cfg) {
-  if (cfg.provider !== 'obsidian' || !cfg.obsidian || !cfg.obsidian.vaultPath) return null
-  const sub = String(cfg.obsidian.ticketsSubdir || 'tickets').replace(/^\/+|\/+$/g, '') || 'tickets'
-  return join(cfg.obsidian.vaultPath, sub)
+function slackQuietsTelegram() {
+  return slackCfg()?.destination === "slack";
 }
-
-function ghLabelMaps(cfg) {
-  return {
-    priority: {
-      critical: 'priority:critical',
-      high: 'priority:high',
-      medium: 'priority:medium',
-      low: 'priority:low',
-      ...(cfg.priorityLabels || {}),
+function slackSlug(raw) {
+  return String(raw || "").toLowerCase().replace(/[/\s]+/g, "-").replace(/[^a-z0-9_-]+/g, "").replace(/-+/g, "-").replace(/^-|-$/g, "");
+}
+function slackChannelFor(category, cfg) {
+  const fallback = slackSlug(cfg.defaultChannel).slice(0, 80) || "terminal-inbox";
+  const slug = category && category !== "Uncategorized" ? slackSlug(category) : "";
+  if (!slug)
+    return fallback;
+  const prefix = slackSlug(cfg.channelPrefix);
+  return (prefix ? `${prefix}-${slug}` : slug).slice(0, 80);
+}
+function slackApi(token, method, body) {
+  return fetch(`https://slack.com/api/${method}`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json; charset=utf-8"
     },
-    type: {
-      feature: 'type:feature',
-      bug: 'type:bug',
-      security: 'type:security',
-      docs: 'type:docs',
-      dx: 'type:dx',
-      testing: 'type:testing',
-      ux: 'type:ux',
-      performance: 'type:performance',
-      ...(cfg.typeLabels || {}),
-    },
-  }
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(8000)
+  }).then((r) => r.json());
 }
-
-function ensureGhLabel(label) {
-  try {
-    execFileSync(
-      'gh',
-      [
-        'label',
-        'create',
-        label,
-        '--color',
-        'ededed',
-        '--description',
-        'Managed by TerMinal tickets',
-      ],
-      {
-        cwd: repo,
-        stdio: ['ignore', 'ignore', 'pipe'],
-        encoding: 'utf8',
-      },
-    )
-  } catch (e) {
-    const msg = String(e.stderr || e.message || '')
-    if (!/already exists/i.test(msg)) throw e
-  }
-}
-
-function fileGithubIssue(title, body, cfg) {
-  const maps = ghLabelMaps(cfg)
-  const labels = [maps.priority.medium, maps.type.feature].filter(Boolean)
-  for (const label of labels) ensureGhLabel(label)
-  try {
-    const args = ['issue', 'create', '--title', title || 'Untitled', '--body', body || '']
-    if (labels.length) args.push('--label', labels.join(','))
-    const url = execFileSync('gh', args, {
-      cwd: repo,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    }).trim()
-    const id = (url.match(/\/issues\/(\d+)/) || [])[1] || ''
-    emitActivity('ticket-filed', `Ticket filed · ${id ? `#${id}` : 'GitHub Issue'}`, title || '')
-    console.log(url)
-  } catch (e) {
-    console.error(
-      `terminal-cli ticket: gh issue create failed: ${String(e.stderr || e.message || '').trim()}`,
-    )
-    process.exit(1)
-  }
-}
-
-function safeFileName(name) {
-  return (
-    String(name || '')
-      .replace(/[^a-zA-Z0-9._-]/g, '-')
-      .replace(/^-+|-+$/g, '') || randomUUID()
-  )
-}
-
-function parseFlags(args) {
-  const out = { _: [] }
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i]
-    if (!arg.startsWith('--')) {
-      out._.push(arg)
-      continue
+function mirrorHitlToSlack(item) {
+  const cfg = slackCfg();
+  if (!cfg)
+    return;
+  (async () => {
+    const channel = slackChannelFor(item.category, cfg);
+    const fallback = slackChannelFor(undefined, cfg);
+    const marker = item.source === "completion-hook" ? "\u2705" : "\u26D4";
+    const text = `${marker} ${item.title}${item.action ? ` \u2014 ${item.action}` : ""}`;
+    const post = (to) => slackApi(cfg.botToken, "chat.postMessage", { channel: to, text });
+    let res = await post(`#${channel}`);
+    if (!res?.ok && res?.error === "channel_not_found" && cfg.autoCreateChannels) {
+      const created = await slackApi(cfg.botToken, "conversations.create", { name: channel });
+      if (created?.ok && created.channel?.id) {
+        if (cfg.inviteUserId)
+          await slackApi(cfg.botToken, "conversations.invite", {
+            channel: created.channel.id,
+            users: cfg.inviteUserId
+          }).catch(() => {});
+        res = await post(created.channel.id);
+      }
     }
-    const eq = arg.indexOf('=')
-    const key = arg
-      .slice(2, eq > 0 ? eq : undefined)
-      .replace(/-([a-z])/g, (_m, ch) => ch.toUpperCase())
-    if (!key) continue
-    if (eq > 0) out[key] = arg.slice(eq + 1)
-    else if (args[i + 1] && !args[i + 1].startsWith('--')) out[key] = args[++i]
-    else out[key] = true
-  }
-  return out
+    if (!res?.ok && channel !== fallback)
+      res = await post(`#${fallback}`);
+    if (res?.ok && typeof res.channel === "string" && typeof res.ts === "string") {
+      updateJsonListShared(HITL_FILE(), (list) => list.map((h) => h.id === item.id ? { ...h, slackChannel: res.channel, slackTs: res.ts } : h));
+    }
+  })().catch(() => {});
 }
 
+// src/cli/hitl.ts
+var SEVERITY_RANK = { urgent: 3, normal: 2, low: 1 };
+function normalizeCategoryShared(raw) {
+  if (typeof raw !== "string")
+    return;
+  const clean = raw.replace(/[\x00-\x1f\x7f]/g, "").trim();
+  return clean ? clean.slice(0, 40) : undefined;
+}
+function fileHitl(title, action, opts = {}) {
+  const severity = opts.severity && SEVERITY_RANK[opts.severity] ? opts.severity : undefined;
+  const category = normalizeCategoryShared(opts.category);
+  const item = {
+    id: randomUUID3(),
+    title: title || "untitled",
+    action: action || "",
+    repo: repoLabel(),
+    repoRoot: repo(),
+    source: opts.source || "skill",
+    status: "open",
+    createdAt: Date.now(),
+    ...severity ? { severity } : {},
+    ...category ? { category } : {},
+    ...runId() ? { runId: runId(), runSource: "cron" } : {},
+    sessionId: process.env.GT_TERMINAL_SESSION_ID || "",
+    terminalKey: process.env.GT_TERMINAL_SESSION_KEY || "",
+    terminalCwd: process.env.GT_TERMINAL_CWD || repo()
+  };
+  updateJsonListShared(HITL_FILE(), (cur) => [item, ...cur]);
+  mirrorHitlToSlack(item);
+  emitActivity("blocked", `Inbox \xB7 ${item.title}`, item.action, { suppressTelegram: true });
+  const threshold = readSettings()?.inbox?.notifyThreshold;
+  const loud = !severity || (SEVERITY_RANK[severity] || 3) >= (SEVERITY_RANK[threshold] || 3);
+  if (loud && !slackQuietsTelegram())
+    pingTelegram(`\u26D4 Inbox \xB7 ${item.title}${item.action ? ` \u2014 ${item.action}` : ""}`, hitlButtons(item));
+  console.log(item.id);
+}
+function completionHookEnabled() {
+  const settings = readSettings();
+  return settings?.inbox?.completionHook !== false;
+}
+function safeBasename(path) {
+  try {
+    return basename2(path || "");
+  } catch {
+    return "";
+  }
+}
+function completionHitl(engine) {
+  const input = readFileSync6(0, "utf8");
+  if (!completionHookEnabled())
+    return;
+  let payload = {};
+  try {
+    payload = input.trim() ? JSON.parse(input) : {};
+  } catch {
+    payload = {};
+  }
+  const cwd = payload.cwd || process.env.PWD || "";
+  if (String(cwd).includes("/.claude-mem"))
+    return;
+  const project = safeBasename(cwd) || repoLabel() || "workspace";
+  const transcript = payload.transcript_path || payload.transcriptPath || "";
+  const lastMessage = String(payload.last_assistant_message || payload.last_message || "").replace(/\s+/g, " ").slice(0, 300);
+  const hashInput = JSON.stringify({
+    engine: engine || "agent",
+    cwd,
+    transcript,
+    lastMessage,
+    session: payload.session_id || payload.sessionId || process.env.GT_TERMINAL_SESSION_ID || payload.conversation_id || payload.conversationId || "",
+    terminalKey: process.env.GT_TERMINAL_SESSION_KEY || ""
+  });
+  const id = `completion-${createHash("sha256").update(hashInput).digest("hex").slice(0, 16)}`;
+  const item = {
+    id,
+    title: `${engine || "Agent"} completion \xB7 ${project}`,
+    action: "Review the completed agent turn.",
+    detail: lastMessage || (transcript ? `transcript: ${transcript}` : ""),
+    repo: project,
+    repoRoot: cwd,
+    source: "completion-hook",
+    status: "open",
+    createdAt: Date.now(),
+    sessionId: payload.session_id || payload.sessionId || process.env.GT_TERMINAL_SESSION_ID || "",
+    terminalKey: process.env.GT_TERMINAL_SESSION_KEY || "",
+    terminalCwd: process.env.GT_TERMINAL_CWD || cwd,
+    ...transcript ? { transcriptPath: transcript } : {}
+  };
+  mkdirSync4(CFG(), { recursive: true });
+  const filed = updateJsonListShared(HITL_FILE(), (cur) => cur.some((h) => h.id === id) ? undefined : [item, ...cur]);
+  if (!filed) {
+    console.log(id);
+    return;
+  }
+  mirrorHitlToSlack(item);
+  emitActivity("blocked", `Inbox \xB7 ${item.title}`, item.action, { suppressTelegram: true });
+  if (!slackQuietsTelegram())
+    pingTelegram(`\u26D4 Inbox \xB7 ${item.title}${item.action ? ` \u2014 ${item.action}` : ""}`, hitlButtons(item));
+  console.log(id);
+}
+
+// src/cli/listener.ts
+import { mkdirSync as mkdirSync5, readFileSync as readFileSync7, readdirSync, writeFileSync as writeFileSync2 } from "fs";
+import { join as join4 } from "path";
+import { randomUUID as randomUUID4 } from "crypto";
+function safeFileName(name) {
+  return String(name || "").replace(/[^a-zA-Z0-9._-]/g, "-").replace(/^-+|-+$/g, "") || randomUUID4();
+}
+function parseFlags(args) {
+  const out = { _: [] };
+  for (let i = 0;i < args.length; i++) {
+    const arg = args[i];
+    if (!arg.startsWith("--")) {
+      out._.push(arg);
+      continue;
+    }
+    const eq = arg.indexOf("=");
+    const key = arg.slice(2, eq > 0 ? eq : undefined).replace(/-([a-z])/g, (_m, ch) => ch.toUpperCase());
+    if (!key)
+      continue;
+    if (eq > 0)
+      out[key] = arg.slice(eq + 1);
+    else if (args[i + 1] && !args[i + 1].startsWith("--"))
+      out[key] = args[++i];
+    else
+      out[key] = true;
+  }
+  return out;
+}
 function readListenerEvent(args) {
-  const flags = parseFlags(args)
-  const raw = flags._.join(' ').trim()
+  const flags = parseFlags(args);
+  const raw = flags._.join(" ").trim();
   if (!raw && (flags.source || flags.type)) {
-    const action = flags.action
+    const action = flags.action;
     const event = {
       id: flags.id,
       listenerId: flags.sourceId || flags.listener || flags.listenerId,
@@ -1470,658 +720,1180 @@ function readListenerEvent(args) {
       title: flags.title,
       body: flags.body,
       repoRoot: flags.repoRoot || flags.repo,
-      dedupeKey: flags.dedupeKey || flags.dedupe,
-    }
+      dedupeKey: flags.dedupeKey || flags.dedupe
+    };
     if (action) {
-      if (action === 'activity')
-        event.requestedAction = { kind: 'activity', title: flags.title, detail: flags.body }
-      else if (action === 'file-ticket')
+      if (action === "activity")
+        event.requestedAction = { kind: "activity", title: flags.title, detail: flags.body };
+      else if (action === "file-ticket")
         event.requestedAction = {
-          kind: 'file-ticket',
+          kind: "file-ticket",
           title: flags.title,
           body: flags.body,
           type: flags.ticketType,
-          priority: flags.priority,
-        }
-      else if (action === 'file-hitl')
+          priority: flags.priority
+        };
+      else if (action === "file-hitl")
         event.requestedAction = {
-          kind: 'file-hitl',
+          kind: "file-hitl",
           title: flags.title,
           action: flags.body || flags.prompt,
-          detail: flags.detail,
-        }
-      else if (action === 'run-agent')
+          detail: flags.detail
+        };
+      else if (action === "run-agent")
         event.requestedAction = {
-          kind: 'run-agent',
+          kind: "run-agent",
           agentId: flags.agent || flags.agentId,
           engine: flags.engine,
           model: flags.model,
-          mode: flags.mode || 'agent',
-          prompt: flags.prompt,
-        }
-      else if (action === 'background-task')
+          mode: flags.mode || "agent",
+          prompt: flags.prompt
+        };
+      else if (action === "background-task")
         event.requestedAction = {
-          kind: 'background-task',
+          kind: "background-task",
           engine: flags.engine,
           model: flags.model,
-          prompt: flags.prompt || flags.body || '',
-        }
+          prompt: flags.prompt || flags.body || ""
+        };
     }
-    return event
+    return event;
   }
-  return raw ? JSON.parse(raw) : JSON.parse(readFileSync(0, 'utf8'))
+  return raw ? JSON.parse(raw) : JSON.parse(readFileSync7(0, "utf8"));
 }
-
 function listenerDirs() {
-  return ['new', 'processing', 'done', 'failed', 'dead-letter']
+  return ["new", "processing", "done", "failed", "dead-letter"];
 }
-
 function listenerStatus() {
-  const counts = Object.fromEntries(
-    listenerDirs().map((dir) => {
-      try {
-        return [
-          dir,
-          readdirSync(join(LISTENER_ROOT, dir)).filter((f) => f.endsWith('.json')).length,
-        ]
-      } catch {
-        return [dir, 0]
-      }
-    }),
-  )
-  console.log(JSON.stringify({ inboxDir: LISTENER_ROOT, counts }, null, 2))
+  const counts = Object.fromEntries(listenerDirs().map((dir) => {
+    try {
+      return [
+        dir,
+        readdirSync(join4(LISTENER_ROOT(), dir)).filter((f) => f.endsWith(".json")).length
+      ];
+    } catch {
+      return [dir, 0];
+    }
+  }));
+  console.log(JSON.stringify({ inboxDir: LISTENER_ROOT(), counts }, null, 2));
 }
-
 function listenerExample() {
-  console.log(
-    JSON.stringify(
-      {
-        listenerId: 'local-script:repo-health',
-        listenerName: 'Local repo health',
-        source: 'local-script',
-        type: 'automation.requested',
-        title: 'Run repo health',
-        repoRoot: process.cwd(),
-        dedupeKey: `local-script:repo-health:${process.cwd()}`,
-        requestedAction: { kind: 'run-agent', agentId: 'health', engine: 'codex', mode: 'agent' },
-      },
-      null,
-      2,
-    ),
-  )
+  console.log(JSON.stringify({
+    listenerId: "local-script:repo-health",
+    listenerName: "Local repo health",
+    source: "local-script",
+    type: "automation.requested",
+    title: "Run repo health",
+    repoRoot: process.cwd(),
+    dedupeKey: `local-script:repo-health:${process.cwd()}`,
+    requestedAction: { kind: "run-agent", agentId: "health", engine: "codex", mode: "agent" }
+  }, null, 2));
 }
-
 function listenerCommand(sub, args) {
-  if (sub === 'dir') {
-    console.log(LISTENER_ROOT)
-    return
+  if (sub === "dir") {
+    console.log(LISTENER_ROOT());
+    return;
   }
-  if (sub === 'status') {
-    listenerStatus()
-    return
+  if (sub === "status") {
+    listenerStatus();
+    return;
   }
-  if (sub === 'example') {
-    listenerExample()
-    return
+  if (sub === "example") {
+    listenerExample();
+    return;
   }
-  if (sub !== 'enqueue') {
-    console.error('usage: terminal-cli inbox <enqueue|status|dir|example> [json|flags]')
-    process.exit(2)
+  if (sub !== "enqueue") {
+    console.error("usage: terminal-cli inbox <enqueue|status|dir|example> [json|flags]");
+    process.exit(2);
   }
-  let event = {}
+  let event = {};
   try {
-    event = readListenerEvent(args)
+    event = readListenerEvent(args);
   } catch (e) {
-    console.error(`terminal-cli inbox enqueue: invalid JSON: ${e.message}`)
-    process.exit(2)
+    console.error(`terminal-cli inbox enqueue: invalid JSON: ${e.message}`);
+    process.exit(2);
   }
-  if (!event || typeof event !== 'object') {
-    console.error('terminal-cli inbox enqueue: event must be a JSON object')
-    process.exit(2)
+  if (!event || typeof event !== "object") {
+    console.error("terminal-cli inbox enqueue: event must be a JSON object");
+    process.exit(2);
   }
   if (!event.source || !event.type) {
-    console.error('terminal-cli inbox enqueue: source and type are required')
-    process.exit(2)
+    console.error("terminal-cli inbox enqueue: source and type are required");
+    process.exit(2);
   }
-  mkdirSync(join(LISTENER_ROOT, 'new'), { recursive: true })
-  const id = event.id || randomUUID()
-  const path = join(LISTENER_ROOT, 'new', `${safeFileName(id)}.json`)
-  writeFileSync(
-    path,
-    JSON.stringify(
-      { ...event, id, createdAt: event.createdAt || new Date().toISOString() },
-      null,
-      2,
-    ),
-  )
-  console.log(path)
+  mkdirSync5(join4(LISTENER_ROOT(), "new"), { recursive: true });
+  const id = event.id || randomUUID4();
+  const path = join4(LISTENER_ROOT(), "new", `${safeFileName(id)}.json`);
+  writeFileSync2(path, JSON.stringify({ ...event, id, createdAt: event.createdAt || new Date().toISOString() }, null, 2));
+  console.log(path);
 }
 
-// loop — the roles' durable transport (protocol.md option 2) + a read surface.
-// Reads/writes the loop's on-disk state; the heavy lifting (create/step/spawn)
-// stays in the app. Loop state lives in the repo's SIDECAR (loops/<id>/),
-// resolved per loop so one already running out of a legacy in-repo
-// .TerMinal/loops dir keeps working.
-function loopCommand(sub, rest) {
-  const LOOPS_FILE = join(CFG, 'loops.json')
-  // The app spawns loop roles with cwd = the GENERATOR WORKTREE and injects
-  // TERMINAL_REPO = the source repo; resolving from cwd would key a phantom
-  // sidecar off the worktree and split the loop's state. Sticky resolution
-  // matches the app: a legacy in-repo loop keeps finishing where it started.
-  const loopRoot =
-    process.env.TERMINAL_REPO ||
-    gitOut(process.cwd(), ['rev-parse', '--show-toplevel']) ||
-    process.cwd()
-  const loopDir = (id) => statePathSticky(loopRoot, join('loops', id))
-  const usage = () => {
-    console.error(
-      'usage: terminal-cli loop <list | event <id> <role> <kind> [summary] [detail] | log <id> <line> | state <id>>',
-    )
-    process.exit(2)
+// src/cli/loop.ts
+import { execFileSync as execFileSync3 } from "child_process";
+import { appendFileSync as appendFileSync2, existsSync as existsSync5, mkdirSync as mkdirSync7, readFileSync as readFileSync9 } from "fs";
+import { join as join8 } from "path";
+
+// src/runner/repo-state.ts
+import { existsSync as existsSync3 } from "fs";
+import { join as join6 } from "path";
+
+// src/runner/repo-state-block.js
+import { execFileSync } from "child_process";
+import { createHash as createHash2 } from "crypto";
+import { existsSync as existsSync2, readdirSync as readdirSync2 } from "fs";
+import { basename as basename3, join as join5 } from "path";
+function makeRepoState(CFG2) {
+  const SIDECAR_AREAS = ["backlog", "sessions", "reviews", "checks", "reports"];
+  const repoStateKeyCache = new Map;
+  const MIGRATION_SUNSET_MS = Date.parse("2026-10-13T00:00:00Z");
+  function migrationWindowOpen() {
+    return Date.now() < MIGRATION_SUNSET_MS;
   }
-  if (sub === 'list') {
-    let loops = []
-    if (existsSync(LOOPS_FILE)) {
+  function repoStateDir() {
+    return process.env.TERMINAL_REPO_STATE_DIR?.trim() || join5(CFG2, "repos");
+  }
+  function gitOut(root, args) {
+    try {
+      return execFileSync("git", ["-C", root, ...args], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"]
+      }).trim();
+    } catch {
+      return "";
+    }
+  }
+  function parseRemoteKey(url) {
+    const u = (url || "").trim().replace(/\/+$/, "").replace(/\.git$/, "");
+    const m = u.match(/^[a-z][a-z0-9+.-]*:\/\/(?:[^@/]+@)?([^/:]+)(?::\d+)?\/(.+)$/i) || u.match(/^[\w.-]+@([^:/]+)[:/](.+)$/);
+    return m ? m[1] + "/" + m[2] : "";
+  }
+  function safeStateKey(key) {
+    if (!key)
+      return "";
+    const parts = key.split("/");
+    if (parts.some((p) => p === "" || p === "." || p === ".."))
+      return "";
+    return key;
+  }
+  function repoStateKey(root) {
+    if (!root)
+      return "";
+    const hit = repoStateKeyCache.get(root);
+    if (hit !== undefined)
+      return hit;
+    let key = safeStateKey(parseRemoteKey(gitOut(root, ["config", "--get", "remote.origin.url"])));
+    if (!key)
+      key = safeStateKey(parseRemoteKey(gitOut(root, ["remote", "get-url", "origin"])));
+    if (!key) {
+      let canonical = gitOut(root, ["rev-parse", "--show-toplevel"]) || root;
+      const common = gitOut(root, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+      if (common && common.endsWith("/.git"))
+        canonical = common.slice(0, -"/.git".length);
+      const hash = createHash2("sha256").update(canonical).digest("hex").slice(0, 12);
+      key = "local/" + basename3(canonical) + "-" + hash;
+    }
+    repoStateKeyCache.set(root, key);
+    return key;
+  }
+  function sidecarAreaPath(root, area) {
+    if (!root || !SIDECAR_AREAS.includes(area))
+      return "";
+    const key = repoStateKey(root);
+    return key ? join5(repoStateDir(), key, area) : "";
+  }
+  function areaPathsFor(root, area, candidates) {
+    const out = [];
+    const sidecar = sidecarAreaPath(root, area);
+    if (sidecar && existsSync2(sidecar))
+      out.push(sidecar);
+    if (migrationWindowOpen())
+      for (const rel of candidates) {
+        const p = join5(root, rel);
+        if (existsSync2(p))
+          out.push(p);
+      }
+    return out;
+  }
+  function areaWritePath(root, area, candidates, isV2) {
+    const sidecar = sidecarAreaPath(root, area);
+    if (sidecar)
+      return sidecar;
+    const existing = areaPathsFor(root, area, candidates);
+    if (existing.length)
+      return existing[0];
+    return join5(root, isV2 ? candidates[0] : candidates[1] || candidates[0]);
+  }
+  function maxAreaId(dirs) {
+    let max = 0;
+    for (const dir of dirs) {
+      if (!dir)
+        continue;
+      let entries = [];
       try {
-        loops = JSON.parse(readFileSync(LOOPS_FILE, 'utf8'))
+        entries = readdirSync2(dir);
       } catch {
-        /* empty */
+        continue;
+      }
+      for (const f of entries) {
+        const m = /^(\d{4})-/.exec(f);
+        if (m)
+          max = Math.max(max, parseInt(m[1], 10));
       }
     }
-    if (!loops.length) return console.log('(no loops)')
-    for (const l of loops) console.log(`${l.id}  [${l.phase}]  iter ${l.iteration}  ${l.goal}`)
-    return
+    return max;
   }
-  const id = rest[0]
-  if (!id) usage()
-  const dir = loopDir(id)
-  if (sub === 'event') {
-    const [, role, kind, summary, detail] = rest
-    if (!role || !kind) usage()
-    mkdirSync(dir, { recursive: true })
+  function statePathForWrite(root, rel) {
+    if (!root)
+      return "";
+    const key = repoStateKey(root);
+    return key ? join5(repoStateDir(), key, rel) : "";
+  }
+  function statePathForRead(root, rel) {
+    const sidecar = statePathForWrite(root, rel);
+    if (sidecar && existsSync2(sidecar))
+      return sidecar;
+    const legacy = join5(root, ".TerMinal", rel);
+    if (migrationWindowOpen() && existsSync2(legacy))
+      return legacy;
+    return sidecar || legacy;
+  }
+  function statePathSticky(root, rel) {
+    const legacy = join5(root, ".TerMinal", rel);
+    if (migrationWindowOpen() && existsSync2(legacy))
+      return legacy;
+    return statePathForWrite(root, rel) || legacy;
+  }
+  function repoStateEnv(root) {
+    const out = {};
+    if (!root)
+      return out;
+    const key = repoStateKey(root);
+    if (!key)
+      return out;
+    const base = join5(repoStateDir(), key);
+    out.TERMINAL_STATE_DIR = base;
+    for (const area of SIDECAR_AREAS) {
+      out["TERMINAL_" + area.toUpperCase() + "_DIR"] = join5(base, area);
+    }
+    return out;
+  }
+  return {
+    SIDECAR_AREAS,
+    repoStateKey,
+    sidecarAreaPath,
+    areaPathsFor,
+    areaWritePath,
+    maxAreaId,
+    statePathForWrite,
+    statePathForRead,
+    statePathSticky,
+    repoStateEnv
+  };
+}
+
+// src/runner/repo-state.ts
+var cached = null;
+function repoState() {
+  const cfg = CFG();
+  if (!cached || cached.cfg !== cfg)
+    cached = { cfg, api: makeRepoState(cfg) };
+  return cached.api;
+}
+function areaCandidates(area) {
+  return {
+    backlog: [".TerMinal/backlog", "backlog"],
+    sessions: [".TerMinal/sessions", "sessions"],
+    reviews: [".TerMinal/reviews", ".reviews"],
+    checks: [".TerMinal/checks", ".checks", "checks"],
+    reports: [".TerMinal/reports", "reports"]
+  }[area] || [area];
+}
+function hasV2Layout(root) {
+  const areas = ["backlog", "sessions", "reviews", "checks", "reports"];
+  if (existsSync3(join6(root, ".TerMinal", "template.json")))
+    return true;
+  if (areas.some((area) => existsSync3(join6(root, areaCandidates(area)[0]))))
+    return true;
+  return !areas.some((area) => {
+    const rels = areaCandidates(area);
+    return rels.length > 1 && existsSync3(join6(root, rels[1]));
+  });
+}
+function areaPath(root, area) {
+  return repoState().areaWritePath(root, area, areaCandidates(area), hasV2Layout(root));
+}
+function areaPathsFor(root, area) {
+  return repoState().areaPathsFor(root, area, areaCandidates(area));
+}
+function statePathForRead(root, rel) {
+  return repoState().statePathForRead(root, rel);
+}
+function statePathSticky(root, rel) {
+  return repoState().statePathSticky(root, rel);
+}
+function maxAreaId(dirs) {
+  return repoState().maxAreaId(dirs);
+}
+
+// src/cli/tickets.ts
+import { execFileSync as execFileSync2 } from "child_process";
+import { existsSync as existsSync4, mkdirSync as mkdirSync6, readFileSync as readFileSync8, writeFileSync as writeFileSync3 } from "fs";
+import { join as join7 } from "path";
+var localDay = (at = new Date) => `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(at.getDate()).padStart(2, "0")}`;
+var MODEL_TIERS = ["auto", "top", "cheap-agentic", "cheap-raw"];
+var normalizeModelTier = (value) => MODEL_TIERS.includes(value) ? value : "auto";
+function readTicketConfig() {
+  try {
+    const p = statePathForRead(repo(), "tickets.json");
+    if (!existsSync4(p))
+      return {};
+    const parsed = JSON.parse(readFileSync8(p, "utf8"));
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+function obsidianTicketsDir(cfg) {
+  if (cfg.provider !== "obsidian" || !cfg.obsidian || !cfg.obsidian.vaultPath)
+    return null;
+  const sub = String(cfg.obsidian.ticketsSubdir || "tickets").replace(/^\/+|\/+$/g, "") || "tickets";
+  return join7(cfg.obsidian.vaultPath, sub);
+}
+var areaReadPaths = (root, area) => areaPathsFor(root, area);
+function fileTicket(title, body, modelTier) {
+  if (!repo()) {
+    console.error("terminal-cli ticket: TERMINAL_REPO not set \u2014 scripts must be invoked by the TerMinal runner");
+    process.exit(2);
+  }
+  const cfg = readTicketConfig();
+  if (cfg.provider === "github")
+    return fileGithubIssue(title, body, cfg.github || {});
+  if (cfg.provider === "linear") {
+    console.error("terminal-cli ticket: Linear repos must file through the configured Linear MCP/CLI, not local backlog markdown");
+    process.exit(2);
+  }
+  if (cfg.provider === "webview") {
+    console.error("terminal-cli ticket: this repo has no ticket store \u2014 its Tickets tab is a webview, not a queryable backlog");
+    process.exit(2);
+  }
+  if (cfg.provider === "obsidian" && !obsidianTicketsDir(cfg)) {
+    console.error("terminal-cli ticket: Obsidian vault path is not configured for this repo (.TerMinal/tickets.json)");
+    process.exit(2);
+  }
+  const vault = obsidianTicketsDir(cfg);
+  const backlog = vault || areaPath(repo(), "backlog");
+  mkdirSync6(backlog, { recursive: true });
+  const maxId = maxAreaId(vault ? [vault] : areaReadPaths(repo(), "backlog").concat(backlog));
+  const id = String(maxId + 1).padStart(4, "0");
+  const slug = (title || "untitled").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 50) || "untitled";
+  const today = localDay();
+  const assignedAgent = agentId() || "factory";
+  const fm = `---
+id: ${id}
+title: ${JSON.stringify(title || "Untitled")}
+status: open
+priority: medium
+type: feature
+source: script
+created: ${today}
+updated: ${today}
+model_tier: ${normalizeModelTier(modelTier)}
+agent_id: ${assignedAgent}
+agent_scope: ${agentId() ? "repo" : "global"}
+agent_kind: classic
+---
+
+${body || ""}
+`;
+  const path = join7(backlog, `${id}-${slug}.md`);
+  writeFileSync3(path, fm);
+  emitActivity("ticket-filed", `Ticket filed \xB7 #${id}`, title || "");
+  console.log(path);
+}
+function commentOnTicket(slug, body) {
+  if (!repo()) {
+    console.error("terminal-cli ticket comment: TERMINAL_REPO not set \u2014 scripts must be invoked by the TerMinal runner");
+    process.exit(2);
+  }
+  const text = String(body || "").trim();
+  if (!text) {
+    console.error("terminal-cli ticket comment: empty comment body");
+    process.exit(2);
+  }
+  const cfg = readTicketConfig();
+  if (cfg.provider === "github" || cfg.provider === "linear") {
+    console.error(`terminal-cli ticket comment: ${cfg.provider} repos must comment through their own CLI/MCP, not local backlog markdown`);
+    process.exit(2);
+  }
+  if (cfg.provider === "webview") {
+    console.error("terminal-cli ticket comment: this repo has no ticket store \u2014 its Tickets tab is a webview, not a queryable backlog");
+    process.exit(2);
+  }
+  const vault = obsidianTicketsDir(cfg);
+  const dirs = vault ? [vault] : areaReadPaths(repo(), "backlog");
+  const writeDir = vault || areaPath(repo(), "backlog");
+  const safe = String(slug || "").replace(/[^\w-]/g, "");
+  const path = safe ? dirs.map((d) => join7(d, `${safe}.md`)).find((p) => existsSync4(p)) : "";
+  if (!path) {
+    console.error(`terminal-cli ticket comment: no such ticket "${slug}" in ${dirs.join(", ") || writeDir}`);
+    process.exit(2);
+  }
+  const md = readFileSync8(path, "utf8");
+  const m = md.match(/^(---\n[\s\S]*?\n---\n?)([\s\S]*)$/);
+  if (!m) {
+    console.error(`terminal-cli ticket comment: ${safe}.md has no frontmatter block`);
+    process.exit(2);
+  }
+  const header = `### ${new Date().toISOString()} \xB7 agent:${agentId() || "factory"}${process.env.TERMINAL_ENGINE ? ` (${process.env.TERMINAL_ENGINE})` : ""}`;
+  const hasLog = /^## Log$/m.test(m[2]);
+  const prose = m[2].trim();
+  const next = hasLog ? `${m[1]}
+${prose}
+
+${header}
+${text}
+` : `${m[1]}
+${prose ? `${prose}
+
+` : ""}## Log
+
+${header}
+${text}
+`;
+  writeFileSync3(path, next.replace(/^(updated:[ \t]*).*$/m, `$1${localDay()}`));
+  console.log(path);
+}
+function ghLabelMaps(cfg) {
+  return {
+    priority: {
+      critical: "priority:critical",
+      high: "priority:high",
+      medium: "priority:medium",
+      low: "priority:low",
+      ...cfg.priorityLabels || {}
+    },
+    type: {
+      feature: "type:feature",
+      bug: "type:bug",
+      security: "type:security",
+      docs: "type:docs",
+      dx: "type:dx",
+      testing: "type:testing",
+      ux: "type:ux",
+      performance: "type:performance",
+      ...cfg.typeLabels || {}
+    }
+  };
+}
+function ensureGhLabel(label) {
+  try {
+    execFileSync2("gh", [
+      "label",
+      "create",
+      label,
+      "--color",
+      "ededed",
+      "--description",
+      "Managed by TerMinal tickets"
+    ], {
+      cwd: repo(),
+      stdio: ["ignore", "ignore", "pipe"],
+      encoding: "utf8"
+    });
+  } catch (e) {
+    const msg = String(e.stderr || e.message || "");
+    if (!/already exists/i.test(msg))
+      throw e;
+  }
+}
+function fileGithubIssue(title, body, cfg) {
+  const maps = ghLabelMaps(cfg);
+  const labels = [maps.priority.medium, maps.type.feature].filter(Boolean);
+  for (const label of labels)
+    ensureGhLabel(label);
+  try {
+    const args = ["issue", "create", "--title", title || "Untitled", "--body", body || ""];
+    if (labels.length)
+      args.push("--label", labels.join(","));
+    const url = execFileSync2("gh", args, {
+      cwd: repo(),
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"]
+    }).trim();
+    const id = (url.match(/\/issues\/(\d+)/) || [])[1] || "";
+    emitActivity("ticket-filed", `Ticket filed \xB7 ${id ? `#${id}` : "GitHub Issue"}`, title || "");
+    console.log(url);
+  } catch (e) {
+    console.error(`terminal-cli ticket: gh issue create failed: ${String(e.stderr || e.message || "").trim()}`);
+    process.exit(1);
+  }
+}
+
+// src/cli/loop.ts
+function gitOut(root, args) {
+  try {
+    return execFileSync3("git", ["-C", root, ...args], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim();
+  } catch {
+    return "";
+  }
+}
+function loopCommand(sub, rest) {
+  const loopRoot = process.env.TERMINAL_REPO || gitOut(process.cwd(), ["rev-parse", "--show-toplevel"]) || process.cwd();
+  const loopDir = (id2) => statePathSticky(loopRoot, join8("loops", id2));
+  const usage = () => {
+    console.error("usage: terminal-cli loop <list | event <id> <role> <kind> [summary] [detail] | log <id> <line> | state <id>>");
+    process.exit(2);
+  };
+  if (sub === "list") {
+    let loops = [];
+    if (existsSync5(LOOPS_FILE())) {
+      try {
+        loops = JSON.parse(readFileSync9(LOOPS_FILE(), "utf8"));
+      } catch {}
+    }
+    if (!loops.length)
+      return console.log("(no loops)");
+    for (const l of loops)
+      console.log(`${l.id}  [${l.phase}]  iter ${l.iteration}  ${l.goal}`);
+    return;
+  }
+  const id = rest[0];
+  if (!id)
+    usage();
+  const dir = loopDir(id);
+  if (sub === "event") {
+    const [, role, kind, summary, detail] = rest;
+    if (!role || !kind)
+      usage();
+    mkdirSync7(dir, { recursive: true });
     const ev = {
       loopId: id,
       role,
       kind,
-      summary: summary || '',
-      ...(detail ? { detail } : {}),
-      createdAt: new Date().toISOString(),
-    }
-    appendFileSync(join(dir, 'events.jsonl'), JSON.stringify(ev) + '\n')
-    console.log(join(dir, 'events.jsonl'))
-    return
+      summary: summary || "",
+      ...detail ? { detail } : {},
+      createdAt: new Date().toISOString()
+    };
+    appendFileSync2(join8(dir, "events.jsonl"), JSON.stringify(ev) + `
+`);
+    console.log(join8(dir, "events.jsonl"));
+    return;
   }
-  if (sub === 'log') {
-    const line = rest.slice(1).join(' ')
-    if (!line) usage()
-    mkdirSync(dir, { recursive: true })
-    appendFileSync(join(dir, 'log.md'), `## [${localDay()}] ${line}\n`)
-    return
+  if (sub === "log") {
+    const line = rest.slice(1).join(" ");
+    if (!line)
+      usage();
+    mkdirSync7(dir, { recursive: true });
+    appendFileSync2(join8(dir, "log.md"), `## [${localDay()}] ${line}
+`);
+    return;
   }
-  if (sub === 'state') {
-    const p = join(dir, 'progress.md')
-    console.log(existsSync(p) ? readFileSync(p, 'utf8') : '(no progress.md)')
-    return
+  if (sub === "state") {
+    const p = join8(dir, "progress.md");
+    console.log(existsSync5(p) ? readFileSync9(p, "utf8") : "(no progress.md)");
+    return;
   }
-  usage()
+  usage();
 }
 
-// ---- remote sessions (the phone) -------------------------------------------
-// Self-contained on purpose: this file is a standalone Bun script the runner
-// injects into agent scripts, so it cannot import from src/main.
-const REMOTE_DIR = join(CFG, 'remote')
-const remoteMeta = (id) => join(REMOTE_DIR, `${id}.json`)
-const remoteLog = (id) => join(REMOTE_DIR, `${id}.jsonl`)
-const validRemoteId = (id) => typeof id === 'string' && /^[\w-]{1,64}$/.test(id)
+// src/cli/mcp.ts
+import { execFile } from "child_process";
+import { existsSync as existsSync6 } from "fs";
+function mcpCommand(tool, kvArgs) {
+  if (!tool) {
+    console.error(`usage: terminal-cli mcp <tool> [k=v k=v ...]
+` + `examples:
+` + `  terminal-cli mcp file_ticket repo=vellum-project title="fix flaky test" type=bug
+` + `  terminal-cli mcp list_hitl status=open
+` + `  terminal-cli mcp set_run_outcome runId=$TERMINAL_RUN_ID outcome=pr-opened
+`);
+    process.exit(2);
+  }
+  const params = {};
+  for (const a of kvArgs) {
+    const eq = a.indexOf("=");
+    if (eq < 0)
+      continue;
+    const key = a.slice(0, eq);
+    const raw = a.slice(eq + 1);
+    let val = raw;
+    try {
+      val = JSON.parse(raw);
+    } catch {}
+    params[key] = val;
+  }
+  const serverBin = TERMINAL_BIN("terminal-mcp-server");
+  if (!existsSync6(serverBin)) {
+    console.error(`terminal-cli mcp: server not installed at ${serverBin}`);
+    process.exit(2);
+  }
+  const mcpTimeout = tool === "request_agent_artifact" ? Math.max(30000, Math.min(Number(params.timeoutMs || 180000) + 30000, 630000)) : 30000;
+  const child = execFile(serverBin, [], { timeout: mcpTimeout }, (err, stdout) => {
+    if (err && err.code === "ETIMEDOUT") {
+      console.error("terminal-cli mcp: server timeout");
+      process.exit(1);
+    }
+    let result = null;
+    for (const line of (stdout || "").split(`
+`)) {
+      if (!line.trim())
+        continue;
+      try {
+        const r = JSON.parse(line);
+        if (r.id === 2)
+          result = r;
+      } catch {}
+    }
+    if (!result) {
+      console.error("terminal-cli mcp: no response");
+      process.exit(1);
+    }
+    if (result.error) {
+      console.error(`terminal-cli mcp: ${result.error.message}`);
+      process.exit(1);
+    }
+    const text = result.result?.content?.[0]?.text;
+    if (text)
+      console.log(text);
+    process.exit(0);
+  });
+  child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize" }) + `
+` + JSON.stringify({
+    jsonrpc: "2.0",
+    id: 2,
+    method: "tools/call",
+    params: { name: tool, arguments: params }
+  }) + `
+`);
+  child.stdin.end();
+}
 
-function readRemote(id) {
-  if (!validRemoteId(id)) return null
+// src/cli/monitor.ts
+import { execFileSync as execFileSync4 } from "child_process";
+import { existsSync as existsSync7, mkdirSync as mkdirSync8, readFileSync as readFileSync10, writeFileSync as writeFileSync4 } from "fs";
+import { join as join9 } from "path";
+var MONITOR_TYPES = ["http", "tls-cert", "tcp", "dns", "command"];
+function readMonitors() {
   try {
-    return JSON.parse(readFileSync(remoteMeta(id), 'utf8'))
+    const a = JSON.parse(readFileSync10(MONITORS_FILE(), "utf8"));
+    return Array.isArray(a) ? a : [];
   } catch {
-    return null
+    return [];
+  }
+}
+function writeMonitors(list) {
+  mkdirSync8(CFG(), { recursive: true });
+  updateJsonListShared(MONITORS_FILE(), () => list);
+}
+function monitorCli(args) {
+  const sub = args[0];
+  const flag = (n) => args.find((a) => a.startsWith(`--${n}=`))?.slice(n.length + 3);
+  const list = readMonitors();
+  if (sub === "list" || !sub) {
+    for (const m of list) {
+      let st = "";
+      try {
+        st = JSON.parse(readFileSync10(join9(MONITOR_STATE_DIR(), `${m.id}.json`), "utf8")).status;
+      } catch {}
+      console.log(`${m.enabled === false ? "\u25CB" : "\u25CF"} ${m.id}  [${m.type}]  ${st || "\u2014"}  ${m.name}`);
+    }
+    return;
+  }
+  if (sub === "status") {
+    for (const m of list) {
+      try {
+        const s = JSON.parse(readFileSync10(join9(MONITOR_STATE_DIR(), `${m.id}.json`), "utf8"));
+        console.log(`${m.id}: ${s.status} \u2014 ${s.summary}`);
+      } catch {
+        console.log(`${m.id}: (no data yet)`);
+      }
+    }
+    return;
+  }
+  if (sub === "add") {
+    const type = flag("type");
+    const name = flag("name") || flag("target");
+    const target = flag("target");
+    if (!MONITOR_TYPES.includes(type) || !target) {
+      console.error(`usage: terminal-cli monitor add --type=<${MONITOR_TYPES.join("|")}> --target=<t> [--name=..] [--interval=60] [--group=..] [--on-failure=urgent|normal|low|off] [--config-json='{}']`);
+      process.exit(2);
+    }
+    const id2 = (flag("id") || name || target).toLowerCase().replace(/[^\w-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
+    if (list.some((m) => m.id === id2)) {
+      console.error(`monitor "${id2}" already exists`);
+      process.exit(2);
+    }
+    let config = {};
+    const cj = flag("config-json");
+    if (cj)
+      try {
+        config = JSON.parse(cj);
+      } catch {
+        console.error("bad --config-json");
+        process.exit(2);
+      }
+    list.push({
+      id: id2,
+      name: name || id2,
+      type,
+      target,
+      intervalSec: Number(flag("interval")) || 60,
+      enabled: true,
+      group: flag("group") || undefined,
+      notify: {
+        onFailure: flag("on-failure") || "urgent",
+        onRecovery: flag("on-recovery") !== "false",
+        renotifyAfterSec: Number(flag("renotify")) || 3600,
+        dailyDigest: flag("daily-digest") === "true",
+        digestHour: Number(flag("digest-hour")) || 9
+      },
+      config
+    });
+    writeMonitors(list);
+    console.log(id2);
+    return;
+  }
+  const id = args[1];
+  if (sub === "remove") {
+    writeMonitors(list.filter((m) => m.id !== id));
+    try {
+      const p = join9(MONITOR_STATE_DIR(), `${id}.json`);
+      if (existsSync7(p))
+        writeFileSync4(p, "");
+    } catch {}
+    console.log(`removed ${id}`);
+    return;
+  }
+  if (sub === "enable" || sub === "disable") {
+    const m = list.find((x) => x.id === id);
+    if (!m) {
+      console.error(`monitor ${id} not found`);
+      process.exit(1);
+    }
+    m.enabled = sub === "enable";
+    writeMonitors(list);
+    console.log(`${id} ${m.enabled ? "enabled" : "disabled"}`);
+    return;
+  }
+  if (sub === "check") {
+    const bin = TERMINAL_BIN("terminal-monitor");
+    try {
+      execFileSync4(bin, ["run", id], { stdio: "inherit" });
+    } catch {
+      process.exit(1);
+    }
+    return;
+  }
+  console.error("usage: terminal-cli monitor <list|status|add|remove|enable|disable|check>");
+  process.exit(2);
+}
+
+// src/cli/remote.ts
+import { execSync as execSync2 } from "child_process";
+import {
+  appendFileSync as appendFileSync3,
+  existsSync as existsSync8,
+  mkdirSync as mkdirSync9,
+  readFileSync as readFileSync11,
+  readdirSync as readdirSync3,
+  writeFileSync as writeFileSync5
+} from "fs";
+import { basename as basename4, join as join10 } from "path";
+import { randomUUID as randomUUID5 } from "crypto";
+var remoteMeta = (id) => join10(REMOTE_DIR(), `${id}.json`);
+var remoteLog = (id) => join10(REMOTE_DIR(), `${id}.jsonl`);
+var validRemoteId = (id) => typeof id === "string" && /^[\w-]{1,64}$/.test(id);
+function readRemote(id) {
+  if (!validRemoteId(id))
+    return null;
+  try {
+    return JSON.parse(readFileSync11(remoteMeta(id), "utf8"));
+  } catch {
+    return null;
   }
 }
 function writeRemote(session) {
-  mkdirSync(REMOTE_DIR, { recursive: true, mode: 0o700 })
-  writeFileSync(remoteMeta(session.id), JSON.stringify(session, null, 2), { mode: 0o600 })
+  mkdirSync9(REMOTE_DIR(), { recursive: true, mode: 448 });
+  writeFileSync5(remoteMeta(session.id), JSON.stringify(session, null, 2), { mode: 384 });
 }
 function remoteMessages(id) {
   try {
-    return readFileSync(remoteLog(id), 'utf8')
-      .split('\n')
-      .filter((l) => l.trim())
-      .map((l) => {
-        try {
-          return JSON.parse(l)
-        } catch {
-          return null
-        }
-      })
-      .filter(Boolean)
+    return readFileSync11(remoteLog(id), "utf8").split(`
+`).filter((l) => l.trim()).map((l) => {
+      try {
+        return JSON.parse(l);
+      } catch {
+        return null;
+      }
+    }).filter(Boolean);
   } catch {
-    return []
+    return [];
   }
 }
 function remoteAppend(id, from, text, images) {
-  mkdirSync(REMOTE_DIR, { recursive: true, mode: 0o700 })
-  const msg = { at: Date.now(), from, text }
-  if (images && images.length) msg.images = images
-  appendFileSync(remoteLog(id), JSON.stringify(msg) + '\n', { mode: 0o600 })
+  mkdirSync9(REMOTE_DIR(), { recursive: true, mode: 448 });
+  const msg = { at: Date.now(), from, text };
+  if (images && images.length)
+    msg.images = images;
+  appendFileSync3(remoteLog(id), JSON.stringify(msg) + `
+`, { mode: 384 });
 }
-// Copy an image file into the session's store, returning the stored name.
 function remoteSaveImage(id, srcPath) {
-  const ext = (srcPath.split('.').pop() || 'png').toLowerCase()
-  const safeExt = /^(png|jpg|jpeg|gif|webp|heic)$/.test(ext) ? ext : 'png'
-  const fdir = join(REMOTE_DIR, `${id}.files`)
-  mkdirSync(fdir, { recursive: true, mode: 0o700 })
-  const name = `${Date.now().toString(36)}-${randomUUID().slice(0, 6)}.${safeExt}`
-  writeFileSync(join(fdir, name), readFileSync(srcPath), { mode: 0o600 })
-  return name
+  const ext = (srcPath.split(".").pop() || "png").toLowerCase();
+  const safeExt = /^(png|jpg|jpeg|gif|webp|heic)$/.test(ext) ? ext : "png";
+  const fdir = join10(REMOTE_DIR(), `${id}.files`);
+  mkdirSync9(fdir, { recursive: true, mode: 448 });
+  const name = `${Date.now().toString(36)}-${randomUUID5().slice(0, 6)}.${safeExt}`;
+  writeFileSync5(join10(fdir, name), readFileSync11(srcPath), { mode: 384 });
+  return name;
 }
 function remoteList() {
-  if (!existsSync(REMOTE_DIR)) return []
-  return readdirSync(REMOTE_DIR)
-    .filter((f) => f.endsWith('.json'))
-    .map((f) => readRemote(f.slice(0, -5)))
-    .filter(Boolean)
-    .sort((a, b) => b.lastSeenAt - a.lastSeenAt)
+  if (!existsSync8(REMOTE_DIR()))
+    return [];
+  return readdirSync3(REMOTE_DIR()).filter((f) => f.endsWith(".json")).map((f) => readRemote(f.slice(0, -5))).filter(Boolean).sort((a, b) => b.lastSeenAt - a.lastSeenAt);
 }
-/**
- * Resolve which session a call refers to.
- *
- * --id wins. Otherwise prefer a session registered from THIS directory: with
- * several sessions registered across repos, "most recent anywhere" would hand
- * one session's replies to another.
- */
-function resolveRemoteId(flagId, cwd, { quiet = false, soft = false, agentSessionId = '' } = {}) {
-  // quiet → return '' silently (the Stop hook, on every session).
-  // soft  → return '' but let the caller print a graceful notice. Used by
-  //         post/ask/end so that deleting a session from the phone, or ending
-  //         it, degrades to "no longer remote" instead of crashing the agent's
-  //         command with exit 1. Switching desktop⇄remote must never throw.
+function resolveRemoteId(flagId, cwd, {
+  quiet = false,
+  soft = false,
+  agentSessionId = ""
+} = {}) {
   if (flagId) {
     if (!readRemote(flagId)) {
-      if (quiet || soft) return ''
-      console.error(`no registered remote session "${flagId}" — run: terminal-cli remote register`)
-      process.exit(1)
+      if (quiet || soft)
+        return "";
+      console.error(`no registered remote session "${flagId}" \u2014 run: terminal-cli remote register`);
+      process.exit(1);
     }
-    return flagId
+    return flagId;
   }
-  const active = remoteList().filter((s) => s.status !== 'ended')
-  // Exact match on the host agent's session id first: two sessions can share a
-  // cwd, so cwd alone could deliver a reply to the wrong one. Fall back to cwd,
-  // then most-recent, only when no session id is known.
-  const sid =
-    agentSessionId ||
-    process.env.GT_TERMINAL_SESSION_ID ||
-    process.env.CLAUDE_CODE_SESSION_ID ||
-    process.env.CODEX_SESSION_ID ||
-    process.env.TERMINAL_REMOTE_AGENT_SESSION ||
-    ''
-  const byAgent = sid ? active.find((s) => s.agentSessionId === sid) : null
-  const here = cwd ? active.find((s) => s.cwd === cwd) : null
-  // `active[0]` is a convenience for a HUMAN typing `terminal-cli remote ...`
-  // when there is one obvious session. It must NEVER apply to the automated
-  // callers — `quiet` is the Stop hook, which runs on every session on the
-  // machine. Otherwise a single stale registration in any repo resolves for
-  // every unrelated session and parks each of their turns for the full wait
-  // timeout, which reads as the agent hanging.
-  const current = byAgent || here || (quiet || soft ? null : active[0])
+  const active = remoteList().filter((s) => s.status !== "ended");
+  const sid = agentSessionId || process.env.GT_TERMINAL_SESSION_ID || process.env.CLAUDE_CODE_SESSION_ID || process.env.CODEX_SESSION_ID || process.env.TERMINAL_REMOTE_AGENT_SESSION || "";
+  const byAgent = sid ? active.find((s) => s.agentSessionId === sid) : null;
+  const here = cwd ? active.find((s) => s.cwd === cwd) : null;
+  const current = byAgent || here || (quiet || soft ? null : active[0]);
   if (!current) {
-    if (quiet || soft) return ''
-    console.error('no registered remote session — run: terminal-cli remote register')
-    process.exit(1)
+    if (quiet || soft)
+      return "";
+    console.error("no registered remote session \u2014 run: terminal-cli remote register");
+    process.exit(1);
   }
-  return current.id
+  return current.id;
 }
 function takeRemoteReplies(id) {
-  const session = readRemote(id)
-  if (!session) return []
-  const all = remoteMessages(id)
-  const fresh = all.slice(session.deliveredUpTo || 0).filter((m) => m.from === 'user')
-  if (!fresh.length) return []
+  const session = readRemote(id);
+  if (!session)
+    return [];
+  const all = remoteMessages(id);
+  const fresh = all.slice(session.deliveredUpTo || 0).filter((m) => m.from === "user");
+  if (!fresh.length)
+    return [];
   writeRemote({
     ...session,
     deliveredUpTo: all.length,
-    status: 'working',
+    status: "working",
     question: undefined,
-    lastSeenAt: Date.now(),
-  })
-  // Attached images hand over as absolute paths the agent can Read — mirrors
-  // src/main/remote-sessions.ts takeReplies, so "look at this screenshot"
-  // works through the hook path too.
+    lastSeenAt: Date.now()
+  });
   return fresh.map((m) => {
-    if (!m.images || !m.images.length) return m.text
-    const paths = m.images.map((n) => `[image: ${join(REMOTE_DIR, `${id}.files`, n)}]`).join(' ')
-    return m.text ? `${m.text}\n${paths}` : paths
-  })
+    if (!m.images || !m.images.length)
+      return m.text;
+    const paths = m.images.map((n) => `[image: ${join10(REMOTE_DIR(), `${id}.files`, n)}]`).join(" ");
+    return m.text ? `${m.text}
+${paths}` : paths;
+  });
 }
-/**
- * Park until the phone sends something for THIS session, it ends, or we time
- * out. Only ever called with a session id matched exactly to the host agent's
- * own session id — never a cwd/most-recent guess — so an unrelated Claude
- * session can't be made to block here.
- *   reply  → print it, exit 0 (hook blocks the stop and hands it over)
- *   ended  → exit 0 (hook lets the turn stop)
- *   timeout→ exit 3 (hook re-parks with a heartbeat)
- */
 function waitForReplies(sessionId, timeoutSec) {
-  // Parked between turns = idle: the phone can tell "waiting for you" apart
-  // from "actively working". Draining a reply flips it back to working.
-  const parked = readRemote(sessionId)
-  if (parked && parked.status === 'working')
-    writeRemote({ ...parked, status: 'idle', lastSeenAt: Date.now() })
-  const deadline = Date.now() + timeoutSec * 1000
-  for (;;) {
-    const session = readRemote(sessionId)
-    if (!session || session.status === 'ended') return
-    const replies = takeRemoteReplies(sessionId)
+  const parked = readRemote(sessionId);
+  if (parked && parked.status === "working")
+    writeRemote({ ...parked, status: "idle", lastSeenAt: Date.now() });
+  const deadline = Date.now() + timeoutSec * 1000;
+  for (;; ) {
+    const session = readRemote(sessionId);
+    if (!session || session.status === "ended")
+      return;
+    const replies = takeRemoteReplies(sessionId);
     if (replies.length) {
-      // Blank line between queued messages so the agent sees the boundaries.
-      console.log(replies.join('\n\n'))
-      return
+      console.log(replies.join(`
+
+`));
+      return;
     }
-    if (Date.now() > deadline) process.exit(3)
-    execSync('sleep 2')
+    if (Date.now() > deadline)
+      process.exit(3);
+    execSync2("sleep 2");
   }
 }
-
 function gitInfo(cwd) {
   const run = (cmdline) => {
     try {
-      return execSync(cmdline, { cwd, stdio: ['ignore', 'pipe', 'ignore'] })
-        .toString()
-        .trim()
+      return execSync2(cmdline, { cwd, stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
     } catch {
-      return ''
+      return "";
     }
-  }
-  const root = run('git rev-parse --show-toplevel')
-  return { repo: root ? basename(root) : basename(cwd), branch: run('git branch --show-current') }
+  };
+  const root = run("git rev-parse --show-toplevel");
+  return { repo: root ? basename4(root) : basename4(cwd), branch: run("git branch --show-current") };
 }
-
 function remoteCommand(sub, rest) {
-  // --id may appear anywhere; everything else is positional.
-  let id = ''
-  let cwdFlag = ''
-  let imageFlag = ''
-  let agentSessionFlag = ''
-  const positional = []
-  for (let i = 0; i < rest.length; i++) {
-    if (rest[i] === '--id') {
-      id = rest[++i] || ''
-      continue
+  let id = "";
+  let cwdFlag = "";
+  let imageFlag = "";
+  let agentSessionFlag = "";
+  const positional = [];
+  for (let i = 0;i < rest.length; i++) {
+    if (rest[i] === "--id") {
+      id = rest[++i] || "";
+      continue;
     }
-    if (rest[i].startsWith('--id=')) {
-      id = rest[i].slice(5)
-      continue
+    if (rest[i].startsWith("--id=")) {
+      id = rest[i].slice(5);
+      continue;
     }
-    if (rest[i] === '--cwd') {
-      cwdFlag = rest[++i] || ''
-      continue
+    if (rest[i] === "--cwd") {
+      cwdFlag = rest[++i] || "";
+      continue;
     }
-    if (rest[i] === '--quiet') continue
-    if (rest[i] === '--timeout') {
-      i++
-      continue
+    if (rest[i] === "--quiet")
+      continue;
+    if (rest[i] === "--timeout") {
+      i++;
+      continue;
     }
-    if (rest[i] === '--image') {
-      imageFlag = rest[++i] || ''
-      continue
+    if (rest[i] === "--image") {
+      imageFlag = rest[++i] || "";
+      continue;
     }
-    if (rest[i] === '--agent-session') {
-      agentSessionFlag = rest[++i] || ''
-      continue
+    if (rest[i] === "--agent-session") {
+      agentSessionFlag = rest[++i] || "";
+      continue;
     }
-    positional.push(rest[i])
+    positional.push(rest[i]);
   }
-  const timeoutFlag = rest.findIndex((a) => a === '--timeout')
-  const timeoutSec = timeoutFlag >= 0 ? Number(rest[timeoutFlag + 1]) || 900 : 900
-
+  const timeoutFlag = rest.findIndex((a) => a === "--timeout");
+  const timeoutSec = timeoutFlag >= 0 ? Number(rest[timeoutFlag + 1]) || 900 : 900;
   switch (sub) {
-    case 'register': {
-      const cwd = process.cwd()
-      const { repo, branch } = gitInfo(cwd)
-      const sessionId = validRemoteId(id) ? id : randomUUID().slice(0, 8)
-      const existing = readRemote(sessionId)
+    case "register": {
+      const cwd = process.cwd();
+      const { repo: repo2, branch } = gitInfo(cwd);
+      const sessionId = validRemoteId(id) ? id : randomUUID5().slice(0, 8);
+      const existing = readRemote(sessionId);
       writeRemote({
         id: sessionId,
-        title: positional[0] || existing?.title || repo || 'session',
-        repo,
+        title: positional[0] || existing?.title || repo2 || "session",
+        repo: repo2,
         branch,
         cwd,
-        engine: process.env.TERMINAL_ENGINE || existing?.engine || '',
-        // The host agent's own session id — the precise routing key so a reply
-        // can never reach a different session sharing this repo. Engine-agnostic:
-        // each engine exposes its own, and the returned --id works regardless.
-        agentSessionId:
-          process.env.GT_TERMINAL_SESSION_ID ||
-          process.env.CLAUDE_CODE_SESSION_ID ||
-          process.env.CODEX_SESSION_ID ||
-          process.env.TERMINAL_REMOTE_AGENT_SESSION ||
-          existing?.agentSessionId ||
-          undefined,
-        // 'phone' only when the session was SPAWNED from the phone (nobody at
-        // this Mac) — that is the only case the Stop hook may park on. A local
-        // /remote-terminal registration stays 'local' so it never blocks you.
-        origin: rest.includes('--origin=phone') ? 'phone' : existing?.origin || 'local',
-        status: 'working',
+        engine: process.env.TERMINAL_ENGINE || existing?.engine || "",
+        agentSessionId: process.env.GT_TERMINAL_SESSION_ID || process.env.CLAUDE_CODE_SESSION_ID || process.env.CODEX_SESSION_ID || process.env.TERMINAL_REMOTE_AGENT_SESSION || existing?.agentSessionId || undefined,
+        origin: rest.includes("--origin=phone") ? "phone" : existing?.origin || "local",
+        status: "working",
         registeredAt: existing?.registeredAt || Date.now(),
         lastSeenAt: Date.now(),
-        deliveredUpTo: existing?.deliveredUpTo ?? 0,
-      })
-      console.log(sessionId)
-      break
+        deliveredUpTo: existing?.deliveredUpTo ?? 0
+      });
+      console.log(sessionId);
+      break;
     }
-    case 'post': {
-      const sessionId = resolveRemoteId(id, cwdFlag || process.cwd(), { soft: true })
-      const text = positional.join(' ').trim()
-      const images = imageFlag ? [remoteSaveImage(sessionId, imageFlag)] : []
+    case "post": {
+      const sessionId = resolveRemoteId(id, cwdFlag || process.cwd(), { soft: true });
+      const text = positional.join(" ").trim();
+      const images = imageFlag ? [remoteSaveImage(sessionId, imageFlag)] : [];
       if (!text && !images.length) {
-        console.error('usage: terminal-cli remote post "<message>" [--image <path>]')
-        process.exit(2)
+        console.error('usage: terminal-cli remote post "<message>" [--image <path>]');
+        process.exit(2);
       }
-      // Deleted from the phone / never registered: this session simply isn't
-      // remote. Drop the post with a soft notice — never crash the turn.
       if (!sessionId) {
-        console.error('remote: no active session (unregistered or removed) — post skipped')
-        break
+        console.error("remote: no active session (unregistered or removed) \u2014 post skipped");
+        break;
       }
-      remoteAppend(sessionId, 'agent', text, images)
-      writeRemote({ ...readRemote(sessionId), lastSeenAt: Date.now() })
-      break
+      remoteAppend(sessionId, "agent", text, images);
+      writeRemote({ ...readRemote(sessionId), lastSeenAt: Date.now() });
+      break;
     }
-    case 'ask': {
-      const sessionId = resolveRemoteId(id, cwdFlag || process.cwd(), { soft: true })
-      const question = positional.join(' ').trim()
+    case "ask": {
+      const sessionId = resolveRemoteId(id, cwdFlag || process.cwd(), { soft: true });
+      const question = positional.join(" ").trim();
       if (!question) {
-        console.error('usage: terminal-cli remote ask "<question>" [--image <path>]')
-        process.exit(2)
+        console.error('usage: terminal-cli remote ask "<question>" [--image <path>]');
+        process.exit(2);
       }
-      // No remote session to answer — behave like a timeout: no stdout, non-zero,
-      // so the agent picks its safe default and carries on (per the skill).
       if (!sessionId) {
-        console.error('remote: no active session to ask — proceed with a safe default')
-        process.exit(3)
+        console.error("remote: no active session to ask \u2014 proceed with a safe default");
+        process.exit(3);
       }
-      // A screenshot often IS the question ("which layout?") — attach like post.
-      const askImages = imageFlag ? [remoteSaveImage(sessionId, imageFlag)] : []
-      remoteAppend(sessionId, 'agent', question, askImages)
+      const askImages = imageFlag ? [remoteSaveImage(sessionId, imageFlag)] : [];
+      remoteAppend(sessionId, "agent", question, askImages);
       writeRemote({
         ...readRemote(sessionId),
-        status: 'awaiting',
+        status: "awaiting",
         question,
-        lastSeenAt: Date.now(),
-      })
-      // Block until the phone answers. Polling a file keeps this dependency-free
-      // and survives the app restarting underneath us.
-      const deadline = Date.now() + timeoutSec * 1000
-      for (;;) {
-        const replies = takeRemoteReplies(sessionId)
+        lastSeenAt: Date.now()
+      });
+      const deadline = Date.now() + timeoutSec * 1000;
+      for (;; ) {
+        const replies = takeRemoteReplies(sessionId);
         if (replies.length) {
-          console.log(replies.join('\n\n'))
-          return
+          console.log(replies.join(`
+
+`));
+          return;
         }
         if (Date.now() > deadline) {
-          writeRemote({ ...readRemote(sessionId), status: 'working', question: undefined })
-          console.error(`no reply within ${timeoutSec}s`)
-          process.exit(3)
+          writeRemote({
+            ...readRemote(sessionId),
+            status: "working",
+            question: undefined
+          });
+          console.error(`no reply within ${timeoutSec}s`);
+          process.exit(3);
         }
-        execSync('sleep 2')
+        execSync2("sleep 2");
       }
     }
-    case 'check': {
-      // Non-blocking (default): prints anything queued while the agent was busy.
-      // With --wait: BLOCKS, parking the turn until the phone sends something,
-      // the session ends, or --timeout elapses. The Stop hook uses --wait so a
-      // remote session never goes idle — it waits inside the hook for the next
-      // instruction instead of ending the turn and dying. Silent with no
-      // registration, because the hook calls it on EVERY turn of EVERY session.
-      const quiet = rest.includes('--quiet')
-      const wait = rest.includes('--wait')
-
-      // BLOCKING path: resolve STRICTLY by the host agent's own session id — no
-      // cwd or most-recent fallback. Those fallbacks are fine for post/ask (the
-      // agent means "my session"), but here they were catastrophic: the Stop
-      // hook runs in EVERY Claude session on the machine, so a fallback made an
-      // unrelated session adopt some other registered thread and park for the
-      // whole timeout — hanging normal sessions. No exact match ⇒ this session
-      // is not a remote session ⇒ exit 0 immediately and let it stop.
+    case "check": {
+      const quiet = rest.includes("--quiet");
+      const wait = rest.includes("--wait");
       if (wait) {
-        const sid = agentSessionFlag || process.env.CLAUDE_CODE_SESSION_ID || ''
-        const mine = sid
-          ? remoteList().find((s) => s.agentSessionId === sid && s.status !== 'ended')
-          : null
-        if (!mine) break
-        // Only PHONE-SPAWNED sessions park. A session you registered with
-        // /remote-terminal while sitting at this Mac must never block — you are
-        // right here, and holding the turn for the timeout just hangs your work.
-        // Those still get their queued replies, non-blocking.
-        if (mine.origin !== 'phone') {
-          const queued = takeRemoteReplies(mine.id)
-          if (queued.length) console.log(queued.join('\n\n'))
-          break
-        }
-        return waitForReplies(mine.id, timeoutSec)
-      }
+        const sid = agentSessionFlag || process.env.CLAUDE_CODE_SESSION_ID || "";
+        const mine = sid ? remoteList().find((s) => s.agentSessionId === sid && s.status !== "ended") : null;
+        if (!mine)
+          break;
+        if (mine.origin !== "phone") {
+          const queued = takeRemoteReplies(mine.id);
+          if (queued.length)
+            console.log(queued.join(`
 
+`));
+          break;
+        }
+        return waitForReplies(mine.id, timeoutSec);
+      }
       const sessionId = resolveRemoteId(id, cwdFlag || process.cwd(), {
         quiet,
-        agentSessionId: agentSessionFlag,
-      })
-      if (!sessionId) break
-      const replies = takeRemoteReplies(sessionId)
-      if (replies.length) console.log(replies.join('\n\n'))
-      break
+        agentSessionId: agentSessionFlag
+      });
+      if (!sessionId)
+        break;
+      const replies = takeRemoteReplies(sessionId);
+      if (replies.length)
+        console.log(replies.join(`
+
+`));
+      break;
     }
-    // 'end' / 'off' — come back to the desktop: stop being remote, keep the
-    // history. Idempotent: ending an already-ended or already-deleted session
-    // succeeds silently, so toggling off is never an error.
-    case 'end':
-    case 'off': {
+    case "end":
+    case "off": {
       const sessionId = resolveRemoteId(id, cwdFlag || process.cwd(), {
         soft: true,
-        agentSessionId: agentSessionFlag,
-      })
-      const session = sessionId ? readRemote(sessionId) : null
-      if (session) writeRemote({ ...session, status: 'ended', lastSeenAt: Date.now() })
-      break
+        agentSessionId: agentSessionFlag
+      });
+      const session = sessionId ? readRemote(sessionId) : null;
+      if (session)
+        writeRemote({ ...session, status: "ended", lastSeenAt: Date.now() });
+      break;
     }
-    // 'status' — is this session still on the phone? Prints working|awaiting|
-    // ended|none so a human or agent can tell where a handoff stands.
-    case 'status': {
+    case "status": {
       const sessionId = resolveRemoteId(id, cwdFlag || process.cwd(), {
         soft: true,
-        agentSessionId: agentSessionFlag,
-      })
-      const session = sessionId ? readRemote(sessionId) : null
-      console.log(session ? session.status : 'none')
-      break
+        agentSessionId: agentSessionFlag
+      });
+      const session = sessionId ? readRemote(sessionId) : null;
+      console.log(session ? session.status : "none");
+      break;
     }
-    case 'list':
-      console.log(JSON.stringify(remoteList(), null, 2))
-      break
+    case "list":
+      console.log(JSON.stringify(remoteList(), null, 2));
+      break;
     default:
-      console.error(
-        'usage: terminal-cli remote <register|post|ask|check|end|off|status|list> [--id <id>] [args...]',
-      )
-      process.exit(2)
+      console.error("usage: terminal-cli remote <register|post|ask|check|end|off|status|list> [--id <id>] [args...]");
+      process.exit(2);
   }
 }
 
-const [, , cmd, ...args] = process.argv
-switch (cmd) {
-  case 'loop':
-    loopCommand(args[0], args.slice(1))
-    break
-  case 'ticket':
-    if (args[0] === 'comment') commentOnTicket(args[1], args[2])
-    else fileTicket(args[0], args[1], args[2])
-    break
-  case 'hitl': {
-    // Both flags are parsed here and stripped before the positionals are read,
-    // so `hitl "title" "action" --category=X` works in any order.
-    const flag = (name) => {
-      const hit = args.find((a) => a.startsWith(`--${name}=`))
-      return hit ? hit.slice(name.length + 3) : undefined
+// src/cli/index.ts
+function main(argv) {
+  const [, , cmd, ...args] = argv;
+  switch (cmd) {
+    case "loop":
+      loopCommand(args[0], args.slice(1));
+      break;
+    case "ticket":
+      if (args[0] === "comment")
+        commentOnTicket(args[1], args[2]);
+      else
+        fileTicket(args[0], args[1], args[2]);
+      break;
+    case "inbox-item":
+    case "hitl": {
+      const flag = (name) => {
+        const hit = args.find((a) => a.startsWith(`--${name}=`));
+        return hit ? hit.slice(name.length + 3) : undefined;
+      };
+      const rest = args.filter((a) => !a.startsWith("--severity=") && !a.startsWith("--category="));
+      fileHitl(rest[0], rest[1], { severity: flag("severity"), category: flag("category") });
+      break;
     }
-    const rest = args.filter((a) => !a.startsWith('--severity=') && !a.startsWith('--category='))
-    fileHitl(rest[0], rest[1], { severity: flag('severity'), category: flag('category') })
-    break
+    case "monitor":
+      monitorCli(args);
+      break;
+    case "completion-hitl":
+      completionHitl(args[0] || "Agent");
+      break;
+    case "activity":
+      emitActivity(args[0], args[1], args[2]);
+      break;
+    case "deploy":
+    case "ship":
+      emitDeploy(args[0], args[1], args[2]);
+      break;
+    case "notify":
+      pingTelegram(args[0] || "");
+      break;
+    case "listener":
+    case "inbox":
+      listenerCommand(args[0], args.slice(1));
+      break;
+    case "state":
+      stateCommand(args[0], args.slice(1));
+      break;
+    case "mcp":
+      mcpCommand(args[0], args.slice(1));
+      break;
+    case "classify":
+      classifyCommand(args[0], args.slice(1));
+      break;
+    case "remote":
+      remoteCommand(args[0], args.slice(1));
+      break;
+    default:
+      console.error(`usage: terminal-cli <ticket|inbox-item|activity|deploy|notify|inbox|state|mcp|classify|remote> [args...]
+` + `  ticket "<title>" "<body>" [tier]         file a backlog ticket on TERMINAL_REPO
+` + `                                           tier: auto|top|cheap-agentic|cheap-raw (default auto)
+` + `  ticket comment <slug> "<body>"           append to a ticket's log (read by later runs)
+` + `  inbox-item "<title>" "<action>"          file a global Inbox item + Telegram ping
+` + `                                           [--severity=urgent|normal|low] [--category=<Name>]
+` + `  hitl "<title>" "<action>"                alias of inbox-item (human-in-the-loop category)
+` + `  completion-hitl <engine>                 read hook JSON on stdin and file default-on Inbox item
+` + `  activity <kind> "<title>" "<detail>"     emit one activity-feed event
+` + `  deploy "<env>" "[sha]" "[detail]"        emit one deploy activity event
+` + `  notify "<message>"                       send a Telegram message (raw)
+` + `  inbox enqueue <json|--flags>              queue a local automation inbox request
+` + `  inbox status|dir|example                  inspect automation inbox helpers
+` + `  remote register "<title>"                register this session for the phone
+` + `  remote post "<message>" [--image <path>]  send an update (+ optional image)
+` + `  remote ask "<question>" [--timeout N]     ask and BLOCK until the phone replies
+` + `  remote check                             collect replies queued while working
+` + `  remote end                               mark the session finished
+` + `  state [get [key] | get-sha | set <k> <v> | set-sha <sha> | mark-main]
+` + `                                           persist per-(repo, agent) JSON sidecar
+`);
+      process.exit(2);
   }
-  case 'monitor':
-    monitorCli(args)
-    break
-  case 'completion-hitl':
-    completionHitl(args[0] || 'Agent')
-    break
-  case 'activity':
-    emitActivity(args[0], args[1], args[2])
-    break
-  case 'deploy':
-  case 'ship':
-    emitDeploy(args[0], args[1], args[2])
-    break
-  case 'notify':
-    pingTelegram(args[0] || '')
-    break
-  case 'listener':
-  case 'inbox':
-    listenerCommand(args[0], args.slice(1))
-    break
-  case 'state':
-    stateCommand(args[0], args.slice(1))
-    break
-  case 'mcp':
-    mcpCommand(args[0], args.slice(1))
-    break
-  case 'classify':
-    classifyCommand(args[0], args.slice(1))
-    break
-  case 'remote':
-    remoteCommand(args[0], args.slice(1))
-    break
-  default:
-    console.error(
-      'usage: terminal-cli <ticket|hitl|activity|deploy|notify|inbox|state|mcp|classify|remote> [args...]\n' +
-        '  ticket "<title>" "<body>" [tier]         file a backlog ticket on TERMINAL_REPO\n' +
-        '                                           tier: auto|top|cheap-agentic|cheap-raw (default auto)\n' +
-        '  ticket comment <slug> "<body>"           append to a ticket\'s log (read by later runs)\n' +
-        '  hitl "<title>" "<action>"                file a global HITL item + Telegram ping\n' +
-        '  completion-hitl <engine>                 read hook JSON on stdin and file default-on Inbox item\n' +
-        '  activity <kind> "<title>" "<detail>"     emit one activity-feed event\n' +
-        '  deploy "<env>" "[sha]" "[detail]"        emit one deploy activity event\n' +
-        '  notify "<message>"                       send a Telegram message (raw)\n' +
-        '  inbox enqueue <json|--flags>              queue a local automation inbox request\n' +
-        '  inbox status|dir|example                  inspect automation inbox helpers\n' +
-        '  remote register "<title>"                register this session for the phone\n' +
-        '  remote post "<message>" [--image <path>]  send an update (+ optional image)\n' +
-        '  remote ask "<question>" [--timeout N]     ask and BLOCK until the phone replies\n' +
-        '  remote check                             collect replies queued while working\n' +
-        '  remote end                               mark the session finished\n' +
-        '  state [get [key] | get-sha | set <k> <v> | set-sha <sha> | mark-main]\n' +
-        '                                           persist per-(repo, agent) JSON sidecar\n',
-    )
-    process.exit(2)
 }
+main(process.argv);
+export {
+  main
+};

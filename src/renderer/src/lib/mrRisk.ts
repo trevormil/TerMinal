@@ -1,9 +1,9 @@
 import type { Mr } from './types'
 import { evaluateMergeGate, mergeReadyChip, FINDINGS_UNVERIFIED } from './mergeGate'
 
-// `review.ts` computes riskScore/riskTier per PR and `pr-risk-classifier.ts`
-// backfills the ambiguous middle, but the list could not act on it. These are
-// the pure list operations behind the tier chips and the sort control.
+// `review.ts` computes riskScore/riskTier per PR, but the list could not act on
+// it. These are the pure list operations behind the tier chips and the sort
+// control.
 
 export type RiskTier = 'high' | 'medium' | 'low' | 'unscored'
 

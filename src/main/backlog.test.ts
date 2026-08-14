@@ -1,4 +1,4 @@
-import { test, expect, describe, beforeEach, afterEach } from 'bun:test'
+import { test, expect, describe, beforeAll, afterAll, beforeEach, afterEach } from 'bun:test'
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -14,6 +14,15 @@ import {
   ticketBlocks,
   type Ticket,
 } from './backlog'
+
+import { INSIDE_MIGRATION_WINDOW, setMigrationClock } from '../shared/migration-sunset'
+
+// These cases exercise ADR-0020's LEGACY in-repo read, which sunsets on
+// MIGRATION_SUNSET. Pin the clock inside the migration window so they keep
+// testing the fallback they were written for instead of turning red by
+// themselves on the sunset date.
+beforeAll(() => setMigrationClock(INSIDE_MIGRATION_WINDOW))
+afterAll(() => setMigrationClock(null))
 
 const ticketMd = (id: number, title: string) =>
   `---\nid: ${id}\ntitle: "${title}"\nstatus: open\npriority: medium\ntype: feature\n---\n\nbody\n`

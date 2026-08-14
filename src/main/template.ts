@@ -65,6 +65,15 @@ export function cloneTemplateToTmp(repo: string): TemplateSource | null {
   }
 }
 
+/** Fill the template LICENSE's `{{YEAR}}` / `{{AUTHOR}}` placeholders. The
+ *  template carries placeholders rather than a name so a scaffolded repo never
+ *  inherits the template author's copyright line; an unknown author falls back
+ *  to a neutral holder rather than leaking the braces into a real LICENSE. */
+export function fillLicense(text: string, author: string, year: number): string {
+  const holder = author.trim() || 'the copyright holders'
+  return text.replaceAll('{{YEAR}}', String(year)).replaceAll('{{AUTHOR}}', holder)
+}
+
 export function templateCandidates(opts: {
   configured: string
   appPath?: string

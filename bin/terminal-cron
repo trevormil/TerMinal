@@ -1,542 +1,606 @@
 #!/usr/bin/env bun
-// terminal-cron — headless runner for TerMinal scheduled agent runs.
-//
-// launchd invokes:  <bun> terminal-cron run <scheduleId>
-// also supported:   <bun> terminal-cron watchdog          (one-shot fleet check)
-//
-// SELF-CONTAINED on purpose: no imports from the TerMinal app bundle, so it
-// keeps working even if the app moves or is closed. Reads/writes only
-// ~/.config/TerMinal/*. The app installs an up-to-date copy to
-// ~/.config/TerMinal/bin/terminal-cron and points launchd at that stable path.
-//
-// Per run it:
-//   - sweeps stale runs (status:running with no live process for >2h) and
-//     marks them failed (the watchdog half — every run is also a heartbeat
-//     check for the fleet, so absence-of-scheduler-firing gets caught the
-//     next time any agent runs)
-//   - honors the kill-switch (~/.config/TerMinal/agents/disabled.json) and
-//     bails fast if this scheduleId is disabled
-//   - creates an isolated git worktree off the default base
-//   - runs codex / claude / cursor-agent through `script -q /dev/null` so the wrapped CLI
-//     thinks it's in a TTY and streams stdout/stderr in real time to the
-//     run log (otherwise claude -p buffers everything until exit, and the
-//     log is empty until the run is over)
-//   - records the run, appends an activity event, stamps lastRun back onto
-//     the schedule
-//   - on failure: files a global HITL item + a backlog ticket on the
-//     affected repo (best-effort) + circuit-breaks the schedule after N
-//     consecutive failures (auto-disable + ping)
+// @bun
+// GENERATED — do not edit. Built from src/runner/ by scripts/build-bin.ts.
+// Edit the TypeScript modules there, then run `bun run build:bin`.
 
-import { spawn, execFileSync } from 'node:child_process'
-import {
-  readFileSync,
-  writeFileSync,
-  existsSync,
-  mkdirSync,
-  appendFileSync,
-  openSync,
-  closeSync,
-  renameSync,
-  unlinkSync,
-  readdirSync,
-  statSync,
-} from 'node:fs'
-import { join, dirname, basename } from 'node:path'
-import { homedir } from 'node:os'
-import { randomUUID, createHash } from 'node:crypto'
+// src/runner/retention.ts
+import { readFileSync as readFileSync3, readdirSync, statSync, unlinkSync as unlinkSync2, writeFileSync as writeFileSync2 } from "fs";
+import { join as join2 } from "path";
 
-// Single resolution point for the config dir, honouring TERMINAL_CONFIG_DIR the
-// same way src/main/config-dir.ts does. These are SEPARATE PROCESSES writing the
-// same files as the app, so a sandboxed run that only redirected the app would
-// still have this script clobbering real state — which is precisely how an agent
-// script would do it (ticket 108). Eager is fine here and not in the app: each
-// invocation is a fresh short-lived process that reads the env at startup.
-const CFG =
-  process.env.TERMINAL_CONFIG_DIR?.trim() || join(homedir(), '.config', 'TerMinal')
-const SCHED_FILE = join(CFG, 'schedules.json')
-const RUNS_DIR = join(CFG, 'cron-runs')
-const WT_DIR = join(CFG, 'cron-worktrees')
-const AI_RUNS_DIR = join(CFG, 'ai-runs')
-const ACTIVITY = join(CFG, 'activity.jsonl')
-const CRON_LOG = join(CFG, 'cron.log')
-const HITL_FILE = join(CFG, 'hitl.json')
-const SETTINGS_FILE = join(CFG, 'settings.json')
-const TG_SIDECAR = join(CFG, 'telegram.local.json')
-const LEGACY_TG_SCRIPT = join(homedir(), '.claude', 'bin', 'telegram-notify.sh')
-
-// ── slack inbox destination ──────────────────────────────────────────────
-// Canonical impl + tests: src/shared/slack.ts + src/main/slack-mirror.ts —
-// keep in sync (inlined: this file runs standalone under launchd and is baked
-// into remote images with no sibling modules). The app mirrors the decrypted
-// bot token + channel config to a 0600 sidecar (slack.local.json) whenever
-// inbox.destination posts to Slack; no sidecar → Slack off, all no-ops.
-const SLACK_SIDECAR = join(CFG, 'slack.local.json')
-function slackCfg() {
+// src/runner/config.ts
+import { readFileSync } from "fs";
+import { homedir } from "os";
+import { join } from "path";
+function CFG() {
+  return process.env.TERMINAL_CONFIG_DIR?.trim() || join(homedir(), ".config", "TerMinal");
+}
+var SCHED_FILE = () => join(CFG(), "schedules.json");
+var RUNS_DIR = () => join(CFG(), "cron-runs");
+var WT_DIR = () => join(CFG(), "cron-worktrees");
+var AI_RUNS_DIR = () => join(CFG(), "ai-runs");
+var ACTIVITY_FILE = () => join(CFG(), "activity.jsonl");
+var CRON_LOG = () => join(CFG(), "cron.log");
+var HITL_FILE = () => join(CFG(), "hitl.json");
+var SETTINGS_FILE = () => join(CFG(), "settings.json");
+var TG_SIDECAR = () => join(CFG(), "telegram.local.json");
+var SLACK_SIDECAR = () => join(CFG(), "slack.local.json");
+var DISABLED_FILE = () => join(CFG(), "agents", "disabled.json");
+var MONITOR_LOG = () => join(CFG(), "monitor.log");
+var RETENTION_MARKER = () => join(CFG(), "retention.last.json");
+var REVIEW_PATTERNS_MARKER = () => join(CFG(), "review-patterns.last.json");
+var TERMINAL_BIN_DIR = () => join(CFG(), "bin");
+var LEGACY_TG_SCRIPT = () => join(homedir(), ".claude", "bin", "telegram-notify.sh");
+function readJson(file) {
   try {
-    const c = JSON.parse(readFileSync(SLACK_SIDECAR, 'utf8'))
-    return typeof c?.botToken === 'string' && c.botToken ? c : null
+    return JSON.parse(readFileSync(file, "utf8"));
   } catch {
-    return null
+    return null;
   }
 }
-// In 'slack' mode Slack is the sole nag surface — the Telegram ping goes quiet.
-function slackQuietsTelegram() {
-  return slackCfg()?.destination === 'slack'
+
+// src/runner/log.ts
+import { appendFileSync, mkdirSync } from "fs";
+import { randomUUID } from "crypto";
+function log(msg) {
+  try {
+    appendFileSync(CRON_LOG(), `${new Date().toISOString()} ${msg}
+`);
+  } catch {}
 }
-function slackSlug(raw) {
-  return String(raw || '')
-    .toLowerCase()
-    .replace(/[/\s]+/g, '-')
-    .replace(/[^a-z0-9_-]+/g, '')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-}
-function slackChannelFor(category, cfg) {
-  const fallback = slackSlug(cfg.defaultChannel).slice(0, 80) || 'terminal-inbox'
-  const slug = category && category !== 'Uncategorized' ? slackSlug(category) : ''
-  if (!slug) return fallback
-  const prefix = slackSlug(cfg.channelPrefix)
-  return (prefix ? `${prefix}-${slug}` : slug).slice(0, 80)
-}
-function slackApi(token, method, body) {
-  return fetch(`https://slack.com/api/${method}`, {
-    method: 'POST',
-    headers: {
-      authorization: `Bearer ${token}`,
-      'content-type': 'application/json; charset=utf-8',
-    },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(8000),
-  }).then((r) => r.json())
-}
-// Post a filing to its category's channel (create-on-miss, default-channel
-// fallback), then stamp the message ref back onto the stored item so the app
-// can thread recurrences + react on resolve. Best-effort, never blocks filing.
-function mirrorHitlToSlack(item) {
-  const cfg = slackCfg()
-  if (!cfg) return
-  ;(async () => {
-    const channel = slackChannelFor(item.category, cfg)
-    const fallback = slackChannelFor(undefined, cfg)
-    const marker = item.source === 'completion-hook' ? '✅' : '⛔'
-    const text = `${marker} ${item.title}${item.action ? ` — ${item.action}` : ''}`
-    const post = (to) => slackApi(cfg.botToken, 'chat.postMessage', { channel: to, text })
-    let res = await post(`#${channel}`)
-    if (!res?.ok && res?.error === 'channel_not_found' && cfg.autoCreateChannels) {
-      const created = await slackApi(cfg.botToken, 'conversations.create', { name: channel })
-      if (created?.ok && created.channel?.id) {
-        // Invite the operator: a bot-created channel appears in nobody's
-        // sidebar until joined. Best-effort — never blocks the post.
-        if (cfg.inviteUserId)
-          await slackApi(cfg.botToken, 'conversations.invite', {
-            channel: created.channel.id,
-            users: cfg.inviteUserId,
-          }).catch(() => {})
-        res = await post(created.channel.id)
-      }
-    }
-    if (!res?.ok && channel !== fallback) res = await post(`#${fallback}`)
-    if (res?.ok && typeof res.channel === 'string' && typeof res.ts === 'string') {
-      updateJsonListShared(HITL_FILE, (list) =>
-        list.map((h) =>
-          h.id === item.id ? { ...h, slackChannel: res.channel, slackTs: res.ts } : h,
-        ),
-      )
-    }
-  })().catch(() => {})
+function activity(ev) {
+  try {
+    mkdirSync(CFG(), { recursive: true });
+    appendFileSync(ACTIVITY_FILE(), JSON.stringify({ id: randomUUID(), ts: Date.now(), ...ev }) + `
+`);
+  } catch {}
 }
 
-// --- crash-safe shared-state writes (ticket 0068) ----------------------------
-//
-// Canonical implementation + tests: src/main/atomic-write.ts. This is inlined
-// rather than imported because host-provision.ts copies this file to remote
-// hosts on its own and docker/build-agent-image.sh bakes it into an image with
-// no sibling modules — keep the two in sync.
-//
-// Why it matters here: this process and the desktop app both read-modify-write
-// schedules.json and hitl.json. Without a lock, stamping lastRun from a snapshot
-// read before the user disabled a schedule writes `enabled: true` back and the
-// job keeps firing.
+// src/runner/state-io.ts
+import {
+  closeSync,
+  mkdirSync as mkdirSync2,
+  openSync,
+  readFileSync as readFileSync2,
+  renameSync,
+  unlinkSync,
+  writeFileSync
+} from "fs";
+import { dirname } from "path";
+import { randomUUID as randomUUID2 } from "crypto";
 function writeJsonAtomicShared(file, value) {
-  mkdirSync(dirname(file), { recursive: true })
-  const tmp = `${file}.${process.pid}.tmp`
+  mkdirSync2(dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
   try {
-    writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`)
-    renameSync(tmp, file)
+    writeFileSync(tmp, `${JSON.stringify(value, null, 2)}
+`);
+    renameSync(tmp, file);
   } catch (e) {
     try {
-      unlinkSync(tmp)
+      unlinkSync(tmp);
     } catch {}
-    throw e
+    throw e;
   }
 }
 function sleepSyncShared(ms) {
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 function readLockShared(lockPath) {
   try {
-    const p = JSON.parse(readFileSync(lockPath, 'utf8'))
-    return typeof p?.token === 'string' ? p : null
+    const p = JSON.parse(readFileSync2(lockPath, "utf8"));
+    return typeof p?.token === "string" ? p : null;
   } catch {
-    return null
+    return null;
   }
 }
 function pidAliveShared(pid) {
-  if (!Number.isInteger(pid) || pid <= 0) return false
+  if (!Number.isInteger(pid) || pid <= 0)
+    return false;
   try {
-    process.kill(pid, 0)
-    return true
+    process.kill(pid, 0);
+    return true;
   } catch (e) {
-    return e?.code === 'EPERM'
+    return e?.code === "EPERM";
   }
 }
-/** Advisory cross-process lock. Crash-safe: a lock whose owner died, or that
- *  outlives staleMs, is stolen; the acquire itself times out rather than wedge. */
 function withFileLockShared(file, fn, { timeoutMs = 5000, staleMs = 30000 } = {}) {
-  const lockPath = `${file}.lock`
-  const token = randomUUID()
-  mkdirSync(dirname(file), { recursive: true })
-  const deadline = Date.now() + timeoutMs
-  for (;;) {
-    let took = false
+  const lockPath = `${file}.lock`;
+  const token = randomUUID2();
+  mkdirSync2(dirname(file), { recursive: true });
+  const deadline = Date.now() + timeoutMs;
+  for (;; ) {
+    let took = false;
     try {
-      const fd = openSync(lockPath, 'wx')
+      const fd = openSync(lockPath, "wx");
       try {
-        writeFileSync(fd, JSON.stringify({ pid: process.pid, at: Date.now(), token }))
+        writeFileSync(fd, JSON.stringify({ pid: process.pid, at: Date.now(), token }));
       } finally {
-        closeSync(fd)
+        closeSync(fd);
       }
-      sleepSyncShared(2)
-      took = readLockShared(lockPath)?.token === token
+      sleepSyncShared(2);
+      took = readLockShared(lockPath)?.token === token;
     } catch {}
-    if (took) break
-    const held = readLockShared(lockPath)
-    if (
-      held === null ||
-      !pidAliveShared(held.pid) ||
-      Date.now() - held.at > staleMs ||
-      Date.now() > deadline
-    ) {
+    if (took)
+      break;
+    const held = readLockShared(lockPath);
+    if (held === null || !pidAliveShared(held.pid) || Date.now() - held.at > staleMs || Date.now() > deadline) {
       try {
-        unlinkSync(lockPath)
+        unlinkSync(lockPath);
       } catch {}
-      continue
+      continue;
     }
-    sleepSyncShared(10)
+    sleepSyncShared(10);
   }
   try {
-    return fn()
+    return fn();
   } finally {
     if (readLockShared(lockPath)?.token === token) {
       try {
-        unlinkSync(lockPath)
+        unlinkSync(lockPath);
       } catch {}
     }
   }
 }
-/** Locked read-modify-write of a JSON list. `update` receives the value as it is
- *  on disk AT LOCK TIME. A present-but-unparseable file is quarantined to
- *  <name>.corrupt-<ts> and the write is REFUSED — returning [] and writing that
- *  back is how a torn file silently deletes every entry. Returns true if written. */
 function updateJsonListShared(file, update) {
   return withFileLockShared(file, () => {
-    let raw = null
+    let raw = null;
     try {
-      raw = readFileSync(file, 'utf8')
+      raw = readFileSync2(file, "utf8");
     } catch {}
-    let cur = []
-    if (raw !== null && raw.trim() !== '') {
-      let parsed
+    let cur = [];
+    if (raw !== null && raw.trim() !== "") {
+      let parsed;
       try {
-        parsed = JSON.parse(raw)
+        parsed = JSON.parse(raw);
       } catch {
-        parsed = undefined
+        parsed = undefined;
       }
       if (!Array.isArray(parsed)) {
-        const dest = `${file}.corrupt-${Date.now()}`
-        renameSync(file, dest)
-        throw new Error(`corrupt state file ${file}; moved aside to ${dest}`)
+        const dest = `${file}.corrupt-${Date.now()}`;
+        renameSync(file, dest);
+        throw new Error(`corrupt state file ${file}; moved aside to ${dest}`);
       }
-      cur = parsed
+      cur = parsed;
     }
-    const next = update(cur)
-    if (next === undefined) return false
-    writeJsonAtomicShared(file, next)
-    return true
-  })
+    const next = update(cur);
+    if (next === undefined)
+      return false;
+    writeJsonAtomicShared(file, next);
+    return true;
+  });
 }
 
-// Resolve usable Telegram creds: the app seals its token in settings.json via
-// Electron safeStorage, which this launchd-spawned Bun process can't decrypt —
-// so the app mirrors decrypted creds to a 0600 sidecar we read here. A sealed
-// {__terminalSecret} object is skipped (not a usable string token). Canonical
-// impl + tests: src/main/settings.ts:resolveTelegramCreds — keep in sync.
+// src/runner/retention.ts
+var RETENTION_INTERVAL_MS = 24 * 60 * 60 * 1000;
+var LOG_MAX_BYTES = 2 * 1024 * 1024;
+var LEFTOVER_MIN_AGE_MS = 60 * 60 * 1000;
+var QUARANTINE_MIN_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+var HITL_ARCHIVE_AFTER_MS = 60 * 24 * 60 * 60 * 1000;
+function rotateLog(file, maxBytes) {
+  let raw;
+  try {
+    raw = readFileSync3(file, "utf8");
+  } catch {
+    return 0;
+  }
+  const bytes = Buffer.byteLength(raw);
+  if (bytes <= maxBytes)
+    return 0;
+  let tail = raw.slice(-maxBytes);
+  const nl = tail.indexOf(`
+`);
+  if (nl >= 0 && nl < tail.length - 1)
+    tail = tail.slice(nl + 1);
+  writeFileSync2(`${file}.1`, raw);
+  writeFileSync2(file, tail);
+  return bytes - Buffer.byteLength(tail);
+}
+function sweepLeftovers() {
+  let freed = 0;
+  const now = Date.now();
+  for (const name of readdirSync(CFG())) {
+    const isQuarantine = /\.corrupt-\d+$/.test(name);
+    const isTemp = /\.tmp$/.test(name) || /\.lock$/.test(name) || /\.bak\.\d+$/.test(name);
+    if (!isQuarantine && !isTemp)
+      continue;
+    const path = join2(CFG(), name);
+    try {
+      const st = statSync(path);
+      if (!st.isFile())
+        continue;
+      if (now - st.mtimeMs < (isQuarantine ? QUARANTINE_MIN_AGE_MS : LEFTOVER_MIN_AGE_MS))
+        continue;
+      unlinkSync2(path);
+      freed += st.size;
+    } catch {}
+  }
+  return freed;
+}
+function archiveHitl() {
+  const now = Date.now();
+  const cutoff = now - HITL_ARCHIVE_AFTER_MS;
+  let archived = 0;
+  try {
+    updateJsonListShared(HITL_FILE(), (list) => {
+      const settled = (h) => (!!h.readAt || h.status === "resolved") && (h.resolvedAt ?? h.readAt ?? h.createdAt ?? now) < cutoff;
+      const stale = list.filter(settled);
+      if (!stale.length)
+        return;
+      const dest = join2(CFG(), "hitl-archive", `hitl-${new Date(now).toISOString().slice(0, 10)}.json`);
+      const prev = readJson(dest);
+      const existing = Array.isArray(prev) ? prev : [];
+      writeJsonAtomicShared(dest, [...existing, ...stale]);
+      archived = stale.length;
+      return list.filter((h) => !settled(h));
+    });
+  } catch (e) {
+    log(`retention: hitl archive failed: ${e}`);
+  }
+  return archived;
+}
+async function maybeRunRetention(force = false) {
+  if (!force) {
+    const m = readJson(RETENTION_MARKER());
+    if (m?.lastRunAt && Date.now() - m.lastRunAt < RETENTION_INTERVAL_MS)
+      return null;
+  }
+  const logs = rotateLog(MONITOR_LOG(), LOG_MAX_BYTES) + rotateLog(CRON_LOG(), LOG_MAX_BYTES);
+  const leftovers = sweepLeftovers();
+  const archived = archiveHitl();
+  const summary = { lastRunAt: Date.now(), logBytes: logs, leftoverBytes: leftovers, archived };
+  try {
+    writeJsonAtomicShared(RETENTION_MARKER(), summary);
+  } catch {}
+  log(`retention: logs=${logs}B leftovers=${leftovers}B hitl-archived=${archived}`);
+  return summary;
+}
+
+// src/runner/review-patterns.ts
+import { spawn as spawn2 } from "child_process";
+import { existsSync as existsSync2, writeFileSync as writeFileSync3 } from "fs";
+import { join as join3 } from "path";
+
+// src/runner/hitl.ts
+import { spawn } from "child_process";
+import { existsSync } from "fs";
+import { randomUUID as randomUUID3 } from "crypto";
+
+// src/runner/settings.ts
+function settings() {
+  return readJson(SETTINGS_FILE());
+}
 function tgCreds() {
   const pick = (o) => {
-    const bt = o?.botToken
-    const ci = o?.chatId
-    return typeof bt === 'string' && bt && typeof ci === 'string' && ci
-      ? { botToken: bt, chatId: ci }
-      : null
-  }
-  let sc = null
-  let st = null
-  try {
-    sc = JSON.parse(readFileSync(TG_SIDECAR, 'utf8'))
-  } catch {}
-  try {
-    st = JSON.parse(readFileSync(SETTINGS_FILE, 'utf8'))?.telegram
-  } catch {}
-  return pick(sc) ?? pick(st)
+    const bt = o?.botToken;
+    const ci = o?.chatId;
+    return typeof bt === "string" && bt && typeof ci === "string" && ci ? { botToken: bt, chatId: ci } : null;
+  };
+  const sc = readJson(TG_SIDECAR());
+  const st = settings()?.telegram ?? null;
+  return pick(sc) ?? pick(st);
+}
+function engineDefaultModel(engine) {
+  return (settings()?.engines?.[engine]?.defaultModel || "").trim();
+}
+var ENGINE_EFFORTS = {
+  claude: ["low", "medium", "high", "xhigh", "max"],
+  codex: ["minimal", "low", "medium", "high", "xhigh"],
+  pi: ["off", "minimal", "low", "medium", "high", "xhigh", "max"],
+  opencode: ["minimal", "low", "medium", "high", "max"],
+  openrouter: ["minimal", "low", "medium", "high", "xhigh"],
+  "openai-compat": ["minimal", "low", "medium", "high", "xhigh"]
+};
+function engineDefaultEffort(engine) {
+  return (settings()?.engines?.[engine]?.defaultEffort || "").trim();
+}
+function resolveEffort(sched) {
+  const level = (sched.effort || "").trim() || engineDefaultEffort(sched.engine);
+  return (ENGINE_EFFORTS[sched.engine] || []).includes(level) ? level : "";
+}
+function effortFlag(sched) {
+  const level = resolveEffort(sched);
+  if (!level)
+    return "";
+  if (sched.engine === "claude")
+    return ` --effort ${level}`;
+  if (sched.engine === "pi")
+    return ` --thinking ${level}`;
+  if (sched.engine === "opencode")
+    return ` --variant ${level}`;
+  if (sched.engine === "openrouter" || sched.engine === "openai-compat")
+    return ` --effort ${level}`;
+  return ` -c model_reasoning_effort=${level}`;
+}
+function openAICompatBaseUrl() {
+  return (settings()?.engines?.["openai-compat"]?.baseUrl || "").trim();
+}
+function inboxNotifyThreshold() {
+  return settings()?.inbox?.notifyThreshold;
+}
+function harnessDir() {
+  if (process.env.GT_HARNESS_DIR)
+    return process.env.GT_HARNESS_DIR;
+  return settings()?.harnessDir || "";
 }
 
-// --- BEGIN repo-state (canonical: src/main/repo-state-inline.ts — do not edit by hand) ---
-/* eslint-disable @typescript-eslint/no-unused-vars -- one shared block; not every
-   script uses every helper, and the copies must stay byte-identical. */
-const SIDECAR_AREAS = ['backlog', 'sessions', 'reviews', 'checks', 'reports']
-const repoStateKeyCache = new Map()
-function repoStateDir() {
-  return process.env.TERMINAL_REPO_STATE_DIR?.trim() || join(CFG, 'repos')
+// src/runner/slack.ts
+function slackCfg() {
+  const c = readJson(SLACK_SIDECAR());
+  return typeof c?.botToken === "string" && c.botToken ? c : null;
 }
-function gitOut(root, args) {
-  try {
-    return execFileSync('git', ['-C', root, ...args], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim()
-  } catch {
-    return ''
-  }
+function slackQuietsTelegram() {
+  return slackCfg()?.destination === "slack";
 }
-// URL → host/path, mirroring src/main/repo.ts parseRemote: any scheme with an
-// optional port (stripped — ssh://git@ssh.github.com:443/owner/repo must not
-// yield "443/owner/repo"), else scp-like. Trailing slashes and .git dropped.
-function parseRemoteKey(url) {
-  const u = (url || '')
-    .trim()
-    .replace(/\/+$/, '')
-    .replace(/\.git$/, '')
-  const m =
-    u.match(/^[a-z][a-z0-9+.-]*:\/\/(?:[^@/]+@)?([^/:]+)(?::\d+)?\/(.+)$/i) ||
-    u.match(/^[\w.-]+@([^:/]+)[:/](.+)$/)
-  return m ? m[1] + '/' + m[2] : ''
+function slackSlug(raw) {
+  return String(raw || "").toLowerCase().replace(/[/\s]+/g, "-").replace(/[^a-z0-9_-]+/g, "").replace(/-+/g, "-").replace(/^-|-$/g, "");
 }
-// The key becomes a filesystem path under <config>/repos — a crafted origin
-// URL must not traverse out of it.
-function safeStateKey(key) {
-  if (!key) return ''
-  const parts = key.split('/')
-  if (parts.some((p) => p === '' || p === '.' || p === '..')) return ''
-  return key
+function slackChannelFor(category, cfg) {
+  const fallback = slackSlug(cfg.defaultChannel).slice(0, 80) || "terminal-inbox";
+  const slug = category && category !== "Uncategorized" ? slackSlug(category) : "";
+  if (!slug)
+    return fallback;
+  const prefix = slackSlug(cfg.channelPrefix);
+  return (prefix ? `${prefix}-${slug}` : slug).slice(0, 80);
 }
-function repoStateKey(root) {
-  if (!root) return ''
-  const hit = repoStateKeyCache.get(root)
-  if (hit !== undefined) return hit
-  // Raw configured URL first, exactly like src/main/repo.ts repoForCwd:
-  // "remote get-url" applies url.<base>.insteadOf, which can rewrite a real
-  // forge URL into an ssh alias or local mirror path that keys differently
-  // (or not at all). The rewritten form stays as the fallback for the
-  // opposite setup, where only the expanded URL names a repo.
-  let key = safeStateKey(parseRemoteKey(gitOut(root, ['config', '--get', 'remote.origin.url'])))
-  if (!key) key = safeStateKey(parseRemoteKey(gitOut(root, ['remote', 'get-url', 'origin'])))
-  if (!key) {
-    // No (usable) origin → hash the MAIN checkout's path, not the worktree's:
-    // rev-parse --git-common-dir names the shared .git so every worktree of a
-    // local-only repo lands on one sidecar, matching the origin-keyed case.
-    let canonical = gitOut(root, ['rev-parse', '--show-toplevel']) || root
-    const common = gitOut(root, ['rev-parse', '--path-format=absolute', '--git-common-dir'])
-    if (common && common.endsWith('/.git')) canonical = common.slice(0, -'/.git'.length)
-    const hash = createHash('sha256').update(canonical).digest('hex').slice(0, 12)
-    key = 'local/' + basename(canonical) + '-' + hash
-  }
-  repoStateKeyCache.set(root, key)
-  return key
+function slackApi(token, method, body) {
+  return fetch(`https://slack.com/api/${method}`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json; charset=utf-8"
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(8000)
+  }).then((r) => r.json());
 }
-function sidecarAreaPath(root, area) {
-  if (!root || !SIDECAR_AREAS.includes(area)) return ''
-  const key = repoStateKey(root)
-  return key ? join(repoStateDir(), key, area) : ''
-}
-// Reads merge sidecar + in-repo so state already committed stays visible;
-// writes always go to the sidecar so a shared repo stops accreting state.
-function areaPathsFor(root, area, candidates) {
-  const out = []
-  const sidecar = sidecarAreaPath(root, area)
-  if (sidecar && existsSync(sidecar)) out.push(sidecar)
-  for (const rel of candidates) {
-    const p = join(root, rel)
-    if (existsSync(p)) out.push(p)
-  }
-  return out
-}
-function areaWritePath(root, area, candidates, isV2) {
-  const sidecar = sidecarAreaPath(root, area)
-  if (sidecar) return sidecar
-  const existing = areaPathsFor(root, area, candidates)
-  if (existing.length) return existing[0]
-  // candidates[1] is the canonical v1 rel (e.g. checks has a third, bare
-  // legacy variant that must never become a write target).
-  return join(root, isV2 ? candidates[0] : candidates[1] || candidates[0])
-}
-// IDs must be unique across EVERY dir an area reads from. A fresh sidecar
-// beside a repo that still holds 0001-0042 would otherwise restart at 0001,
-// producing two tickets with the same id and shadowing the originals.
-function maxAreaId(dirs) {
-  let max = 0
-  for (const dir of dirs) {
-    if (!dir) continue
-    let entries = []
-    try {
-      entries = readdirSync(dir)
-    } catch {
-      continue
+function mirrorHitlToSlack(item) {
+  const cfg = slackCfg();
+  if (!cfg)
+    return;
+  (async () => {
+    const channel = slackChannelFor(item.category, cfg);
+    const fallback = slackChannelFor(undefined, cfg);
+    const marker = item.source === "completion-hook" ? "\u2705" : "\u26D4";
+    const text = `${marker} ${item.title}${item.action ? ` \u2014 ${item.action}` : ""}`;
+    const post = (to) => slackApi(cfg.botToken, "chat.postMessage", { channel: to, text });
+    let res = await post(`#${channel}`);
+    if (!res?.ok && res?.error === "channel_not_found" && cfg.autoCreateChannels) {
+      const created = await slackApi(cfg.botToken, "conversations.create", { name: channel });
+      const createdId = created?.channel && typeof created.channel === "object" ? created.channel.id : undefined;
+      if (created?.ok && createdId) {
+        if (cfg.inviteUserId)
+          await slackApi(cfg.botToken, "conversations.invite", {
+            channel: createdId,
+            users: cfg.inviteUserId
+          }).catch(() => {
+            return;
+          });
+        res = await post(createdId);
+      }
     }
-    for (const f of entries) {
-      const m = /^(\d{4})-/.exec(f)
-      if (m) max = Math.max(max, parseInt(m[1], 10))
+    if (!res?.ok && channel !== fallback)
+      res = await post(`#${fallback}`);
+    if (res?.ok && typeof res.channel === "string" && typeof res.ts === "string") {
+      const slackChannel = res.channel;
+      const slackTs = res.ts;
+      updateJsonListShared(HITL_FILE(), (list) => list.map((h) => h.id === item.id ? { ...h, slackChannel, slackTs } : h));
     }
+  })().catch(() => {});
+}
+
+// src/runner/hitl.ts
+var SEVERITY_RANK = { urgent: 3, normal: 2, low: 1 };
+function hitlIsLoud(severity) {
+  if (!severity || !SEVERITY_RANK[severity])
+    return true;
+  const threshold = inboxNotifyThreshold();
+  return SEVERITY_RANK[severity] >= (SEVERITY_RANK[threshold ?? ""] || 3);
+}
+function fileHitl(item) {
+  const rec = {
+    id: randomUUID3(),
+    status: "open",
+    createdAt: Date.now(),
+    source: "cron-fail",
+    ...item
+  };
+  try {
+    updateJsonListShared(HITL_FILE(), (list) => [rec, ...list]);
+  } catch (e) {
+    log(`hitl write failed: ${e}`);
   }
-  return max
+  mirrorHitlToSlack(rec);
+  if (!hitlIsLoud(rec.severity) || slackQuietsTelegram())
+    return rec;
+  try {
+    const text = `\u26D4 Inbox \xB7 ${rec.title}${rec.action ? ` \u2014 ${rec.action}` : ""}`;
+    const t = tgCreds();
+    if (t) {
+      const row = [{ text: "\u2705 Resolve", callback_data: `hitl:resolve:${rec.id}` }];
+      if (rec.runId)
+        row.push({ text: "\uD83E\uDEB5 Tail run", callback_data: `run:tail:${rec.runId}` });
+      fetch(`https://api.telegram.org/bot${t.botToken}/sendMessage`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          chat_id: t.chatId,
+          text,
+          reply_markup: { inline_keyboard: [row] }
+        }),
+        signal: AbortSignal.timeout(8000)
+      }).catch(() => {});
+    } else if (existsSync(LEGACY_TG_SCRIPT())) {
+      try {
+        const child = spawn(LEGACY_TG_SCRIPT(), ["--kind=blocked", text], { stdio: "ignore" });
+        child.on("error", () => {});
+        child.unref();
+      } catch {}
+    }
+  } catch {}
+  return rec;
 }
-// Personal state files/dirs formerly at <repo>/.TerMinal/<rel>, now at the
-// sidecar ROOT. Reads prefer the sidecar, fall back to the legacy in-repo
-// copy; writes always target the sidecar. Mirrors repoStatePathForRead/Write.
-function statePathForWrite(root, rel) {
-  if (!root) return ''
-  const key = repoStateKey(root)
-  return key ? join(repoStateDir(), key, rel) : ''
-}
-function statePathForRead(root, rel) {
-  const sidecar = statePathForWrite(root, rel)
-  if (sidecar && existsSync(sidecar)) return sidecar
-  const legacy = join(root, '.TerMinal', rel)
-  if (existsSync(legacy)) return legacy
-  return sidecar || legacy
-}
-// STICKY variant for live runtime dirs (loops/<id>): legacy wins while it
-// exists, so an in-flight legacy loop never flips to a half-written sidecar
-// copy mid-run. Mirrors repoStatePathSticky in src/main/repo-state.ts.
-function statePathSticky(root, rel) {
-  const legacy = join(root, '.TerMinal', rel)
-  if (existsSync(legacy)) return legacy
-  return statePathForWrite(root, rel) || legacy
-}
-// Env handed to a spawned agent/script: the same TERMINAL_<AREA>_DIR values
-// the app injects, so a scheduled run resolves state identically to an
-// interactive one. Scripts reference these instead of literal paths.
-function repoStateEnv(root) {
-  const out = {}
-  if (!root) return out
-  const key = repoStateKey(root)
-  if (!key) return out
-  const base = join(repoStateDir(), key)
-  out.TERMINAL_STATE_DIR = base
-  for (const area of SIDECAR_AREAS) {
-    out['TERMINAL_' + area.toUpperCase() + '_DIR'] = join(base, area)
+
+// src/runner/review-patterns.ts
+var REVIEW_PATTERNS_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
+var REVIEW_PROMOTE_COUNT = 3;
+var REVIEW_PROMOTE_REPOS = 2;
+async function maybeRunReviewPatterns(force = false) {
+  if (!force) {
+    const m = readJson(REVIEW_PATTERNS_MARKER());
+    if (m?.lastRunAt && Date.now() - m.lastRunAt < REVIEW_PATTERNS_INTERVAL_MS)
+      return;
   }
-  return out
+  await runReviewPatterns();
 }
-/* eslint-enable @typescript-eslint/no-unused-vars */
-// --- END repo-state ---
+async function runReviewPatterns() {
+  const dir = harnessDir();
+  if (!dir) {
+    log("review-patterns: no harnessDir configured, skipping");
+    return 0;
+  }
+  const bin = join3(dir, "bin", "review-findings-mine");
+  if (!existsSync2(bin)) {
+    log(`review-patterns: ${bin} missing, skipping`);
+    return 0;
+  }
+  log(`review-patterns: mining via ${bin}`);
+  const out = await new Promise((resolve, reject) => {
+    const proc = spawn2(bin, [
+      "--json",
+      "--threshold-count",
+      String(REVIEW_PROMOTE_COUNT),
+      "--threshold-repos",
+      String(REVIEW_PROMOTE_REPOS)
+    ], {
+      cwd: dir,
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    let stdout = "";
+    let stderr = "";
+    proc.stdout.on("data", (d) => stdout += d.toString());
+    proc.stderr.on("data", (d) => stderr += d.toString());
+    proc.on("exit", (code) => code === 0 ? resolve(stdout) : reject(new Error(`exit ${code}: ${stderr}`)));
+  });
+  let parsed;
+  try {
+    parsed = JSON.parse(out);
+  } catch (e) {
+    log(`review-patterns: parse failed: ${e}`);
+    return 0;
+  }
+  const promote = parsed.promote || [];
+  const existingKeys = openReviewPatternHitlKeys();
+  let filed = 0;
+  for (const p of promote) {
+    if (existingKeys.has(p.key))
+      continue;
+    fileHitl({
+      kind: "review-pattern",
+      source: "review-pattern",
+      severity: "normal",
+      patternKey: p.key,
+      title: `Recurring ${p.category} finding: ${p.tokens.join(" / ")}`,
+      action: `${p.count}\xD7 across ${p.repos.length} repos \u2014 promote to CLAUDE.md?`,
+      detail: `repos: ${p.repos.join(", ")}
 
-function areaCandidates(area) {
-  return (
-    {
-      backlog: ['.TerMinal/backlog', 'backlog'],
-      sessions: ['.TerMinal/sessions', 'sessions'],
-      reviews: ['.TerMinal/reviews', '.reviews'],
-      checks: ['.TerMinal/checks', '.checks', 'checks'],
-      reports: ['.TerMinal/reports', 'reports'],
-    }[area] || [area]
-  )
+Examples:
+` + (p.examples || []).map((e) => `- ${e.repo}#${e.pr} "${e.title}"${e.file ? ` \u2014 ${e.file}` : ""}`).join(`
+`)
+    });
+    filed++;
+  }
+  activity({
+    kind: "check",
+    title: `Review patterns \xB7 ${parsed.totals?.total || 0} findings \xB7 ${promote.length} promote candidates \xB7 ${filed} HITL filed`,
+    detail: `report: ${join3(dir, "reports", "review-patterns.md")}`
+  });
+  try {
+    writeFileSync3(REVIEW_PATTERNS_MARKER(), JSON.stringify({ lastRunAt: Date.now(), filed, promote: promote.length }, null, 2));
+  } catch {}
+  log(`review-patterns: promote=${promote.length} filed=${filed}`);
+  return 0;
+}
+function openReviewPatternHitlKeys() {
+  const list = readJson(HITL_FILE());
+  if (!Array.isArray(list))
+    return new Set;
+  const keys = new Set;
+  for (const h of list) {
+    if (h.kind === "review-pattern" && h.status === "open" && h.patternKey)
+      keys.add(h.patternKey);
+  }
+  return keys;
 }
 
-// v2 by default: v1 only on positive evidence of root-level v1 state dirs
-// (mirrors src/main/project-layout.ts detectProjectLayout).
-function hasV2Layout(root) {
-  const areas = ['backlog', 'sessions', 'reviews', 'checks', 'reports']
-  if (existsSync(join(root, '.TerMinal', 'template.json'))) return true
-  if (areas.some((area) => existsSync(join(root, areaCandidates(area)[0])))) return true
-  return !areas.some((area) => {
-    const rels = areaCandidates(area)
-    return rels.length > 1 && existsSync(join(root, rels[1]))
-  })
-}
+// src/runner/run-schedule.ts
+import { spawn as spawn3 } from "child_process";
+import { appendFileSync as appendFileSync2, mkdirSync as mkdirSync5, openSync as openSync2, readFileSync as readFileSync4, writeFileSync as writeFileSync5 } from "fs";
+import { homedir as homedir2 } from "os";
+import { join as join10 } from "path";
+import { randomUUID as randomUUID5 } from "crypto";
 
-function areaPath(root, area) {
-  return areaWritePath(root, area, areaCandidates(area), hasV2Layout(root))
-}
-
-
-// Per-million pricing for the cron-side AIRun writer. Mirrors the table in
-// src/main/ai-pricing.ts — keep in sync by hand when prices change.
-const PER_M_PRICING = {
+// src/runner/ai-runs.ts
+import { mkdirSync as mkdirSync3 } from "fs";
+import { join as join4 } from "path";
+import { randomUUID as randomUUID4 } from "crypto";
+var PER_M_PRICING = {
   haiku: { in: 1, out: 5, cacheRead: 0.1 },
   sonnet: { in: 3, out: 15, cacheRead: 0.3 },
   opus: { in: 15, out: 75, cacheRead: 1.5 },
-  'claude-haiku-4-5': { in: 1, out: 5, cacheRead: 0.1 },
-  'claude-sonnet-4-6': { in: 3, out: 15, cacheRead: 0.3 },
-  'claude-opus-4-7': { in: 15, out: 75, cacheRead: 1.5 },
-  'claude-opus-4-8': { in: 15, out: 75, cacheRead: 1.5 },
-  'gpt-5': { in: 1.25, out: 10 },
-  'gpt-5-codex': { in: 1.25, out: 10 },
-  'gpt-5-mini': { in: 0.25, out: 2 },
-  'o4-mini': { in: 0.6, out: 2.4 },
-}
-
+  "claude-haiku-4-5": { in: 1, out: 5, cacheRead: 0.1 },
+  "claude-sonnet-4-6": { in: 3, out: 15, cacheRead: 0.3 },
+  "claude-opus-4-7": { in: 15, out: 75, cacheRead: 1.5 },
+  "claude-opus-4-8": { in: 15, out: 75, cacheRead: 1.5 },
+  "gpt-5": { in: 1.25, out: 10 },
+  "gpt-5-codex": { in: 1.25, out: 10 },
+  "gpt-5-mini": { in: 0.25, out: 2 },
+  "o4-mini": { in: 0.6, out: 2.4 }
+};
 function priceFor(model) {
-  const m = (model || '').toLowerCase().trim()
-  if (PER_M_PRICING[m]) return PER_M_PRICING[m]
-  // Prefix-match
-  let best = null
+  const m = (model || "").toLowerCase().trim();
+  if (PER_M_PRICING[m])
+    return PER_M_PRICING[m];
+  let best = null;
   for (const [key, val] of Object.entries(PER_M_PRICING)) {
-    if (m.startsWith(key) && (!best || key.length > best.key.length)) best = { key, val }
+    if (m.startsWith(key) && (!best || key.length > best.key.length))
+      best = { key, val };
   }
-  return best?.val || { in: 0, out: 0 }
+  return best?.val || { in: 0, out: 0 };
 }
-
-// Parse claude -p / codex exec usage summary from the tail of the captured log.
 function parseUsageFromOutput(out) {
-  let input = 0
-  let output = 0
-  let cacheRead = 0
-  let model = ''
-  const lines = out.split('\n').slice(-200)
+  let input = 0;
+  let output = 0;
+  let cacheRead = 0;
+  let model = "";
+  const lines = out.split(`
+`).slice(-200);
   for (const raw of lines) {
-    const line = raw.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '')
-    let m
+    const line = raw.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "");
+    let m;
     if ((m = line.match(/(?:input|prompt)\s*tokens?[:\s]+(\d[\d,]*)/i)) && input === 0) {
-      input = parseInt(m[1].replace(/,/g, ''), 10)
+      input = parseInt(m[1].replace(/,/g, ""), 10);
     }
     if ((m = line.match(/(?:output|completion)\s*tokens?[:\s]+(\d[\d,]*)/i)) && output === 0) {
-      output = parseInt(m[1].replace(/,/g, ''), 10)
+      output = parseInt(m[1].replace(/,/g, ""), 10);
     }
     if ((m = line.match(/cache(?:d|\s*read)?[:\s]+(\d[\d,]*)/i)) && cacheRead === 0) {
-      cacheRead = parseInt(m[1].replace(/,/g, ''), 10)
+      cacheRead = parseInt(m[1].replace(/,/g, ""), 10);
     }
-    if (!model && (m = line.match(/model[:\s]+([\w\-\.]+)/i))) model = m[1]
+    if (!model && (m = line.match(/model[:\s]+([\w\-.]+)/i)))
+      model = m[1];
   }
-  return input || output ? { input, output, cacheRead, model } : null
+  return input || output ? { input, output, cacheRead, model } : null;
 }
-
-// Write a one-off AIRun record so the in-app Observability tab sees this
-// cron-fired invocation alongside the in-process ones.
 function writeAIRun(opts) {
   try {
-    mkdirSync(AI_RUNS_DIR, { recursive: true })
-    const price = priceFor(opts.model)
-    const cost =
-      (opts.inputTokens * price.in +
-        opts.outputTokens * price.out +
-        (opts.cacheReadTokens || 0) * (price.cacheRead || price.in)) /
-      1_000_000
+    mkdirSync3(AI_RUNS_DIR(), { recursive: true });
+    const price = priceFor(opts.model);
+    const cost = (opts.inputTokens * price.in + opts.outputTokens * price.out + (opts.cacheReadTokens || 0) * (price.cacheRead || price.in)) / 1e6;
     const rec = {
-      id: randomUUID(),
-      source: opts.engine === 'codex' ? 'codex-exec' : 'claude-p',
+      id: randomUUID4(),
+      source: opts.engine === "codex" ? "codex-exec" : "claude-p",
       startedAt: opts.startedAt,
       endedAt: opts.endedAt,
-      model: opts.model || (opts.engine === 'codex' ? 'gpt-5' : 'sonnet'),
+      model: opts.model || (opts.engine === "codex" ? "gpt-5" : "sonnet"),
       inputTokens: opts.inputTokens,
       outputTokens: opts.outputTokens,
       cacheReadTokens: opts.cacheReadTokens || 0,
@@ -545,276 +609,375 @@ function writeAIRun(opts) {
       runId: opts.runId,
       agentId: opts.agentId,
       durationMs: opts.endedAt - opts.startedAt,
-      exitCode: opts.exitCode,
-    }
-    writeJsonAtomicShared(join(AI_RUNS_DIR, `${rec.id}.json`), rec)
+      exitCode: opts.exitCode
+    };
+    writeJsonAtomicShared(join4(AI_RUNS_DIR(), `${rec.id}.json`), rec);
   } catch (e) {
-    log(`ai-run write failed: ${e}`)
+    log(`ai-run write failed: ${e}`);
   }
 }
 
-// Resolve the per-engine default model from settings — same fallback the
-// in-process runner (src/main/agents.ts) applies, so cron runs respect the
-// user's "always use sonnet" preference when the schedule itself has no
-// explicit override.
-function engineDefaultModel(engine) {
+// src/runner/disabled.ts
+function readDisabled() {
+  const a = readJson(DISABLED_FILE());
+  const ids = Array.isArray(a) ? a : a?.scheduleIds || [];
+  return new Set(ids);
+}
+function readDisabledReasons() {
+  const a = readJson(DISABLED_FILE());
+  return !Array.isArray(a) && a?.reasons && typeof a.reasons === "object" ? a.reasons : {};
+}
+function writeDisabled(set, extraReasons = {}) {
   try {
-    const s = JSON.parse(readFileSync(SETTINGS_FILE, 'utf8'))
-    return (s?.engines?.[engine]?.defaultModel || '').trim()
-  } catch {
-    return ''
+    withFileLockShared(DISABLED_FILE(), () => {
+      const ids = [...set];
+      const reasons = { ...readDisabledReasons(), ...extraReasons };
+      const kept = {};
+      for (const id of ids)
+        if (reasons[id])
+          kept[id] = reasons[id];
+      writeJsonAtomicShared(DISABLED_FILE(), { scheduleIds: ids, reasons: kept });
+    });
+  } catch (e) {
+    log(`failed writing disabled: ${e}`);
   }
 }
 
-// Per-engine reasoning-effort support — mirrors src/shared/engines.ts (keep in
-// sync by hand, like OR_PREAMBLE). Level set validated here so a stale/foreign
-// value in schedules.json or settings.json is dropped, never passed to a CLI
-// that would reject it.
-const ENGINE_EFFORTS = {
-  claude: ['low', 'medium', 'high', 'xhigh', 'max'],
-  codex: ['minimal', 'low', 'medium', 'high', 'xhigh'],
-  pi: ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
-  opencode: ['minimal', 'low', 'medium', 'high', 'max'],
-  openrouter: ['minimal', 'low', 'medium', 'high', 'xhigh'],
-  'openai-compat': ['minimal', 'low', 'medium', 'high', 'xhigh'],
-}
+// src/runner/engine-cmd.ts
+import { existsSync as existsSync5 } from "fs";
+import { join as join7 } from "path";
 
-function engineDefaultEffort(engine) {
+// src/runner/git.ts
+import { execFileSync } from "child_process";
+var git = (repo, args) => execFileSync("git", ["-C", repo, ...args], {
+  encoding: "utf8",
+  stdio: ["ignore", "pipe", "pipe"]
+}).trim();
+var shq = (s) => `'${String(s).replace(/'/g, "'\\''")}'`;
+function defaultBase(repo) {
   try {
-    const s = JSON.parse(readFileSync(SETTINGS_FILE, 'utf8'))
-    return (s?.engines?.[engine]?.defaultEffort || '').trim()
-  } catch {
-    return ''
-  }
-}
-
-/** The resolved, validated effort level for a schedule ('' = none). */
-function resolveEffort(sched) {
-  const level = (sched.effort || '').trim() || engineDefaultEffort(sched.engine)
-  return (ENGINE_EFFORTS[sched.engine] || []).includes(level) ? level : ''
-}
-
-/** The engine-native effort args as a shell fragment ('' when none apply). */
-function effortFlag(sched) {
-  const level = resolveEffort(sched)
-  if (!level) return ''
-  if (sched.engine === 'claude') return ` --effort ${level}`
-  if (sched.engine === 'pi') return ` --thinking ${level}`
-  if (sched.engine === 'opencode') return ` --variant ${level}`
-  if (sched.engine === 'openrouter' || sched.engine === 'openai-compat')
-    return ` --effort ${level}` // or-agent passthrough → codex model_reasoning_effort
-  return ` -c model_reasoning_effort=${level}` // codex (TUI and exec take -c)
-}
-
-// The openai-compat base URL is a PLAIN settings value (unlike the sealed API
-// key, which this out-of-process runner cannot decrypt — the key comes from
-// the login shell's OPENAI_API_KEY or a per-schedule env override, else the
-// 'none' placeholder that keyless local servers accept).
-function openAICompatBaseUrl() {
-  try {
-    const s = JSON.parse(readFileSync(SETTINGS_FILE, 'utf8'))
-    return (s?.engines?.['openai-compat']?.baseUrl || '').trim()
-  } catch {
-    return ''
-  }
-}
-const DISABLED_FILE = join(CFG, 'agents', 'disabled.json')
-
-// A run is "stale" if it claims status:running but no live process is attached
-// and it started more than this long ago. Catches runner death (terminal
-// closed, host crashed, OOM, launchd killed) which would otherwise leave the
-// record stuck at running forever.
-const STALE_MS = 2 * 60 * 60 * 1000 // 2 hours
-
-// Auto-disable after this many consecutive failures (kill-switch / circuit
-// breaker). Tunable per agent via .terminal/circuit-breaker.json in the future;
-// 3 is a sane default that survives transient flakes but stops runaway loops.
-const CIRCUIT_BREAK_AFTER = 3
-
-// Retry policy for flaky runs. A non-zero exit (or a timeout) is retried up to
-// DEFAULT_RETRY_MAX more times with exponential backoff before the run is
-// finalized as failed — only then do the HITL / ticket / circuit-breaker
-// handlers fire. Per-schedule sched.retry / sched.timeoutSec override these.
-const DEFAULT_RETRY_MAX = 2 // 2 retries → up to 3 attempts per firing
-const BACKOFF_BASE_SEC = 30 // 30s → 2m → 8m (×4 each step)
-const BACKOFF_FACTOR = 4
-const BACKOFF_MAX_SEC = 8 * 60
-const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000 // 30m hard cap per attempt
-const TIMEOUT_EXIT = 124 // conventional exit code for a timed-out command
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
-const backoffMsFor = (retryIndex, baseSec) =>
-  Math.min(baseSec * BACKOFF_FACTOR ** retryIndex, BACKOFF_MAX_SEC) * 1000
-
-function log(msg) {
-  try {
-    appendFileSync(CRON_LOG, `${new Date().toISOString()} ${msg}\n`)
+    return git(repo, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"]).replace(/^origin\//, "");
   } catch {}
-}
-function readSchedules() {
   try {
-    const a = JSON.parse(readFileSync(SCHED_FILE, 'utf8'))
-    return Array.isArray(a) ? a : []
+    return git(repo, ["rev-parse", "--abbrev-ref", "HEAD"]);
   } catch {
-    return []
+    return "main";
   }
 }
-// `writeSchedules` used to live here: a whole-list overwrite, dead since the
-// field-level patch below replaced it. Removed rather than baselined — a
-// last-write-wins helper sitting unused next to a read-modify-write one is a
-// trap for the next caller, who would reinstate exactly the lost-update bug
-// the patch function exists to prevent. Found by ticket 101 pointing eslint at
-// bin/ for the first time.
-// Field-level patch under the lock. Writing back a list read before the patch
-// is what resurrected `enabled: true` on a schedule the user had just disabled.
+
+// src/runner/repo-state.ts
+import { existsSync as existsSync4 } from "fs";
+import { join as join6 } from "path";
+
+// src/runner/repo-state-block.js
+import { execFileSync as execFileSync2 } from "child_process";
+import { createHash } from "crypto";
+import { existsSync as existsSync3, readdirSync as readdirSync2 } from "fs";
+import { basename, join as join5 } from "path";
+function makeRepoState(CFG2) {
+  const SIDECAR_AREAS = ["backlog", "sessions", "reviews", "checks", "reports"];
+  const repoStateKeyCache = new Map;
+  const MIGRATION_SUNSET_MS = Date.parse("2026-10-13T00:00:00Z");
+  function migrationWindowOpen() {
+    return Date.now() < MIGRATION_SUNSET_MS;
+  }
+  function repoStateDir() {
+    return process.env.TERMINAL_REPO_STATE_DIR?.trim() || join5(CFG2, "repos");
+  }
+  function gitOut(root, args) {
+    try {
+      return execFileSync2("git", ["-C", root, ...args], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"]
+      }).trim();
+    } catch {
+      return "";
+    }
+  }
+  function parseRemoteKey(url) {
+    const u = (url || "").trim().replace(/\/+$/, "").replace(/\.git$/, "");
+    const m = u.match(/^[a-z][a-z0-9+.-]*:\/\/(?:[^@/]+@)?([^/:]+)(?::\d+)?\/(.+)$/i) || u.match(/^[\w.-]+@([^:/]+)[:/](.+)$/);
+    return m ? m[1] + "/" + m[2] : "";
+  }
+  function safeStateKey(key) {
+    if (!key)
+      return "";
+    const parts = key.split("/");
+    if (parts.some((p) => p === "" || p === "." || p === ".."))
+      return "";
+    return key;
+  }
+  function repoStateKey(root) {
+    if (!root)
+      return "";
+    const hit = repoStateKeyCache.get(root);
+    if (hit !== undefined)
+      return hit;
+    let key = safeStateKey(parseRemoteKey(gitOut(root, ["config", "--get", "remote.origin.url"])));
+    if (!key)
+      key = safeStateKey(parseRemoteKey(gitOut(root, ["remote", "get-url", "origin"])));
+    if (!key) {
+      let canonical = gitOut(root, ["rev-parse", "--show-toplevel"]) || root;
+      const common = gitOut(root, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+      if (common && common.endsWith("/.git"))
+        canonical = common.slice(0, -"/.git".length);
+      const hash = createHash("sha256").update(canonical).digest("hex").slice(0, 12);
+      key = "local/" + basename(canonical) + "-" + hash;
+    }
+    repoStateKeyCache.set(root, key);
+    return key;
+  }
+  function sidecarAreaPath(root, area) {
+    if (!root || !SIDECAR_AREAS.includes(area))
+      return "";
+    const key = repoStateKey(root);
+    return key ? join5(repoStateDir(), key, area) : "";
+  }
+  function areaPathsFor(root, area, candidates) {
+    const out = [];
+    const sidecar = sidecarAreaPath(root, area);
+    if (sidecar && existsSync3(sidecar))
+      out.push(sidecar);
+    if (migrationWindowOpen())
+      for (const rel of candidates) {
+        const p = join5(root, rel);
+        if (existsSync3(p))
+          out.push(p);
+      }
+    return out;
+  }
+  function areaWritePath(root, area, candidates, isV2) {
+    const sidecar = sidecarAreaPath(root, area);
+    if (sidecar)
+      return sidecar;
+    const existing = areaPathsFor(root, area, candidates);
+    if (existing.length)
+      return existing[0];
+    return join5(root, isV2 ? candidates[0] : candidates[1] || candidates[0]);
+  }
+  function maxAreaId(dirs) {
+    let max = 0;
+    for (const dir of dirs) {
+      if (!dir)
+        continue;
+      let entries = [];
+      try {
+        entries = readdirSync2(dir);
+      } catch {
+        continue;
+      }
+      for (const f of entries) {
+        const m = /^(\d{4})-/.exec(f);
+        if (m)
+          max = Math.max(max, parseInt(m[1], 10));
+      }
+    }
+    return max;
+  }
+  function statePathForWrite(root, rel) {
+    if (!root)
+      return "";
+    const key = repoStateKey(root);
+    return key ? join5(repoStateDir(), key, rel) : "";
+  }
+  function statePathForRead(root, rel) {
+    const sidecar = statePathForWrite(root, rel);
+    if (sidecar && existsSync3(sidecar))
+      return sidecar;
+    const legacy = join5(root, ".TerMinal", rel);
+    if (migrationWindowOpen() && existsSync3(legacy))
+      return legacy;
+    return sidecar || legacy;
+  }
+  function statePathSticky(root, rel) {
+    const legacy = join5(root, ".TerMinal", rel);
+    if (migrationWindowOpen() && existsSync3(legacy))
+      return legacy;
+    return statePathForWrite(root, rel) || legacy;
+  }
+  function repoStateEnv(root) {
+    const out = {};
+    if (!root)
+      return out;
+    const key = repoStateKey(root);
+    if (!key)
+      return out;
+    const base = join5(repoStateDir(), key);
+    out.TERMINAL_STATE_DIR = base;
+    for (const area of SIDECAR_AREAS) {
+      out["TERMINAL_" + area.toUpperCase() + "_DIR"] = join5(base, area);
+    }
+    return out;
+  }
+  return {
+    SIDECAR_AREAS,
+    repoStateKey,
+    sidecarAreaPath,
+    areaPathsFor,
+    areaWritePath,
+    maxAreaId,
+    statePathForWrite,
+    statePathForRead,
+    statePathSticky,
+    repoStateEnv
+  };
+}
+
+// src/runner/repo-state.ts
+var cached = null;
+function repoState() {
+  const cfg = CFG();
+  if (!cached || cached.cfg !== cfg)
+    cached = { cfg, api: makeRepoState(cfg) };
+  return cached.api;
+}
+function areaCandidates(area) {
+  return {
+    backlog: [".TerMinal/backlog", "backlog"],
+    sessions: [".TerMinal/sessions", "sessions"],
+    reviews: [".TerMinal/reviews", ".reviews"],
+    checks: [".TerMinal/checks", ".checks", "checks"],
+    reports: [".TerMinal/reports", "reports"]
+  }[area] || [area];
+}
+function hasV2Layout(root) {
+  const areas = ["backlog", "sessions", "reviews", "checks", "reports"];
+  if (existsSync4(join6(root, ".TerMinal", "template.json")))
+    return true;
+  if (areas.some((area) => existsSync4(join6(root, areaCandidates(area)[0]))))
+    return true;
+  return !areas.some((area) => {
+    const rels = areaCandidates(area);
+    return rels.length > 1 && existsSync4(join6(root, rels[1]));
+  });
+}
+function areaPath(root, area) {
+  return repoState().areaWritePath(root, area, areaCandidates(area), hasV2Layout(root));
+}
+function areaPathsFor(root, area) {
+  return repoState().areaPathsFor(root, area, areaCandidates(area));
+}
+function statePathForRead(root, rel) {
+  return repoState().statePathForRead(root, rel);
+}
+function repoStateEnv(root) {
+  return repoState().repoStateEnv(root);
+}
+function maxAreaId(dirs) {
+  return repoState().maxAreaId(dirs);
+}
+
+// src/runner/engine-cmd.ts
+var OR_PREAMBLE = "You are running FULLY AUTONOMOUSLY in a non-interactive one-shot process. " + "There is NO human reading your output and no follow-up turn \u2014 you cannot ask questions. " + "Do NOT ask for confirmation, permission, or which part to start with, and do NOT end your " + "turn with a question or a plan. Execute the ENTIRE task now: inspect the code, make all the " + "edits, run the project checks, commit, and open the PR. Keep calling tools until the work is " + "actually done. Only stop early if you are genuinely blocked \u2014 and then state the blocker explicitly.";
+function resolveScriptPath(repo, agentId) {
+  const perRepoScript = join7(repo, ".agents", `${agentId}.sh`);
+  const globalScript = join7(CFG(), "scripts", `${agentId}.sh`);
+  return existsSync5(perRepoScript) ? perRepoScript : existsSync5(globalScript) ? globalScript : null;
+}
+function buildCommand(sched, worktree, scriptPath) {
+  const modelFlag = sched.model ? ` --model ${shq(sched.model)}` : "";
+  const hermesModel = sched.model ? ` -m ${shq(sched.model)}` : "";
+  const hermesUsage = join7(worktree, ".terminal-hermes-usage.json");
+  const effFlag = effortFlag(sched);
+  return scriptPath ? shq(scriptPath) : sched.engine === "claude" ? `claude -p ${shq(sched.prompt)} --permission-mode auto${modelFlag}${effFlag}` : sched.engine === "cursor" ? `cursor-agent -p --force --trust --output-format text --workspace ${shq(worktree)}${modelFlag} ${shq(sched.prompt)}` : sched.engine === "openrouter" ? `or-agent --dir ${shq(worktree)}${modelFlag}${effFlag} ${shq(`${OR_PREAMBLE}
+
+${sched.prompt}`)}` : sched.engine === "openai-compat" ? `[ -n "$OPENAI_BASE_URL" ] || { echo "openai-compat: no base URL configured (TerMinal Settings \u2192 Engines \u2192 Self-hosted)"; exit 2; }; or-agent --dir ${shq(worktree)}${modelFlag}${effFlag} ${shq(`${OR_PREAMBLE}
+
+${sched.prompt}`)}` : sched.engine === "hermes" ? `hermes -z ${shq(`${OR_PREAMBLE}
+
+${sched.prompt}`)}${hermesModel} --usage-file ${shq(hermesUsage)} --yolo --accept-hooks` : `codex exec -s danger-full-access -C ${shq(worktree)}${modelFlag}${effFlag} ${shq(sched.prompt)}`;
+}
+function buildChildEnv({
+  sched,
+  repo,
+  runId,
+  branch,
+  worktree
+}) {
+  return {
+    ...process.env,
+    PATH: `${TERMINAL_BIN_DIR()}:${process.env.PATH || ""}`,
+    TERMINAL_REPO: repo,
+    ...repoStateEnv(repo),
+    TERMINAL_RUN_ID: runId,
+    TERMINAL_AGENT_ID: sched.agentId,
+    TERMINAL_BRANCH: branch,
+    TERMINAL_WORKTREE: worktree,
+    TERMINAL_ENGINE: sched.engine,
+    ...sched.model || engineDefaultModel(sched.engine) ? { TERMINAL_MODEL: sched.model || engineDefaultModel(sched.engine) } : {},
+    ...resolveEffort(sched) ? { TERMINAL_EFFORT: resolveEffort(sched) } : {},
+    ...sched.engine === "openai-compat" ? {
+      ...openAICompatBaseUrl() ? { OPENAI_BASE_URL: openAICompatBaseUrl() } : {},
+      OPENAI_API_KEY: process.env.OPENAI_API_KEY || "none"
+    } : {},
+    ...sched.env && typeof sched.env === "object" ? sched.env : {}
+  };
+}
+function scriptArgsFor(isMac, shell, cmd) {
+  return isMac ? ["-q", "/dev/null", shell, "-l", "-c", cmd] : ["-q", "-e", "-c", `${shq(shell)} -l -c ${shq(cmd)}`, "/dev/null"];
+}
+function shellFor(isMac) {
+  return process.env.SHELL || (isMac ? "/bin/zsh" : "/bin/bash");
+}
+
+// src/runner/runs.ts
+import { existsSync as existsSync6, readdirSync as readdirSync3 } from "fs";
+import { join as join9 } from "path";
+
+// src/runner/schedules.ts
+function readSchedules() {
+  const a = readJson(SCHED_FILE());
+  return Array.isArray(a) ? a : [];
+}
 function stamp(id, patch) {
   try {
-    updateJsonListShared(SCHED_FILE, (list) => {
-      const i = list.findIndex((s) => s.id === id)
-      if (i < 0) return undefined
-      const next = [...list]
-      next[i] = { ...next[i], ...patch }
-      return next
-    })
+    updateJsonListShared(SCHED_FILE(), (list) => {
+      const i = list.findIndex((s) => s.id === id);
+      if (i < 0)
+        return;
+      const next = [...list];
+      next[i] = { ...next[i], ...patch };
+      return next;
+    });
   } catch (e) {
-    log(`failed stamping schedule ${id}: ${e}`)
+    log(`failed stamping schedule ${id}: ${e}`);
   }
 }
-function activity(ev) {
-  try {
-    mkdirSync(CFG, { recursive: true })
-    appendFileSync(ACTIVITY, JSON.stringify({ id: randomUUID(), ts: Date.now(), ...ev }) + '\n')
-  } catch {}
-}
 
-// ---- HITL + ticket on failure ----------------------------------------------
-
-// Auto-file a global HITL item on a failed cron run + best-effort Telegram ping
-// (works even with the app closed — reads the token straight from settings.json).
-const SEVERITY_RANK = { urgent: 3, normal: 2, low: 1 }
-
-/** Does a severity clear the operator's configured notify threshold? An item
- *  with no explicit severity is loud (legacy policy — never silence a filer
- *  that predates the tiers). */
-function hitlIsLoud(severity) {
-  if (!SEVERITY_RANK[severity]) return true
-  let threshold
-  try {
-    threshold = JSON.parse(readFileSync(SETTINGS_FILE, 'utf8'))?.inbox?.notifyThreshold
-  } catch {}
-  return SEVERITY_RANK[severity] >= (SEVERITY_RANK[threshold] || 3)
-}
-
-function fileHitl(item) {
-  const rec = {
-    id: randomUUID(),
-    status: 'open',
-    createdAt: Date.now(),
-    source: 'cron-fail',
-    ...item,
-  }
-  try {
-    updateJsonListShared(HITL_FILE, (list) => [rec, ...list])
-  } catch (e) {
-    log(`hitl write failed: ${e}`)
-  }
-  mirrorHitlToSlack(rec)
-  // An item that carries an explicit severity honors the same
-  // inbox.notifyThreshold gate the desktop applies (mirrors terminal-cli's
-  // fileHitl). Without one, the legacy always-ping policy stands so nothing
-  // that used to alert goes silent.
-  if (!hitlIsLoud(rec.severity) || slackQuietsTelegram()) return
-  try {
-    // HITL ALWAYS pings Telegram when bot+chat configured, regardless of the
-    // general activity-feed `telegram.notify` toggle. HITL is by definition the
-    // "I need attention" channel; never silence it. Include inline
-    // [Resolve] / [Tail run] buttons so the chat ping is one-tap actionable;
-    // the in-app poll loop dispatches callback_query taps back to
-    // resolveHitl + tailRun.
-    const text = `⛔ HITL · ${rec.title}${rec.action ? ` — ${rec.action}` : ''}`
-    const t = tgCreds()
-    if (t) {
-      const row = [{ text: '✅ Resolve', callback_data: `hitl:resolve:${rec.id}` }]
-      if (rec.runId) row.push({ text: '🪵 Tail run', callback_data: `run:tail:${rec.runId}` })
-      fetch(`https://api.telegram.org/bot${t.botToken}/sendMessage`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: t.chatId,
-          text,
-          reply_markup: { inline_keyboard: [row] },
-        }),
-        signal: AbortSignal.timeout(8000),
-      }).catch(() => {})
-    } else if (existsSync(LEGACY_TG_SCRIPT)) {
-      // No native creds — fall back to the legacy script like the other filers
-      // do, so a cron-filed HITL is never silently undelivered.
-      try {
-        const child = spawn(LEGACY_TG_SCRIPT, ['--kind=blocked', text], { stdio: 'ignore' })
-        child.on('error', () => {})
-        child.unref()
-      } catch {}
-    }
-  } catch {}
-}
-
-// The user's LOCAL calendar day, not UTC. `toISOString().slice(0,10)` is the UTC
-// date, so any evening edit west of UTC stamps TOMORROW. Must agree with
-// src/main/local-day.ts: the app and this script write the same ticket
-// `updated:` field, and a mismatch made them disagree by a day every evening.
-const localDay = (at = new Date()) =>
-  `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}-${String(at.getDate()).padStart(2, '0')}`
-
-// Ticket-provider config (.TerMinal/tickets.json). An Obsidian repo keeps its
-// tickets in an external vault, and a provider that cannot be served from a
-// script (linear/webview) must FAIL CLOSED rather than silently filing into a
-// backlog nobody reads — misrouting a write is worse than refusing it
-// (ADR-0015). Mirrors bin/terminal-cli and bin/terminal-mcp-server.
+// src/runner/tickets.ts
+import { mkdirSync as mkdirSync4, writeFileSync as writeFileSync4 } from "fs";
+import { join as join8 } from "path";
+var localDay = (at = new Date) => `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(at.getDate()).padStart(2, "0")}`;
 function readTicketConfig(root) {
-  try {
-    // Personal config — sidecar first, legacy in-repo copy as fallback.
-    return JSON.parse(readFileSync(statePathForRead(root, 'tickets.json'), 'utf8')) || {}
-  } catch {
-    return {}
-  }
+  return readJson(statePathForRead(root, "tickets.json")) || {};
 }
 function obsidianTicketsDir(cfg) {
-  if (!cfg || cfg.provider !== 'obsidian' || !cfg.obsidian || !cfg.obsidian.vaultPath) return null
-  const sub = String(cfg.obsidian.ticketsSubdir || 'tickets').replace(/^\/+|\/+$/g, '') || 'tickets'
-  return join(cfg.obsidian.vaultPath, sub)
+  if (!cfg || cfg.provider !== "obsidian" || !cfg.obsidian || !cfg.obsidian.vaultPath)
+    return null;
+  const sub = String(cfg.obsidian.ticketsSubdir || "tickets").replace(/^\/+|\/+$/g, "") || "tickets";
+  return join8(cfg.obsidian.vaultPath, sub);
 }
-/** Where a ticket should be written, or null when the provider forbids it. */
 function ticketWriteDir(root) {
-  const cfg = readTicketConfig(root)
-  const provider = String(cfg.provider || 'local').toLowerCase()
-  if (provider === 'obsidian') return obsidianTicketsDir(cfg)
-  if (provider === 'linear' || provider === 'webview' || provider === 'github') return null
-  return areaPath(root, 'backlog')
+  const cfg = readTicketConfig(root);
+  const provider = String(cfg.provider || "local").toLowerCase();
+  if (provider === "obsidian")
+    return obsidianTicketsDir(cfg);
+  if (provider === "linear" || provider === "webview" || provider === "github")
+    return null;
+  return areaPath(root, "backlog");
 }
-
-// Best-effort: file a backlog ticket on the affected repo so the factory can
-// pick the failure up as work. Allocates NNNN by scanning the existing backlog
-// folder's filenames; doesn't depend on the project-template's bin/next-ticket-id.
-// Returns the ticket path on success, null otherwise.
-function fileTicket(repoRoot, { title, body, type = 'bug', priority = 'high' }) {
+function fileTicket(repoRoot, input) {
+  const { title, body, type = "bug", priority = "high" } = input;
   try {
-    const backlogDir = ticketWriteDir(repoRoot)
-    if (!backlogDir) return null // provider owns tickets elsewhere; refuse rather than misroute
-    mkdirSync(backlogDir, { recursive: true })
-    // Across every dir this repo reads from, so a fresh sidecar beside a repo
-    // that still holds 0001-0042 does not restart at 0001.
-    const maxId = maxAreaId(
-      areaPathsFor(repoRoot, 'backlog', areaCandidates('backlog')).concat(backlogDir),
-    )
-    const id = String(maxId + 1).padStart(4, '0')
-    const slug =
-      title
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-|-$/g, '')
-        .slice(0, 50) || 'cron-fail'
-    const path = join(backlogDir, `${id}-${slug}.md`)
-    const today = localDay()
+    const backlogDir = ticketWriteDir(repoRoot);
+    if (!backlogDir)
+      return null;
+    mkdirSync4(backlogDir, { recursive: true });
+    const maxId = maxAreaId(areaPathsFor(repoRoot, "backlog").concat(backlogDir));
+    const id = String(maxId + 1).padStart(4, "0");
+    const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 50) || "cron-fail";
+    const path = join8(backlogDir, `${id}-${slug}.md`);
+    const today = localDay();
     const fm = `---
 id: ${id}
 title: ${JSON.stringify(title)}
@@ -827,732 +990,381 @@ updated: ${today}
 ---
 
 ${body}
-`
-    writeFileSync(path, fm)
-    return path
+`;
+    writeFileSync4(path, fm);
+    return path;
   } catch (e) {
-    log(`failed to file ticket on ${repoRoot}: ${e}`)
-    return null
+    log(`failed to file ticket on ${repoRoot}: ${e}`);
+    return null;
   }
 }
 
-// ---- kill-switch / circuit-breaker -----------------------------------------
-
-function readDisabled() {
-  try {
-    const a = JSON.parse(readFileSync(DISABLED_FILE, 'utf8'))
-    const ids = Array.isArray(a) ? a : a?.scheduleIds || []
-    return new Set(ids)
-  } catch {
-    return new Set()
+// src/runner/runs.ts
+var STALE_MS = 2 * 60 * 60 * 1000;
+var CIRCUIT_BREAK_AFTER = 3;
+function runRecords() {
+  const dir = RUNS_DIR();
+  if (!existsSync6(dir))
+    return [];
+  const out = [];
+  for (const f of readdirSync3(dir)) {
+    if (!f.endsWith(".json"))
+      continue;
+    const path = join9(dir, f);
+    const rec = readJson(path);
+    if (rec)
+      out.push({ path, rec });
   }
+  return out;
 }
-// Side-car reasons map (see src/main/agents-disabled.ts). Preserved verbatim on
-// write so a UI-recorded reason survives a runner-side toggle.
-function readDisabledReasons() {
-  try {
-    const a = JSON.parse(readFileSync(DISABLED_FILE, 'utf8'))
-    return !Array.isArray(a) && a?.reasons && typeof a.reasons === 'object' ? a.reasons : {}
-  } catch {
-    return {}
-  }
-}
-// `extraReasons` are the entries THIS write is adding; everything else is
-// re-read from disk inside the lock so a reason the app recorded since our
-// snapshot isn't clobbered.
-function writeDisabled(set, extraReasons = {}) {
-  try {
-    // Not a JSON list, so the shared list helper doesn't apply — but this is
-    // still the kill switch, and a torn write here silently re-enables agents.
-    withFileLockShared(DISABLED_FILE, () => {
-      const ids = [...set]
-      const reasons = { ...readDisabledReasons(), ...extraReasons }
-      const kept = {}
-      for (const id of ids) if (reasons[id]) kept[id] = reasons[id]
-      writeJsonAtomicShared(DISABLED_FILE, { scheduleIds: ids, reasons: kept })
-    })
-  } catch (e) {
-    log(`failed writing disabled: ${e}`)
-  }
-}
-
-// Returns the most recent run with status:running for the given scheduleId
-// (after sweepStaleRuns() has already finalized anything truly dead), or
-// undefined if none. Used to refuse a concurrent firing of the same agent.
 function activeRunFor(scheduleId) {
   try {
-    if (!existsSync(RUNS_DIR)) return undefined
-    for (const f of readdirSync(RUNS_DIR)) {
-      if (!f.endsWith('.json')) continue
-      try {
-        const rec = JSON.parse(readFileSync(join(RUNS_DIR, f), 'utf8'))
-        if (rec.scheduleId === scheduleId && rec.status === 'running') return rec
-      } catch {}
+    for (const { rec } of runRecords()) {
+      if (rec.scheduleId === scheduleId && rec.status === "running")
+        return rec;
     }
   } catch {}
-  return undefined
+  return;
 }
-
-// Read the most recent N runs for a given scheduleId, newest first.
 function recentRuns(scheduleId, limit = CIRCUIT_BREAK_AFTER) {
   try {
-    if (!existsSync(RUNS_DIR)) return []
-    const recs = []
-    for (const f of readdirSync(RUNS_DIR)) {
-      if (!f.endsWith('.json')) continue
-      try {
-        const rec = JSON.parse(readFileSync(join(RUNS_DIR, f), 'utf8'))
-        if (rec.scheduleId === scheduleId) recs.push(rec)
-      } catch {}
-    }
-    return recs.sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0)).slice(0, limit)
+    return runRecords().map(({ rec }) => rec).filter((rec) => rec.scheduleId === scheduleId).sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0)).slice(0, limit);
   } catch {
-    return []
+    return [];
   }
 }
-
-// Trip the breaker if the last N runs were all failures. Returns true if we tripped.
 function maybeCircuitBreak(scheduleId, sched) {
-  const recent = recentRuns(scheduleId, CIRCUIT_BREAK_AFTER)
-  if (recent.length < CIRCUIT_BREAK_AFTER) return false
-  if (!recent.every((r) => r.status === 'failed')) return false
-  const set = readDisabled()
-  if (set.has(scheduleId)) return false // already disabled
-  set.add(scheduleId)
+  const recent = recentRuns(scheduleId, CIRCUIT_BREAK_AFTER);
+  if (recent.length < CIRCUIT_BREAK_AFTER)
+    return false;
+  if (!recent.every((r) => r.status === "failed"))
+    return false;
+  const set = readDisabled();
+  if (set.has(scheduleId))
+    return false;
+  set.add(scheduleId);
   writeDisabled(set, {
     [scheduleId]: {
       reason: `auto-disabled after ${CIRCUIT_BREAK_AFTER} consecutive failures`,
-      at: Date.now(),
-    },
-  })
+      at: Date.now()
+    }
+  });
   fileHitl({
-    title: `Circuit broken · ${sched.agentTitle}`,
-    action: `auto-disabled after ${CIRCUIT_BREAK_AFTER} consecutive failures — re-enable from the Schedules tab when fixed`,
-    detail: `schedule ${scheduleId} · ${sched.repoLabel}`,
+    title: `Circuit broken \xB7 ${sched.agentTitle}`,
+    action: `auto-disabled after ${CIRCUIT_BREAK_AFTER} consecutive failures \u2014 re-enable from the Schedules tab when fixed`,
+    detail: `schedule ${scheduleId} \xB7 ${sched.repoLabel}`,
     repo: sched.repoLabel,
-    repoRoot: sched.repoRoot,
-  })
+    repoRoot: sched.repoRoot
+  });
   activity({
-    kind: 'blocked',
-    title: `Circuit broken · ${sched.agentTitle}`,
+    kind: "blocked",
+    title: `Circuit broken \xB7 ${sched.agentTitle}`,
     detail: `auto-disabled after ${CIRCUIT_BREAK_AFTER} fails`,
     repo: sched.repoLabel,
     repoRoot: sched.repoRoot,
-    suppressTelegram: true,
-  })
-  log(
-    `circuit-break: schedule ${scheduleId} (${sched.agentTitle}) disabled after ${CIRCUIT_BREAK_AFTER} fails`,
-  )
-  return true
+    suppressTelegram: true
+  });
+  log(`circuit-break: schedule ${scheduleId} (${sched.agentTitle}) disabled after ${CIRCUIT_BREAK_AFTER} fails`);
+  return true;
 }
-
-// ---- watchdog / stale sweep ------------------------------------------------
-
-// Probe whether a PID belongs to a live process. Sending signal 0 is a
-// no-op delivery — succeeds if the process exists and we can signal it,
-// throws ESRCH if no such process. ANY other error (EPERM) means the
-// process exists; treat as alive to avoid false positives.
 function isPidAlive(pid) {
-  if (!pid || typeof pid !== 'number') return false
+  if (!pid || typeof pid !== "number")
+    return false;
   try {
-    process.kill(pid, 0)
-    return true
+    process.kill(pid, 0);
+    return true;
   } catch (e) {
-    return e.code !== 'ESRCH'
+    return e.code !== "ESRCH";
   }
 }
-
-// Find runs claiming status:running with no live process attached and
-// finalize them. Two reaping rules — liveness wins over time:
-//   (1) Liveness: the run record has a PID and that PID is dead → reap
-//       immediately. This catches the common failure mode (launchd or
-//       OOM SIGKILLed the wrapper) within one cron tick.
-//   (2) Time fallback: STALE_MS old with no useful PID. Covers legacy
-//       records and pre-PID-tracking runs that died.
-// Runs at the start of every cron invocation so the system self-heals
-// even without a dedicated watchdog schedule. Returns the count.
 function sweepStaleRuns() {
-  if (!existsSync(RUNS_DIR)) return 0
-  let swept = 0
+  if (!existsSync6(RUNS_DIR()))
+    return 0;
+  let swept = 0;
   try {
-    for (const f of readdirSync(RUNS_DIR)) {
-      if (!f.endsWith('.json')) continue
-      const path = join(RUNS_DIR, f)
-      let rec
-      try {
-        rec = JSON.parse(readFileSync(path, 'utf8'))
-      } catch {
-        continue
-      }
-      if (rec.status !== 'running') continue
-      const ageMs = rec.startedAt ? Date.now() - rec.startedAt : 0
-      const pidDead = rec.pid && !isPidAlive(rec.pid)
-      // Liveness: only trust a fresh pidDead reading. Inside the first
-      // few seconds the OS may not yet have registered the spawn — give
-      // it a small grace period (10s) so we don't reap a still-warming
-      // run. After STALE_MS we time-fall-back regardless of pid presence.
-      const reapForLiveness = pidDead && ageMs > 10_000
-      const reapForAge = ageMs >= STALE_MS
-      if (!reapForLiveness && !reapForAge) continue
-      const reason = reapForLiveness
-        ? `dead process (pid ${rec.pid}); runner exited without finalizing the run`
-        : 'stale: runner exited without finalizing the run (swept by watchdog)'
+    for (const { path, rec } of runRecords()) {
+      if (rec.status !== "running")
+        continue;
+      const ageMs = rec.startedAt ? Date.now() - rec.startedAt : 0;
+      const pidDead = !!rec.pid && !isPidAlive(rec.pid);
+      const reapForLiveness = pidDead && ageMs > 1e4;
+      const reapForAge = ageMs >= STALE_MS;
+      if (!reapForLiveness && !reapForAge)
+        continue;
+      const reason = reapForLiveness ? `dead process (pid ${rec.pid}); runner exited without finalizing the run` : "stale: runner exited without finalizing the run (swept by watchdog)";
       const finalized = {
         ...rec,
-        status: 'failed',
+        status: "failed",
         endedAt: Date.now(),
-        error: reason,
-      }
-      writeJsonAtomicShared(path, finalized)
-      if (rec.scheduleId) stamp(rec.scheduleId, { lastStatus: 'failed' })
-      const ageMin = Math.round(ageMs / 60_000)
-      const detectionPhrase = reapForLiveness
-        ? `the wrapper process (pid ${rec.pid}) is dead after ${ageMin} min`
-        : `it was running for >${Math.round(STALE_MS / 3_600_000)}h with no live process`
-      const staleTicketPath = rec.repoRoot
-        ? fileTicket(rec.repoRoot, {
-            title: `Cron run stale: ${rec.agentTitle || rec.agentId}`,
-            body: `The scheduled run for **${rec.agentTitle || rec.agentId}** (branch \`${rec.branch}\`) was swept by the watchdog because ${detectionPhrase}.\n\n- run id: \`${rec.id}\`\n- log: \`~/.config/TerMinal/cron-runs/${rec.id}.log\`\n- worktree: \`${rec.worktree}\`\n\nInvestigate why the runner died mid-run (terminal closed, OOM, launchd killed, network hang). Fix the root cause; re-enable the schedule in the Schedules tab if the circuit-breaker tripped.`,
-            type: 'bug',
-            priority: 'high',
-          })
-        : null
+        error: reason
+      };
+      writeJsonAtomicShared(path, finalized);
+      if (rec.scheduleId)
+        stamp(rec.scheduleId, { lastStatus: "failed" });
+      const ageMin = Math.round(ageMs / 60000);
+      const detectionPhrase = reapForLiveness ? `the wrapper process (pid ${rec.pid}) is dead after ${ageMin} min` : `it was running for >${Math.round(STALE_MS / 3600000)}h with no live process`;
+      const staleTicketPath = rec.repoRoot ? fileTicket(rec.repoRoot, {
+        title: `Cron run stale: ${rec.agentTitle || rec.agentId}`,
+        body: `The scheduled run for **${rec.agentTitle || rec.agentId}** (branch \`${rec.branch}\`) was swept by the watchdog because ${detectionPhrase}.
+
+- run id: \`${rec.id}\`
+- log: \`~/.config/TerMinal/cron-runs/${rec.id}.log\`
+- worktree: \`${rec.worktree}\`
+
+Investigate why the runner died mid-run (terminal closed, OOM, launchd killed, network hang). Fix the root cause; re-enable the schedule in the Schedules tab if the circuit-breaker tripped.`,
+        type: "bug",
+        priority: "high"
+      }) : null;
       fileHitl({
-        title: `Cron run stale · ${rec.agentTitle || rec.agentId}`,
-        action: 'runner died mid-run — swept by watchdog and marked failed',
-        detail: `run ${rec.id} · ${rec.branch || ''}`,
+        title: `Cron run stale \xB7 ${rec.agentTitle || rec.agentId}`,
+        action: "runner died mid-run \u2014 swept by watchdog and marked failed",
+        detail: `run ${rec.id} \xB7 ${rec.branch || ""}`,
         repo: rec.repoLabel,
         repoRoot: rec.repoRoot,
         runId: rec.id,
-        runSource: 'cron',
-        ticketPath: staleTicketPath,
-      })
-      swept++
-      log(`watchdog: marked ${rec.id} stale`)
+        runSource: "cron",
+        ticketPath: staleTicketPath
+      });
+      swept++;
+      log(`watchdog: marked ${rec.id} stale`);
     }
   } catch (e) {
-    log(`watchdog sweep failed: ${e}`)
+    log(`watchdog sweep failed: ${e}`);
   }
-  return swept
+  return swept;
 }
 
-// ---- self-contained cron matcher (mirrors src/main/cron.ts) ----------------
-// terminal-cron imports nothing from the app bundle, so the calendar/cron
-// evaluation the cadence watchdog needs is reimplemented here. Keep in sync
-// with src/main/cron.ts (cronToTrigger / specToTrigger / prevRun).
-function parseCronFieldLocal(field, min, max) {
-  if (field === '*') return null
-  const out = new Set()
-  for (const part of field.split(',')) {
-    const m = part.match(/^(\*|\d+(?:-\d+)?)(?:\/(\d+))?$/)
-    if (!m) return null // malformed → bail (watchdog skips this schedule)
-    const [, range, stepRaw] = m
-    const step = stepRaw ? Number(stepRaw) : 1
-    if (step < 1) return null
-    let lo, hi
-    if (range === '*') {
-      lo = min
-      hi = max
-    } else if (range.includes('-')) {
-      const [a, b] = range.split('-').map(Number)
-      lo = a
-      hi = b
-    } else {
-      lo = hi = Number(range)
-    }
-    if (lo < min || hi > max || lo > hi) return null
-    for (let v = lo; v <= hi; v += step) out.add(v)
-  }
-  return [...out]
-}
-
-// Reduce a spec to concrete allowed values per field (null = "any").
-function specEntriesLocal(spec) {
-  if (!spec) return null
-  if (spec.kind === 'cron') {
-    const fields = String(spec.expr || '')
-      .trim()
-      .split(/\s+/)
-    if (fields.length !== 5) return null
-    const [minF, hourF, domF, monF, dowF] = fields
-    const dows = parseCronFieldLocal(dowF, 0, 7)?.map((d) => (d === 7 ? 0 : d))
-    return {
-      minutes: parseCronFieldLocal(minF, 0, 59),
-      hours: parseCronFieldLocal(hourF, 0, 23),
-      days: parseCronFieldLocal(domF, 1, 31),
-      months: parseCronFieldLocal(monF, 1, 12),
-      dows: dows ? [...new Set(dows)] : null,
-    }
-  }
-  if (spec.kind === 'calendar') {
-    return {
-      minutes: [spec.minute || 0],
-      hours: [spec.hour || 0],
-      days: null,
-      months: null,
-      dows: spec.weekdays && spec.weekdays.length ? spec.weekdays : null,
-    }
-  }
-  return null
-}
-
-function matchesEntriesLocal(e, d) {
-  return (
-    (e.minutes === null || e.minutes.includes(d.getMinutes())) &&
-    (e.hours === null || e.hours.includes(d.getHours())) &&
-    (e.days === null || e.days.includes(d.getDate())) &&
-    (e.dows === null || e.dows.includes(d.getDay())) &&
-    (e.months === null || e.months.includes(d.getMonth() + 1))
-  )
-}
-
-// Most recent expected fire at or before `from` (ms), scanning back up to 45
-// days. null if none — includes schedules that fire less often than that (the
-// watchdog simply won't flag them, which is fine).
-const CADENCE_SCAN_DAYS = 45
-function prevExpectedFire(spec, from) {
-  const e = specEntriesLocal(spec)
-  if (!e) return null
-  const d = new Date(from)
-  d.setSeconds(0, 0)
-  for (let i = 0; i < CADENCE_SCAN_DAYS * 24 * 60; i++) {
-    if (matchesEntriesLocal(e, d)) return d.getTime()
-    d.setMinutes(d.getMinutes() - 1)
-  }
-  return null
-}
-
-// Open overdue HITLs, keyed by schedule id — so a stuck schedule pings once,
-// not on every watchdog tick.
-function openOverdueHitlIds() {
-  try {
-    const list = JSON.parse(readFileSync(HITL_FILE, 'utf8'))
-    if (!Array.isArray(list)) return new Set()
-    const ids = new Set()
-    for (const h of list)
-      if (h.status === 'open' && h.overdueScheduleId) ids.add(h.overdueScheduleId)
-    return ids
-  } catch {
-    return new Set()
-  }
-}
-
-// Cadence health check: an enabled schedule that has missed its TWO most recent
-// expected fires (2x-cadence tolerance) is overdue — launchd may have unloaded
-// it or the plist drifted. lastRun is stamped at run START, so a long in-flight
-// run never reads as overdue. Deduped against open overdue HITLs. Returns count.
-function watchdogCadenceCheck() {
-  const schedules = readSchedules()
-  const disabled = readDisabled()
-  const openOverdue = openOverdueHitlIds()
-  let overdue = 0
-  const now = Date.now()
-  for (const s of schedules) {
-    if (!s.enabled) continue
-    if (disabled.has(s.id)) continue // kill-switched — not expected to fire
-    if (!s.lastRun) continue // never run yet — let it ride
-    const prev = prevExpectedFire(s.spec, now)
-    if (!prev) continue
-    const prev2 = prevExpectedFire(s.spec, prev - 60_000)
-    if (!prev2) continue
-    if (s.lastRun >= prev2) continue // fired within the last 2 expected slots
-    overdue++
-    if (openOverdue.has(s.id)) continue // already flagged, don't re-ping
-    const mins = Math.round((now - s.lastRun) / 60_000)
-    fileHitl({
-      overdueScheduleId: s.id,
-      title: `Schedule overdue · ${s.agentTitle}`,
-      action: `missed its last 2 expected fires — last ran ${mins} min ago. Check the launchd plist / re-enable from the Schedules tab.`,
-      detail: `schedule ${s.id} · ${s.repoLabel}`,
-      repo: s.repoLabel,
-      repoRoot: s.repoRoot,
-    })
-    activity({
-      kind: 'blocked',
-      title: `Schedule overdue · ${s.agentTitle}`,
-      detail: `${mins} min since last run`,
-      repo: s.repoLabel,
-      repoRoot: s.repoRoot,
-      suppressTelegram: true,
-    })
-    log(`watchdog: schedule ${s.id} (${s.agentTitle}) overdue — last ran ${mins} min ago`)
-  }
-  return overdue
-}
-
-// ---- git / quoting ---------------------------------------------------------
-
-const git = (repo, args) =>
-  execFileSync('git', ['-C', repo, ...args], {
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-  }).trim()
-const shq = (s) => `'${String(s).replace(/'/g, "'\\''")}'`
-
-function defaultBase(repo) {
-  try {
-    return git(repo, ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD']).replace(
-      /^origin\//,
-      '',
-    )
-  } catch {}
-  try {
-    return git(repo, ['rev-parse', '--abbrev-ref', 'HEAD'])
-  } catch {
-    return 'main'
-  }
-}
-
-// ---- run a schedule --------------------------------------------------------
-
+// src/runner/run-schedule.ts
+var DEFAULT_RETRY_MAX = 2;
+var BACKOFF_BASE_SEC = 30;
+var BACKOFF_FACTOR = 4;
+var BACKOFF_MAX_SEC = 8 * 60;
+var DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
+var TIMEOUT_EXIT = 124;
+var sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+var backoffMsFor = (retryIndex, baseSec) => Math.min(baseSec * BACKOFF_FACTOR ** retryIndex, BACKOFF_MAX_SEC) * 1000;
 async function runSchedule(id) {
-  mkdirSync(RUNS_DIR, { recursive: true })
-
-  // Every cron invocation is also a heartbeat sweep — cheap and self-healing.
-  sweepStaleRuns()
-
-  const sched = readSchedules().find((s) => s.id === id)
+  mkdirSync5(RUNS_DIR(), { recursive: true });
+  sweepStaleRuns();
+  const sched = readSchedules().find((s) => s.id === id);
   if (!sched) {
-    log(`run: schedule ${id} not found — skipping`)
-    return 0
+    log(`run: schedule ${id} not found \u2014 skipping`);
+    return 0;
   }
   if (sched.enabled === false) {
-    log(`run: schedule ${id} disabled — skipping`)
-    return 0
+    log(`run: schedule ${id} disabled \u2014 skipping`);
+    return 0;
   }
   if (readDisabled().has(id)) {
-    log(`run: schedule ${id} kill-switched (agents/disabled.json) — skipping`)
-    return 0
+    log(`run: schedule ${id} kill-switched (agents/disabled.json) \u2014 skipping`);
+    return 0;
   }
-
-  // Concurrent-run guard. Stale runs were just swept; anything still
-  // status:running for this schedule is a true overlap. Never allow two
-  // concurrent runs of the same agent — they'd race on the same worktree
-  // path scheme and pollute each other's state. File HITL + bail.
-  const active = activeRunFor(id)
+  const active = activeRunFor(id);
   if (active) {
-    const msg = `concurrent run blocked — ${sched.agentTitle} run ${active.id.slice(0, 8)} is already running (started ${new Date(active.startedAt).toISOString()})`
-    log(`run: ${msg}`)
+    const msg = `concurrent run blocked \u2014 ${sched.agentTitle} run ${(active.id ?? "").slice(0, 8)} is already running (started ${new Date(active.startedAt).toISOString()})`;
+    log(`run: ${msg}`);
     fileHitl({
-      title: `Concurrent cron run blocked · ${sched.agentTitle}`,
-      action:
-        'previous run is still in progress; this firing was refused — investigate why the previous run is taking so long',
-      detail: `active run ${active.id} · ${active.branch}`,
+      title: `Concurrent cron run blocked \xB7 ${sched.agentTitle}`,
+      action: "previous run is still in progress; this firing was refused \u2014 investigate why the previous run is taking so long",
+      detail: `active run ${active.id} \xB7 ${active.branch}`,
       repo: sched.repoLabel,
       repoRoot: sched.repoRoot,
       runId: active.id,
-      runSource: 'cron',
-    })
+      runSource: "cron"
+    });
     activity({
-      kind: 'blocked',
-      title: `Concurrent cron blocked · ${sched.agentTitle}`,
-      detail: `previous run ${active.id.slice(0, 8)} still running`,
+      kind: "blocked",
+      title: `Concurrent cron blocked \xB7 ${sched.agentTitle}`,
+      detail: `previous run ${(active.id ?? "").slice(0, 8)} still running`,
       repo: sched.repoLabel,
       repoRoot: sched.repoRoot,
-      suppressTelegram: true,
-    })
-    return 0
+      suppressTelegram: true
+    });
+    return 0;
   }
-
-  const runId = randomUUID()
-  const ts = Date.now()
-  const tag = `${ts}-${runId.slice(0, 4)}`
-  // Host-targeted schedules store a host-relative repoRoot (e.g. ~/repos/<name>,
-  // per ADR-0002 #18) since the app that saved them ran on a different machine.
-  // Expand a leading ~/ against THIS host's home so worktree/base paths resolve.
-  const repo = sched.repoRoot.startsWith('~/')
-    ? join(homedir(), sched.repoRoot.slice(2))
-    : sched.repoRoot
-  const repoBase = repo.split('/').pop() || 'repo'
-  const worktree = join(WT_DIR, repoBase, `${id}-${tag}`)
-  const branch = `cron/${sched.agentId}-${tag}`
-  const logFile = join(RUNS_DIR, `${runId}.log`)
-  const recFile = join(RUNS_DIR, `${runId}.json`)
-  const writeRec = (extra) =>
-    writeJsonAtomicShared(recFile, {
-      id: runId,
-      scheduleId: id,
-      agentId: sched.agentId,
-      agentTitle: sched.agentTitle,
-      engine: sched.engine,
-      repoRoot: repo,
-      repoLabel: sched.repoLabel,
-      worktree,
-      branch,
-      startedAt: ts,
-      ...extra,
-    })
-
-  log(`run ${runId}: schedule ${id} (${sched.agentTitle}) in ${repo}`)
-  writeRec({ status: 'running' })
-  stamp(id, { lastRun: ts, lastStatus: 'running', lastRunId: runId })
-  activity({
-    kind: 'agent-run',
-    title: `Scheduled · ${sched.agentTitle} · started`,
-    detail: `${sched.engine} · ${sched.repoLabel}`,
-    repo: sched.repoLabel,
+  const runId = randomUUID5();
+  const ts = Date.now();
+  const tag = `${ts}-${runId.slice(0, 4)}`;
+  const repo = sched.repoRoot.startsWith("~/") ? join10(homedir2(), sched.repoRoot.slice(2)) : sched.repoRoot;
+  const repoBase = repo.split("/").pop() || "repo";
+  const worktree = join10(WT_DIR(), repoBase, `${id}-${tag}`);
+  const branch = `cron/${sched.agentId}-${tag}`;
+  const logFile = join10(RUNS_DIR(), `${runId}.log`);
+  const recFile = join10(RUNS_DIR(), `${runId}.json`);
+  const writeRec = (extra) => writeJsonAtomicShared(recFile, {
+    id: runId,
+    scheduleId: id,
+    agentId: sched.agentId,
+    agentTitle: sched.agentTitle,
+    engine: sched.engine,
     repoRoot: repo,
-  })
-
-  // isolated worktree off the default base
-  const base = defaultBase(repo)
+    repoLabel: sched.repoLabel,
+    worktree,
+    branch,
+    startedAt: ts,
+    ...extra
+  });
+  log(`run ${runId}: schedule ${id} (${sched.agentTitle}) in ${repo}`);
+  writeRec({ status: "running" });
+  stamp(id, { lastRun: ts, lastStatus: "running", lastRunId: runId });
+  activity({
+    kind: "agent-run",
+    title: `Scheduled \xB7 ${sched.agentTitle} \xB7 started`,
+    detail: `${sched.engine} \xB7 ${sched.repoLabel}`,
+    repo: sched.repoLabel,
+    repoRoot: repo
+  });
+  const base = defaultBase(repo);
   try {
-    mkdirSync(join(WT_DIR, repoBase), { recursive: true })
-    git(repo, ['worktree', 'add', worktree, '-b', branch, base])
+    mkdirSync5(join10(WT_DIR(), repoBase), { recursive: true });
+    git(repo, ["worktree", "add", worktree, "-b", branch, base]);
   } catch (e) {
-    const msg = `worktree failed: ${e}`
-    log(`run ${runId}: ${msg}`)
-    writeFileSync(logFile, msg + '\n')
-    writeRec({ status: 'failed', endedAt: Date.now(), error: msg })
-    stamp(id, { lastStatus: 'failed' })
+    const msg = `worktree failed: ${e}`;
+    log(`run ${runId}: ${msg}`);
+    writeFileSync5(logFile, msg + `
+`);
+    writeRec({ status: "failed", endedAt: Date.now(), error: msg });
+    stamp(id, { lastStatus: "failed" });
     activity({
-      kind: 'tests-fail',
-      title: `Scheduled · ${sched.agentTitle} · failed`,
+      kind: "tests-fail",
+      title: `Scheduled \xB7 ${sched.agentTitle} \xB7 failed`,
       detail: msg.slice(0, 120),
       repo: sched.repoLabel,
-      repoRoot: repo,
-    })
+      repoRoot: repo
+    });
     const wtTicketPath = fileTicket(repo, {
       title: `Cron run failed: ${sched.agentTitle} (worktree setup)`,
-      body: `Worktree setup failed for the scheduled \`${sched.agentTitle}\` run.\n\n\`\`\`\n${msg}\n\`\`\`\n\n- schedule: \`${id}\`\n- run: \`${runId}\`\n- log: \`~/.config/TerMinal/cron-runs/${runId}.log\``,
-    })
+      body: `Worktree setup failed for the scheduled \`${sched.agentTitle}\` run.
+
+\`\`\`
+${msg}
+\`\`\`
+
+- schedule: \`${id}\`
+- run: \`${runId}\`
+- log: \`~/.config/TerMinal/cron-runs/${runId}.log\``
+    });
     fileHitl({
-      title: `Scheduled run failed · ${sched.agentTitle}`,
-      action: 'worktree setup failed — check the repo and cron log',
+      title: `Scheduled run failed \xB7 ${sched.agentTitle}`,
+      action: "worktree setup failed \u2014 check the repo and cron log",
       detail: msg.slice(0, 200),
       repo: sched.repoLabel,
       repoRoot: repo,
       runId,
-      runSource: 'cron',
-      ticketPath: wtTicketPath,
-    })
-    maybeCircuitBreak(id, sched)
-    return 1
+      runSource: "cron",
+      ticketPath: wtTicketPath
+    });
+    maybeCircuitBreak(id, sched);
+    return 1;
   }
+  const scriptPath = resolveScriptPath(repo, sched.agentId);
+  const cmd = buildCommand(sched, worktree, scriptPath);
+  const isMac = process.platform === "darwin";
+  const shell = shellFor(isMac);
+  writeFileSync5(logFile, `\u25B8 ${sched.agentTitle} \xB7 ${sched.engine}
+\u25B8 branch ${branch}
+\u25B8 ${scriptPath ? `exec ${scriptPath}` : cmd}
 
-  // Optional per-schedule model alias. Lets a lightweight schedule avoid burning the
-  // biggest model on every run.
-  const modelFlag = sched.model ? ` --model ${shq(sched.model)}` : ''
-
-  // Script-first: if .agents/<id>.sh (or a global script) exists, exec it
-  // directly with env vars instead of building a prompt-based command from
-  // the schedule's prompt snapshot. The script body decides whether to call
-  // claude -p / codex exec / pure shell — perfect for cheap-then-escalate
-  // pipelines that only pay for an LLM when a precheck fails.
-  const perRepoScript = join(repo, '.agents', `${sched.agentId}.sh`)
-  const globalScript = join(CFG, 'scripts', `${sched.agentId}.sh`)
-  const scriptPath = existsSync(perRepoScript)
-    ? perRepoScript
-    : existsSync(globalScript)
-      ? globalScript
-      : null
-  // Autonomy preamble for the OpenRouter/Hermes harnesses — keeps weaker models
-  // from stopping to ask in a non-interactive one-shot. Mirrors OR_AUTONOMY_PREAMBLE
-  // in src/main/agents.ts (keep in sync by hand).
-  const OR_PREAMBLE =
-    'You are running FULLY AUTONOMOUSLY in a non-interactive one-shot process. ' +
-    'There is NO human reading your output and no follow-up turn — you cannot ask questions. ' +
-    'Do NOT ask for confirmation, permission, or which part to start with, and do NOT end your ' +
-    'turn with a question or a plan. Execute the ENTIRE task now: inspect the code, make all the ' +
-    'edits, run the project checks, commit, and open the PR. Keep calling tools until the work is ' +
-    'actually done. Only stop early if you are genuinely blocked — and then state the blocker explicitly.'
-  const hermesModel = sched.model ? ` -m ${shq(sched.model)}` : ''
-  const hermesUsage = join(worktree, '.terminal-hermes-usage.json')
-  // Engine → command. openrouter/hermes were previously missing here and fell
-  // through to codex (a silent wrong-engine bug); they now build their real
-  // commands (or-agent is bundled on the runner's PATH; hermes must be present).
-  // openai-compat = or-agent retargeted by OPENAI_BASE_URL (injected into the
-  // child env below from settings.json); guard here so an unset base URL fails
-  // loudly instead of or-agent silently falling back to OpenRouter.
-  const effFlag = effortFlag(sched)
-  const cmd = scriptPath
-    ? shq(scriptPath)
-    : sched.engine === 'claude'
-      ? `claude -p ${shq(sched.prompt)} --permission-mode auto${modelFlag}${effFlag}`
-      : sched.engine === 'cursor'
-        ? `cursor-agent -p --force --trust --output-format text --workspace ${shq(worktree)}${modelFlag} ${shq(sched.prompt)}`
-        : sched.engine === 'openrouter'
-          ? `or-agent --dir ${shq(worktree)}${modelFlag}${effFlag} ${shq(`${OR_PREAMBLE}\n\n${sched.prompt}`)}`
-          : sched.engine === 'openai-compat'
-            ? `[ -n "$OPENAI_BASE_URL" ] || { echo "openai-compat: no base URL configured (TerMinal Settings → Engines → Self-hosted)"; exit 2; }; or-agent --dir ${shq(worktree)}${modelFlag}${effFlag} ${shq(`${OR_PREAMBLE}\n\n${sched.prompt}`)}`
-            : sched.engine === 'hermes'
-              ? `hermes -z ${shq(`${OR_PREAMBLE}\n\n${sched.prompt}`)}${hermesModel} --usage-file ${shq(hermesUsage)} --yolo --accept-hooks`
-              : `codex exec -s danger-full-access -C ${shq(worktree)}${modelFlag}${effFlag} ${shq(sched.prompt)}`
-  // zsh is macOS's default but usually absent on Linux hosts — fall back to bash there.
-  const isMac = process.platform === 'darwin'
-  const shell = process.env.SHELL || (isMac ? '/bin/zsh' : '/bin/bash')
-  writeFileSync(
-    logFile,
-    `▸ ${sched.agentTitle} · ${sched.engine}\n▸ branch ${branch}\n▸ ${scriptPath ? `exec ${scriptPath}` : cmd}\n\n`,
-  )
-  const fd = openSync(logFile, 'a')
-
-  // Wrap in `script -q /dev/null` so the wrapped CLI sees a pseudo-TTY and
-  // streams stdout/stderr in real time. Without this, `claude -p` (and other engines)
-  // buffer everything until exit and the log is unreadable mid-run.
-  // `script` is in /usr/bin on macOS by default.
-  // Env vars exposed to the script body — scripts can `terminal-cli ticket ...`
-  // etc. since the runner installs terminal-cli into ~/.config/TerMinal/bin.
-  const TERMINAL_BIN_DIR = join(CFG, 'bin')
-  const childEnv = {
-    ...process.env,
-    PATH: `${TERMINAL_BIN_DIR}:${process.env.PATH || ''}`,
-    TERMINAL_REPO: repo,
-    // Workflow state lives in a per-project sidecar and .agents/*.sh reference
-    // TERMINAL_<AREA>_DIR rather than literal paths — a scheduled run without
-    // these resolves empty and writes somewhere arbitrary. Absolute paths:
-    // never prefix them with TERMINAL_REPO.
-    ...repoStateEnv(repo),
-    TERMINAL_RUN_ID: runId,
-    TERMINAL_AGENT_ID: sched.agentId,
-    TERMINAL_BRANCH: branch,
-    TERMINAL_WORKTREE: worktree,
-    TERMINAL_ENGINE: sched.engine,
-    ...(sched.model || engineDefaultModel(sched.engine)
-      ? { TERMINAL_MODEL: sched.model || engineDefaultModel(sched.engine) }
-      : {}),
-    ...(resolveEffort(sched) ? { TERMINAL_EFFORT: resolveEffort(sched) } : {}),
-    ...(sched.engine === 'openai-compat'
-      ? {
-          ...(openAICompatBaseUrl() ? { OPENAI_BASE_URL: openAICompatBaseUrl() } : {}),
-          OPENAI_API_KEY: process.env.OPENAI_API_KEY || 'none',
-        }
-      : {}),
-    // Per-schedule env vars (Schedule.env). Spread LAST so they can
-    // override TERMINAL_* if the operator really wants (rare), but the
-    // main use case is parameterizing the prompt — e.g. a schedule
-    // labeled "(bolt)" pinning BEACON_PROJECT=bolt so the agent drains
-    // that specific Beacon project queue instead of falling back to the
-    // global config's default project.
-    ...(sched.env && typeof sched.env === 'object' ? sched.env : {}),
-  }
-  // Retry policy for this schedule (per-schedule overrides → runner defaults).
-  const maxRetries = Math.max(0, Number(sched.retry?.maxRetries ?? DEFAULT_RETRY_MAX))
-  const backoffBaseSec = Math.max(1, Number(sched.retry?.backoffSec ?? BACKOFF_BASE_SEC))
-  const timeoutMs = sched.timeoutSec > 0 ? sched.timeoutSec * 1000 : DEFAULT_TIMEOUT_MS
-
-  // Cooperative cancel: a user cancel (runs:cancel / remote runs.cancel) sends
-  // SIGTERM to THIS runner's pid (recorded as runnerPid). We kill the current
-  // attempt's process group, record the run as canceled, and exit WITHOUT
-  // retrying (killing just the child would let the retry loop re-fire).
-  let currentChild = null
-  let canceling = false
+`);
+  const fd = openSync2(logFile, "a");
+  const childEnv = buildChildEnv({ sched, repo, runId, branch, worktree });
+  const maxRetries = Math.max(0, Number(sched.retry?.maxRetries ?? DEFAULT_RETRY_MAX));
+  const backoffBaseSec = Math.max(1, Number(sched.retry?.backoffSec ?? BACKOFF_BASE_SEC));
+  const timeoutMs = sched.timeoutSec && sched.timeoutSec > 0 ? sched.timeoutSec * 1000 : DEFAULT_TIMEOUT_MS;
+  let currentChild = null;
+  let canceling = false;
   const onCancelSignal = () => {
-    if (canceling) return
-    canceling = true
+    if (canceling)
+      return;
+    canceling = true;
     try {
-      if (currentChild && currentChild.pid) process.kill(-currentChild.pid, 'SIGTERM')
+      if (currentChild && currentChild.pid)
+        process.kill(-currentChild.pid, "SIGTERM");
     } catch {}
     try {
-      writeRec({ status: 'canceled', endedAt: Date.now(), error: 'canceled by user' })
+      writeRec({ status: "canceled", endedAt: Date.now(), error: "canceled by user" });
     } catch {}
-    process.exit(0)
-  }
-  process.on('SIGTERM', onCancelSignal)
-  process.on('SIGINT', onCancelSignal)
-
-  // One attempt: spawn the wrapped CLI, enforce the per-attempt timeout, and
-  // resolve { code, timedOut }. Detached so we get a process group we can kill
-  // wholesale on timeout (killing `script` alone can orphan the agent child).
-  const runAttempt = (attempts) =>
-    new Promise((resolve) => {
-      // `script` pseudo-TTY wrapper differs by platform:
-      //  - macOS/BSD: `script -q /dev/null <cmd...>` takes the command as trailing
-      //    argv and exits with the command's status.
-      //  - util-linux (Linux): needs `-c "<cmd>"` and, crucially, `-e/--return` to
-      //    propagate the child's exit code. WITHOUT -e it always exits 0, so every
-      //    run — including failures — would be recorded as done.
-      const scriptArgs = isMac
-        ? ['-q', '/dev/null', shell, '-l', '-c', cmd]
-        : ['-q', '-e', '-c', `${shq(shell)} -l -c ${shq(cmd)}`, '/dev/null']
-      const p = spawn('script', scriptArgs, {
-        cwd: worktree,
-        env: childEnv,
-        stdio: ['ignore', fd, fd],
-        detached: true,
-      })
-      // Persist the wrapper PID so the watchdog can detect a dead-but-
-      // still-marked-running record via `kill(pid, 0)` rather than waiting
-      // STALE_MS (2h). Without this, a launchd SIGKILL or any silent runner
-      // death leaves the cron-runs/<id>.json zombied at status:running for
-      // hours — long enough that downstream cron ticks treat the schedule
-      // as in-progress and skip themselves.
-      currentChild = p
-      // Record BOTH pids: p.pid (script wrapper — the watchdog's liveness probe)
-      // and runnerPid (this process — a user cancel SIGTERMs this to stop retries).
-      if (p.pid) writeRec({ status: 'running', pid: p.pid, runnerPid: process.pid, attempts })
-      let timedOut = false
-      const killGroup = (sig) => {
-        try {
-          if (p.pid) process.kill(-p.pid, sig)
-        } catch {}
-      }
-      const timer = setTimeout(() => {
-        timedOut = true
-        appendFileSync(
-          logFile,
-          `\n[timeout] attempt exceeded ${Math.round(timeoutMs / 1000)}s — killing run\n`,
-        )
-        killGroup('SIGTERM')
-        setTimeout(() => killGroup('SIGKILL'), 5000) // hard-kill if it ignores TERM
-      }, timeoutMs)
-      p.on('error', (err) => {
-        clearTimeout(timer)
-        appendFileSync(logFile, `\n[spawn error] ${err.message}\n`)
-        resolve({ code: 1, timedOut })
-      })
-      p.on('exit', (c) => {
-        clearTimeout(timer)
-        resolve({ code: timedOut ? TIMEOUT_EXIT : (c ?? 1), timedOut })
-      })
-    })
-
-  let code = 1
-  let timedOut = false
-  let attempts = 0
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    if (attempt > 0) {
-      const waitMs = backoffMsFor(attempt - 1, backoffBaseSec)
-      appendFileSync(
-        logFile,
-        `\n▸ attempt ${attempt} failed (exit ${code}${timedOut ? ', timed out' : ''}) — retry ${attempt}/${maxRetries} in ${Math.round(waitMs / 1000)}s\n`,
-      )
-      stamp(id, { lastStatus: 'running' })
-      await sleep(waitMs)
-      // Reset the worktree to a clean base so a half-applied failed attempt
-      // never bleeds into the retry (we reuse the worktree, not a fresh one).
+    process.exit(0);
+  };
+  process.on("SIGTERM", onCancelSignal);
+  process.on("SIGINT", onCancelSignal);
+  const runAttempt = (attempts2) => new Promise((resolve) => {
+    const p = spawn3("script", scriptArgsFor(isMac, shell, cmd), {
+      cwd: worktree,
+      env: childEnv,
+      stdio: ["ignore", fd, fd],
+      detached: true
+    });
+    currentChild = p;
+    if (p.pid)
+      writeRec({ status: "running", pid: p.pid, runnerPid: process.pid, attempts: attempts2 });
+    let timedOut2 = false;
+    const killGroup = (sig) => {
       try {
-        git(worktree, ['reset', '--hard', base])
-        git(worktree, ['clean', '-fd'])
+        if (p.pid)
+          process.kill(-p.pid, sig);
+      } catch {}
+    };
+    const timer = setTimeout(() => {
+      timedOut2 = true;
+      appendFileSync2(logFile, `
+[timeout] attempt exceeded ${Math.round(timeoutMs / 1000)}s \u2014 killing run
+`);
+      killGroup("SIGTERM");
+      setTimeout(() => killGroup("SIGKILL"), 5000);
+    }, timeoutMs);
+    p.on("error", (err) => {
+      clearTimeout(timer);
+      appendFileSync2(logFile, `
+[spawn error] ${err.message}
+`);
+      resolve({ code: 1, timedOut: timedOut2 });
+    });
+    p.on("exit", (c) => {
+      clearTimeout(timer);
+      resolve({ code: timedOut2 ? TIMEOUT_EXIT : c ?? 1, timedOut: timedOut2 });
+    });
+  });
+  let code = 1;
+  let timedOut = false;
+  let attempts = 0;
+  for (let attempt = 0;attempt <= maxRetries; attempt++) {
+    if (attempt > 0) {
+      const waitMs = backoffMsFor(attempt - 1, backoffBaseSec);
+      appendFileSync2(logFile, `
+\u25B8 attempt ${attempt} failed (exit ${code}${timedOut ? ", timed out" : ""}) \u2014 retry ${attempt}/${maxRetries} in ${Math.round(waitMs / 1000)}s
+`);
+      stamp(id, { lastStatus: "running" });
+      await sleep(waitMs);
+      try {
+        git(worktree, ["reset", "--hard", base]);
+        git(worktree, ["clean", "-fd"]);
       } catch (e) {
-        appendFileSync(logFile, `[retry] worktree reset failed: ${e}\n`)
+        appendFileSync2(logFile, `[retry] worktree reset failed: ${e}
+`);
       }
-      appendFileSync(logFile, `\n▸ attempt ${attempt + 1}/${maxRetries + 1}\n`)
+      appendFileSync2(logFile, `
+\u25B8 attempt ${attempt + 1}/${maxRetries + 1}
+`);
     }
-    attempts = attempt + 1
-    const res = await runAttempt(attempts)
-    code = res.code
-    timedOut = res.timedOut
-    if (code === 0) break
+    attempts = attempt + 1;
+    const res = await runAttempt(attempts);
+    code = res.code;
+    timedOut = res.timedOut;
+    if (code === 0)
+      break;
   }
-
-  const status = code === 0 ? 'done' : 'failed'
-  const endedAt = Date.now()
-  writeRec({ status, endedAt, exitCode: code, attempts, ...(timedOut ? { timedOut: true } : {}) })
-  stamp(id, { lastStatus: status })
-  // Observability: parse the captured log for usage stats and persist as an
-  // AIRun ledger entry. Silent on miss (scripts may emit
-  // no usage line — that's expected).
+  const status = code === 0 ? "done" : "failed";
+  const endedAt = Date.now();
+  writeRec({ status, endedAt, exitCode: code, attempts, ...timedOut ? { timedOut: true } : {} });
+  stamp(id, { lastStatus: status });
   try {
-    const logText = readFileSync(logFile, 'utf8')
-    const usage = sched.engine === 'cursor' ? null : parseUsageFromOutput(logText)
+    const logText = readFileSync4(logFile, "utf8");
+    const usage = sched.engine === "cursor" ? null : parseUsageFromOutput(logText);
     if (usage) {
       writeAIRun({
         engine: sched.engine,
-        model:
-          usage.model ||
-          childEnv.TERMINAL_MODEL ||
-          (sched.engine === 'codex' ? 'gpt-5' : sched.engine === 'cursor' ? 'cursor' : 'sonnet'),
+        model: usage.model || childEnv.TERMINAL_MODEL || (sched.engine === "codex" ? "gpt-5" : sched.engine === "cursor" ? "cursor" : "sonnet"),
         inputTokens: usage.input,
         outputTokens: usage.output,
         cacheReadTokens: usage.cacheRead,
@@ -1561,346 +1373,233 @@ async function runSchedule(id) {
         agentId: sched.agentId,
         startedAt: ts,
         endedAt,
-        exitCode: code,
-      })
+        exitCode: code
+      });
     }
-  } catch {
-    /* never block run finalization on observability */
-  }
-  const attemptNote = attempts > 1 ? ` · ${attempts} attempts` : ''
+  } catch {}
+  const attemptNote = attempts > 1 ? ` \xB7 ${attempts} attempts` : "";
   activity({
-    kind: code === 0 ? 'agent-run' : 'tests-fail',
-    title: `Scheduled · ${sched.agentTitle} · ${status}`,
-    detail: `${sched.engine} · ${branch}${attemptNote}${code === 0 && attempts > 1 ? ' (recovered on retry)' : ''}`,
+    kind: code === 0 ? "agent-run" : "tests-fail",
+    title: `Scheduled \xB7 ${sched.agentTitle} \xB7 ${status}`,
+    detail: `${sched.engine} \xB7 ${branch}${attemptNote}${code === 0 && attempts > 1 ? " (recovered on retry)" : ""}`,
     repo: sched.repoLabel,
-    repoRoot: repo,
-  })
+    repoRoot: repo
+  });
   if (code !== 0) {
-    // All retries exhausted — now (and only now) escalate.
-    const failReason = timedOut
-      ? `timed out after ${Math.round(timeoutMs / 1000)}s`
-      : `exited with code ${code}`
+    const failReason = timedOut ? `timed out after ${Math.round(timeoutMs / 1000)}s` : `exited with code ${code}`;
     const failTicketPath = fileTicket(repo, {
-      title: `Cron run failed: ${sched.agentTitle} (${timedOut ? 'timeout' : `exit ${code}`})`,
-      body: `The scheduled \`${sched.agentTitle}\` run ${failReason} after ${attempts} attempt${attempts === 1 ? '' : 's'}.\n\n- schedule: \`${id}\`\n- run: \`${runId}\`\n- branch: \`${branch}\`\n- worktree: \`${worktree}\`\n- log: \`~/.config/TerMinal/cron-runs/${runId}.log\`\n\nInvestigate the log and fix the underlying issue; circuit-breaker auto-disables after ${CIRCUIT_BREAK_AFTER} consecutive failures.`,
-    })
+      title: `Cron run failed: ${sched.agentTitle} (${timedOut ? "timeout" : `exit ${code}`})`,
+      body: `The scheduled \`${sched.agentTitle}\` run ${failReason} after ${attempts} attempt${attempts === 1 ? "" : "s"}.
+
+- schedule: \`${id}\`
+- run: \`${runId}\`
+- branch: \`${branch}\`
+- worktree: \`${worktree}\`
+- log: \`~/.config/TerMinal/cron-runs/${runId}.log\`
+
+Investigate the log and fix the underlying issue; circuit-breaker auto-disables after ${CIRCUIT_BREAK_AFTER} consecutive failures.`
+    });
     fileHitl({
-      title: `Scheduled run failed · ${sched.agentTitle}`,
-      action: `${failReason} after ${attempts} attempt${attempts === 1 ? '' : 's'} — review the run log`,
-      detail: `run ${runId} · ${branch}`,
+      title: `Scheduled run failed \xB7 ${sched.agentTitle}`,
+      action: `${failReason} after ${attempts} attempt${attempts === 1 ? "" : "s"} \u2014 review the run log`,
+      detail: `run ${runId} \xB7 ${branch}`,
       repo: sched.repoLabel,
       repoRoot: repo,
       runId,
-      runSource: 'cron',
-      ticketPath: failTicketPath,
-    })
-    maybeCircuitBreak(id, sched)
+      runSource: "cron",
+      ticketPath: failTicketPath
+    });
+    maybeCircuitBreak(id, sched);
   }
-  log(
-    `run ${runId}: ${status} (exit ${code}, ${attempts} attempt${attempts === 1 ? '' : 's'}${timedOut ? ', timed out' : ''})`,
-  )
-  return code === 0 ? 0 : 1
+  log(`run ${runId}: ${status} (exit ${code}, ${attempts} attempt${attempts === 1 ? "" : "s"}${timedOut ? ", timed out" : ""})`);
+  return code === 0 ? 0 : 1;
 }
 
-// ---- watchdog one-shot -----------------------------------------------------
-
-async function runWatchdog() {
-  log('watchdog: tick')
-  const swept = sweepStaleRuns()
-  const overdue = watchdogCadenceCheck()
-  log(`watchdog: swept=${swept} overdue=${overdue}`)
-  activity({
-    kind: 'check',
-    title: `Watchdog · swept ${swept} stale · ${overdue} overdue`,
-    detail: 'fleet heartbeat',
-  })
-  // Piggyback: once a week, mine review-finding patterns. Rate-limited via a
-  // marker file so this watchdog tick stays cheap on every other day.
-  try {
-    await maybeRunReviewPatterns()
-  } catch (e) {
-    log(`review-patterns piggyback failed: ${e}`)
-  }
-  // Piggyback: once a day, the mechanical half of retention (ticket 0073).
-  try {
-    await maybeRunRetention()
-  } catch (e) {
-    log(`retention piggyback failed: ${e}`)
-  }
-  return 0
-}
-
-
-// ---- durable retention (ticket 0073) ---------------------------------------
-//
-// The desktop app has a "reclaim disk" button, but a button is not a policy —
-// ~/.config/TerMinal reached 6.6 GB after an earlier one-time cleanup pass.
-// The watchdog already runs on a launchd cadence, so it carries the recurring
-// half: the cheap, mechanical reclaims that are safe without any app state.
-// The size/age worktree budgets stay in the app's sweep (src/main/
-// run-retention.ts), which can see running runs and dirty worktrees.
-
-const RETENTION_MARKER = join(CFG, 'retention.last.json')
-const MONITOR_LOG = join(CFG, 'monitor.log')
-const RETENTION_INTERVAL_MS = 24 * 60 * 60 * 1000
-const LOG_MAX_BYTES = 2 * 1024 * 1024
-const LEFTOVER_MIN_AGE_MS = 60 * 60 * 1000
-const QUARANTINE_MIN_AGE_MS = 30 * 24 * 60 * 60 * 1000
-const HITL_ARCHIVE_AFTER_MS = 60 * 24 * 60 * 60 * 1000
-
-// Cap an append-only log, keeping the TAIL (the end you actually debug with).
-// One `.1` generation only — an unbounded chain is the same leak, renamed.
-function rotateLog(file, maxBytes) {
-  let raw
-  try {
-    raw = readFileSync(file, 'utf8')
-  } catch {
-    return 0
-  }
-  const bytes = Buffer.byteLength(raw)
-  if (bytes <= maxBytes) return 0
-  let tail = raw.slice(-maxBytes)
-  const nl = tail.indexOf('\n')
-  if (nl >= 0 && nl < tail.length - 1) tail = tail.slice(nl + 1)
-  writeFileSync(`${file}.1`, raw)
-  writeFileSync(file, tail)
-  return bytes - Buffer.byteLength(tail)
-}
-
-// A fresh .tmp/.lock may belong to a live writer, and a recent .corrupt-* is the
-// ONLY surviving copy of whatever was quarantined — hence the two age gates.
-function sweepLeftovers() {
-  let freed = 0
-  const now = Date.now()
-  for (const name of readdirSync(CFG)) {
-    const isQuarantine = /\.corrupt-\d+$/.test(name)
-    const isTemp = /\.tmp$/.test(name) || /\.lock$/.test(name) || /\.bak\.\d+$/.test(name)
-    if (!isQuarantine && !isTemp) continue
-    const path = join(CFG, name)
-    try {
-      const st = statSync(path)
-      if (!st.isFile()) continue
-      if (now - st.mtimeMs < (isQuarantine ? QUARANTINE_MIN_AGE_MS : LEFTOVER_MIN_AGE_MS)) continue
-      unlinkSync(path)
-      freed += st.size
-    } catch {}
-  }
-  return freed
-}
-
-// hitl.json is read and rewritten whole on every filing, so it has to stay
-// small. Only READ items past the window move out; an OPEN item is somebody's
-// outstanding blocker and is never archived, however old.
-function archiveHitl() {
-  const now = Date.now()
-  const cutoff = now - HITL_ARCHIVE_AFTER_MS
-  let archived = 0
-  try {
-    updateJsonListShared(HITL_FILE, (list) => {
-      const settled = (h) =>
-        (!!h.readAt || h.status === 'resolved') &&
-        (h.resolvedAt ?? h.readAt ?? h.createdAt ?? now) < cutoff
-      const stale = list.filter(settled)
-      if (!stale.length) return undefined
-      const dest = join(CFG, 'hitl-archive', `hitl-${new Date(now).toISOString().slice(0, 10)}.json`)
-      let existing = []
-      try {
-        const prev = JSON.parse(readFileSync(dest, 'utf8'))
-        if (Array.isArray(prev)) existing = prev
-      } catch {}
-      writeJsonAtomicShared(dest, [...existing, ...stale])
-      archived = stale.length
-      return list.filter((h) => !settled(h))
-    })
-  } catch (e) {
-    log(`retention: hitl archive failed: ${e}`)
-  }
-  return archived
-}
-
-async function maybeRunRetention(force = false) {
-  if (!force) {
-    try {
-      const m = JSON.parse(readFileSync(RETENTION_MARKER, 'utf8'))
-      if (m.lastRunAt && Date.now() - m.lastRunAt < RETENTION_INTERVAL_MS) return null
-    } catch {}
-  }
-  const logs = rotateLog(MONITOR_LOG, LOG_MAX_BYTES) + rotateLog(CRON_LOG, LOG_MAX_BYTES)
-  const leftovers = sweepLeftovers()
-  const archived = archiveHitl()
-  const summary = { lastRunAt: Date.now(), logBytes: logs, leftoverBytes: leftovers, archived }
-  try {
-    writeJsonAtomicShared(RETENTION_MARKER, summary)
-  } catch {}
-  log(`retention: logs=${logs}B leftovers=${leftovers}B hitl-archived=${archived}`)
-  return summary
-}
-
-// ---- review findings patterns ----------------------------------------------
-
-const REVIEW_PATTERNS_MARKER = join(CFG, 'review-patterns.last.json')
-const REVIEW_PATTERNS_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000 // 7d
-// Promote to HITL when a pattern recurs at least this much across this many
-// distinct repos. 3×/2-repos is the floor that picked up real cross-repo
-// signal (third-party CDN, 72-hr quarantine, mutable Docker tags) without
-// dragging in noise.
-const REVIEW_PROMOTE_COUNT = 3
-const REVIEW_PROMOTE_REPOS = 2
-
-function harnessDir() {
-  // env override → settings → disabled. Open-source installs do not have a
-  // canonical cross-repo harness checkout, so leave this off until configured.
-  if (process.env.GT_HARNESS_DIR) return process.env.GT_HARNESS_DIR
-  try {
-    const s = JSON.parse(readFileSync(SETTINGS_FILE, 'utf8'))
-    if (s.harnessDir) return s.harnessDir
-  } catch {}
-  return ''
-}
-
-async function maybeRunReviewPatterns(force = false) {
-  if (!force) {
-    try {
-      const m = JSON.parse(readFileSync(REVIEW_PATTERNS_MARKER, 'utf8'))
-      if (m.lastRunAt && Date.now() - m.lastRunAt < REVIEW_PATTERNS_INTERVAL_MS) return
-    } catch {}
-  }
-  await runReviewPatterns()
-}
-
-async function runReviewPatterns() {
-  const dir = harnessDir()
-  if (!dir) {
-    log('review-patterns: no harnessDir configured, skipping')
-    return 0
-  }
-  const bin = join(dir, 'bin', 'review-findings-mine')
-  if (!existsSync(bin)) {
-    log(`review-patterns: ${bin} missing, skipping`)
-    return 0
-  }
-  log(`review-patterns: mining via ${bin}`)
-  const out = await new Promise((resolve, reject) => {
-    const proc = spawn(
-      bin,
-      [
-        '--json',
-        '--threshold-count',
-        String(REVIEW_PROMOTE_COUNT),
-        '--threshold-repos',
-        String(REVIEW_PROMOTE_REPOS),
-      ],
-      {
-        cwd: dir,
-        stdio: ['ignore', 'pipe', 'pipe'],
-      },
-    )
-    let stdout = ''
-    let stderr = ''
-    proc.stdout.on('data', (d) => (stdout += d.toString()))
-    proc.stderr.on('data', (d) => (stderr += d.toString()))
-    proc.on('exit', (code) =>
-      code === 0 ? resolve(stdout) : reject(new Error(`exit ${code}: ${stderr}`)),
-    )
-  })
-  let parsed
-  try {
-    parsed = JSON.parse(out)
-  } catch (e) {
-    log(`review-patterns: parse failed: ${e}`)
-    return 0
-  }
-  const promote = parsed.promote || []
-  const existingKeys = openReviewPatternHitlKeys()
-  let filed = 0
-  for (const p of promote) {
-    if (existingKeys.has(p.key)) continue
-    fileHitl({
-      kind: 'review-pattern',
-      // Was inheriting the default 'cron-fail' source, which both mislabelled a
-      // digest as a failed job and made it ping unconditionally. It's a
-      // 'normal'-tier FYI: inbox now, no buzz unless you lowered the threshold.
-      source: 'review-pattern',
-      severity: 'normal',
-      patternKey: p.key,
-      title: `Recurring ${p.category} finding: ${p.tokens.join(' / ')}`,
-      action: `${p.count}× across ${p.repos.length} repos — promote to CLAUDE.md?`,
-      detail:
-        `repos: ${p.repos.join(', ')}\n\nExamples:\n` +
-        (p.examples || [])
-          .map((e) => `- ${e.repo}#${e.pr} "${e.title}"${e.file ? ` — ${e.file}` : ''}`)
-          .join('\n'),
-    })
-    filed++
-  }
-  activity({
-    kind: 'check',
-    title: `Review patterns · ${parsed.totals?.total || 0} findings · ${promote.length} promote candidates · ${filed} HITL filed`,
-    detail: `report: ${join(dir, 'reports', 'review-patterns.md')}`,
-  })
-  try {
-    writeFileSync(
-      REVIEW_PATTERNS_MARKER,
-      JSON.stringify({ lastRunAt: Date.now(), filed, promote: promote.length }, null, 2),
-    )
-  } catch {}
-  log(`review-patterns: promote=${promote.length} filed=${filed}`)
-  return 0
-}
-
-function openReviewPatternHitlKeys() {
-  try {
-    const list = JSON.parse(readFileSync(HITL_FILE, 'utf8'))
-    if (!Array.isArray(list)) return new Set()
-    const keys = new Set()
-    for (const h of list) {
-      if (h.kind === 'review-pattern' && h.status === 'open' && h.patternKey) keys.add(h.patternKey)
+// src/runner/cron-match.ts
+function parseCronFieldLocal(field, min, max) {
+  if (field === "*")
+    return null;
+  const out = new Set;
+  for (const part of field.split(",")) {
+    const m = part.match(/^(\*|\d+(?:-\d+)?)(?:\/(\d+))?$/);
+    if (!m)
+      return null;
+    const [, range, stepRaw] = m;
+    const step = stepRaw ? Number(stepRaw) : 1;
+    if (step < 1)
+      return null;
+    let lo, hi;
+    if (range === "*") {
+      lo = min;
+      hi = max;
+    } else if (range.includes("-")) {
+      const [a, b] = range.split("-").map(Number);
+      lo = a;
+      hi = b;
+    } else {
+      lo = hi = Number(range);
     }
-    return keys
-  } catch {
-    return new Set()
+    if (lo < min || hi > max || lo > hi)
+      return null;
+    for (let v = lo;v <= hi; v += step)
+      out.add(v);
   }
+  return [...out];
+}
+function specEntriesLocal(spec) {
+  if (!spec)
+    return null;
+  if (spec.kind === "cron") {
+    const fields = String(spec.expr || "").trim().split(/\s+/);
+    if (fields.length !== 5)
+      return null;
+    const [minF, hourF, domF, monF, dowF] = fields;
+    const dows = parseCronFieldLocal(dowF, 0, 7)?.map((d) => d === 7 ? 0 : d);
+    return {
+      minutes: parseCronFieldLocal(minF, 0, 59),
+      hours: parseCronFieldLocal(hourF, 0, 23),
+      days: parseCronFieldLocal(domF, 1, 31),
+      months: parseCronFieldLocal(monF, 1, 12),
+      dows: dows ? [...new Set(dows)] : null
+    };
+  }
+  if (spec.kind === "calendar") {
+    return {
+      minutes: [spec.minute || 0],
+      hours: [spec.hour || 0],
+      days: null,
+      months: null,
+      dows: spec.weekdays && spec.weekdays.length ? spec.weekdays : null
+    };
+  }
+  return null;
+}
+function matchesEntriesLocal(e, d) {
+  return (e.minutes === null || e.minutes.includes(d.getMinutes())) && (e.hours === null || e.hours.includes(d.getHours())) && (e.days === null || e.days.includes(d.getDate())) && (e.dows === null || e.dows.includes(d.getDay())) && (e.months === null || e.months.includes(d.getMonth() + 1));
+}
+var CADENCE_SCAN_DAYS = 45;
+function prevExpectedFire(spec, from) {
+  const e = specEntriesLocal(spec);
+  if (!e)
+    return null;
+  const d = new Date(from);
+  d.setSeconds(0, 0);
+  for (let i = 0;i < CADENCE_SCAN_DAYS * 24 * 60; i++) {
+    if (matchesEntriesLocal(e, d))
+      return d.getTime();
+    d.setMinutes(d.getMinutes() - 1);
+  }
+  return null;
 }
 
-// ---- entrypoint ------------------------------------------------------------
+// src/runner/watchdog.ts
+function openOverdueHitlIds() {
+  const list = readJson(HITL_FILE());
+  if (!Array.isArray(list))
+    return new Set;
+  const ids = new Set;
+  for (const h of list)
+    if (h.status === "open" && h.overdueScheduleId)
+      ids.add(h.overdueScheduleId);
+  return ids;
+}
+function watchdogCadenceCheck() {
+  const schedules = readSchedules();
+  const disabled = readDisabled();
+  const openOverdue = openOverdueHitlIds();
+  let overdue = 0;
+  const now = Date.now();
+  for (const s of schedules) {
+    if (!s.enabled)
+      continue;
+    if (disabled.has(s.id))
+      continue;
+    if (!s.lastRun)
+      continue;
+    const prev = prevExpectedFire(s.spec, now);
+    if (!prev)
+      continue;
+    const prev2 = prevExpectedFire(s.spec, prev - 60000);
+    if (!prev2)
+      continue;
+    if (s.lastRun >= prev2)
+      continue;
+    overdue++;
+    if (openOverdue.has(s.id))
+      continue;
+    const mins = Math.round((now - s.lastRun) / 60000);
+    fileHitl({
+      overdueScheduleId: s.id,
+      title: `Schedule overdue \xB7 ${s.agentTitle}`,
+      action: `missed its last 2 expected fires \u2014 last ran ${mins} min ago. Check the launchd plist / re-enable from the Schedules tab.`,
+      detail: `schedule ${s.id} \xB7 ${s.repoLabel}`,
+      repo: s.repoLabel,
+      repoRoot: s.repoRoot
+    });
+    activity({
+      kind: "blocked",
+      title: `Schedule overdue \xB7 ${s.agentTitle}`,
+      detail: `${mins} min since last run`,
+      repo: s.repoLabel,
+      repoRoot: s.repoRoot,
+      suppressTelegram: true
+    });
+    log(`watchdog: schedule ${s.id} (${s.agentTitle}) overdue \u2014 last ran ${mins} min ago`);
+  }
+  return overdue;
+}
+async function runWatchdog() {
+  log("watchdog: tick");
+  const swept = sweepStaleRuns();
+  const overdue = watchdogCadenceCheck();
+  log(`watchdog: swept=${swept} overdue=${overdue}`);
+  activity({
+    kind: "check",
+    title: `Watchdog \xB7 swept ${swept} stale \xB7 ${overdue} overdue`,
+    detail: "fleet heartbeat"
+  });
+  try {
+    await maybeRunReviewPatterns();
+  } catch (e) {
+    log(`review-patterns piggyback failed: ${e}`);
+  }
+  try {
+    await maybeRunRetention();
+  } catch (e) {
+    log(`retention piggyback failed: ${e}`);
+  }
+  return 0;
+}
 
-// Every dispatch below was an unhandled rejection waiting to happen: a `.then`
-// with no `.catch` means a throw skips `process.exit` entirely, and launchd
-// records whatever the runtime decides — frequently exit 0. A failed scheduled
-// run then looks exactly like a successful one, which is the silent-failure
-// mode this runner exists to avoid (tickets 100/101). Route it: log, and exit
-// non-zero so the run record and the daemon agree that it failed.
+// src/runner/index.ts
 function die(what) {
   return (e) => {
-    console.error(`terminal-cron: ${what} failed: ${(e && e.stack) || e}`)
-    process.exit(1)
+    console.error(`terminal-cron: ${what} failed: ${e?.stack || e}`);
+    process.exit(1);
+  };
+}
+function main(argv) {
+  const [, , action, arg] = argv;
+  if (action === "run" && arg) {
+    runSchedule(arg).then((c) => process.exit(c)).catch(die(`run ${arg}`));
+  } else if (action === "watchdog") {
+    runWatchdog().then((c) => process.exit(c)).catch(die("watchdog"));
+  } else if (action === "review-patterns") {
+    maybeRunReviewPatterns(arg === "--force").then(() => process.exit(0)).catch(die("review-patterns"));
+  } else if (action === "retention") {
+    maybeRunRetention(true).then((r) => {
+      console.log(JSON.stringify(r));
+      process.exit(0);
+    }).catch(die("retention"));
+  } else {
+    console.error("usage: terminal-cron run <scheduleId>");
+    console.error("       terminal-cron watchdog");
+    console.error("       terminal-cron review-patterns [--force]");
+    console.error("       terminal-cron retention");
+    process.exit(2);
   }
 }
-
-const [, , action, arg] = process.argv
-if (action === 'run' && arg) {
-  runSchedule(arg)
-    .then((c) => process.exit(c))
-    .catch(die(`run ${arg}`))
-} else if (action === 'watchdog') {
-  runWatchdog()
-    .then((c) => process.exit(c))
-    .catch(die('watchdog'))
-} else if (action === 'review-patterns') {
-  maybeRunReviewPatterns(arg === '--force')
-    .then(() => process.exit(0))
-    .catch(die('review-patterns'))
-} else if (action === 'retention') {
-  maybeRunRetention(true)
-    .then((r) => {
-      console.log(JSON.stringify(r))
-      process.exit(0)
-    })
-    .catch(die('retention'))
-} else {
-  console.error('usage: terminal-cron run <scheduleId>')
-  console.error('       terminal-cron watchdog')
-  console.error('       terminal-cron review-patterns [--force]')
-  console.error('       terminal-cron retention')
-  process.exit(2)
-}
+main(process.argv);
+export {
+  main
+};

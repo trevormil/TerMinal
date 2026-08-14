@@ -17,6 +17,8 @@ import { EngineLogo } from '../../components/EngineLogo'
 import { navigateTo, onNavigate } from '../../lib/nav'
 import { engineLabel } from '../../lib/engines'
 import { fmtUsd } from '../../lib/format'
+import { usePolled } from '../../lib/usePolled'
+import { getPref, setPref } from '../../lib/prefs'
 import type { Tab, TabContext, UnifiedRun, RunArtifact } from '../../lib/types'
 import { RunLogPane } from './RunLogPane'
 import { RunEvaluationPanel } from '../../components/RunEvaluationPanel'
@@ -56,31 +58,24 @@ function fmtDuration(ms: number): string {
   return `${Math.floor(ms / 3_600_000)}h ${Math.floor((ms % 3_600_000) / 60_000)}m`
 }
 const repoOf = (root: string) => root.split('/').filter(Boolean).pop() || root
-const RUNS_REPO_FILTER_KEY = 'gt.runs.repoFilter'
 const ROW_PAGE_SIZE = 100
+// Stable empty set so an idle inbox poll doesn't hand the row filter a fresh
+// identity on every tick.
+const EMPTY_IDS: ReadonlySet<string> = new Set<string>()
 
 function RunsTab({ ctx }: { ctx: TabContext }) {
   // Which runs originated from the automation inbox — a filter dimension on
   // the same list, not a separate view/tab. Only entries with a runId ARE
   // runs; the inbox's non-run event log (webhooks etc that never spawned a
   // run) has no home here since this is a runs list, not an event log.
-  const [inboxRunIds, setInboxRunIds] = useState<Set<string>>(new Set())
-  useEffect(() => {
-    let live = true
-    const load = () =>
-      window.gt.listeners
-        .status()
-        .then((s) => {
-          if (live) setInboxRunIds(new Set(s.recent.filter((r) => r.runId).map((r) => r.runId!)))
-        })
-        .catch(() => {})
-    load()
-    const id = setInterval(load, 5000)
-    return () => {
-      live = false
-      clearInterval(id)
-    }
-  }, [])
+  const inboxPoll = usePolled(
+    async () => {
+      const s = await window.gt.listeners.status()
+      return new Set(s.recent.filter((r) => r.runId).map((r) => r.runId!))
+    },
+    { intervalMs: 5000 },
+  )
+  const inboxRunIds = inboxPoll.data ?? EMPTY_IDS
   const [inboxOnly, setInboxOnly] = useState(false)
   // Local and remote runs are fetched separately (local is cheap + pollable;
   // remote is an SSH fan-out) then merged into one list so the operator sees
@@ -93,7 +88,7 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
   const [source, setSource] = useState<'all' | UnifiedRun['source']>('all')
   const [host, setHost] = useState<string>('all') // 'all' | 'local' | hostId
   const [status, setStatus] = useState<string>('all')
-  const [repo, setRepo] = useState(() => localStorage.getItem(RUNS_REPO_FILTER_KEY) ?? '__auto__')
+  const [repo, setRepo] = useState(() => getPref('runsRepoFilter'))
   const [agentFilter, setAgentFilter] = useState('')
   const [engineFilter, setEngineFilter] = useState('')
   const [forceFilter, setForceFilter] = useState<'all' | 'force' | 'normal'>('all')
@@ -144,8 +139,13 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
   // Cost per runId from the AI ledger — joined into each row so the operator
   // sees "this run cost $X" without flipping tabs.
   const [costByRunId, setCostByRunId] = useState<Map<string, number>>(new Map())
-  const reloadCosts = async () => {
-    try {
+  // Costs come from the AI ledger (a 500-record read) and only change when a
+  // run finishes, so they poll on their own slower cadence than the statuses.
+  // The result is folded into state rather than read straight off the poll so
+  // an unchanged ledger keeps the same Map identity — a fresh one every 15s
+  // re-rendered all ~400 rows.
+  usePolled(
+    async () => {
       const ai = await window.gt.observability.runs(500)
       const m = new Map<string, number>()
       for (const a of ai) if (a.runId) m.set(a.runId, (m.get(a.runId) || 0) + a.costUsd)
@@ -153,14 +153,13 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
         if (cur.size === m.size && [...m].every(([k, v]) => cur.get(k) === v)) return cur
         return m
       })
-    } catch {
-      /* ignore */
-    }
-  }
+      return m
+    },
+    { intervalMs: 15_000 },
+  )
   useEffect(() => {
     reloadLocal()
     reloadRemote()
-    reloadCosts()
     // Always refresh local (cheap local IPC). Gating local refresh on
     // "something is already running" latched the poll OFF whenever the snapshot
     // was all-idle, so a run STARTED while idle (a cron firing, an agent launched
@@ -172,13 +171,7 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
       const cur = runsRef.current
       if (cur && cur.some((r) => r.status === 'running' && r.hostId)) reloadRemote()
     }, 2000)
-    // Costs come from the AI ledger (500-record read) and only change when a
-    // run finishes — no need to refetch them every 2s with the statuses.
-    const tc = setInterval(reloadCosts, 15000)
-    return () => {
-      clearInterval(t)
-      clearInterval(tc)
-    }
+    return () => clearInterval(t)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Cross-tab nav: when another tab calls navigateTo('runs', { runId }) we
@@ -209,7 +202,7 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
     setRepo(activeRepoLabel)
   }, [activeRepoLabel, repo, ctx.repoRoot])
   const setRepoFilter = (value: string) => {
-    localStorage.setItem(RUNS_REPO_FILTER_KEY, value)
+    setPref('runsRepoFilter', value)
     setRepo(value)
   }
   const agentOptions = useMemo(() => {

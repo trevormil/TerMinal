@@ -1,7 +1,168 @@
-import { createContext, useContext, useState, type ReactNode } from 'react'
-import { Check, TriangleAlert, type LucideIcon } from 'lucide-react'
+import {
+  createContext,
+  useContext,
+  useState,
+  type ButtonHTMLAttributes,
+  type InputHTMLAttributes,
+  type ReactNode,
+  type SelectHTMLAttributes,
+} from 'react'
+import { Check, Loader2, TriangleAlert, type LucideIcon } from 'lucide-react'
+import {
+  buttonClasses,
+  iconButtonClasses,
+  inputClasses,
+  join,
+  selectClasses,
+  type ButtonVariant,
+  type ControlSize,
+} from '../lib/controls'
 
 // Shared widget primitives. Plugins compose these so cards look consistent.
+//
+// Two halves: the display primitives (Card/Stat/Row/Big/Gauge/Badge/Empty) and
+// the interactive ones (Button/IconButton/Input/Select/Toolbar, plus Modal,
+// re-exported from ./Modal). Reach for these before writing a `<button
+// className="rounded-md …">` — design-system.md §7.1 says why.
+
+export { Modal } from './Modal'
+export type { ModalProps } from './Modal'
+export type { ButtonVariant, ControlSize } from '../lib/controls'
+
+/**
+ * The app's button. Variants are the four clusters the renderer already had:
+ * `primary` (accent-tinted confirm), `subtle` (bordered secondary), `ghost`
+ * (no chrome until hover — the most common), `danger`.
+ *
+ * `busy` is disabled plus a spinner plus `aria-busy`: a pending action must not
+ * be clickable twice, and a screen reader must be told it is pending rather
+ * than broken. Passing `busy` without `disabled` still disables the control.
+ */
+export function Button({
+  variant = 'subtle',
+  size = 'sm',
+  busy = false,
+  icon: Icon,
+  className = '',
+  disabled,
+  children,
+  ...rest
+}: {
+  variant?: ButtonVariant
+  size?: ControlSize
+  busy?: boolean
+  icon?: LucideIcon
+  children?: ReactNode
+} & Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'>) {
+  const glyph = size === 'md' ? 13 : 11
+  return (
+    <button
+      type="button"
+      {...rest}
+      disabled={disabled || busy}
+      aria-busy={busy || undefined}
+      className={buttonClasses(variant, size, className)}
+    >
+      {busy ? (
+        <Loader2 size={glyph} strokeWidth={2.25} className="shrink-0 animate-spin" />
+      ) : (
+        Icon && <Icon size={glyph} strokeWidth={2} className="shrink-0" />
+      )}
+      {children}
+    </button>
+  )
+}
+
+/**
+ * A button whose whole content is one icon. `label` is mandatory: an icon-only
+ * control with no accessible name is unreachable by anything that is not a
+ * mouse, and this is the shape the renderer had ~200 of.
+ */
+export function IconButton({
+  label,
+  variant = 'ghost',
+  size = 'sm',
+  busy = false,
+  className = '',
+  disabled,
+  title,
+  children,
+  ...rest
+}: {
+  label: string
+  variant?: ButtonVariant
+  size?: ControlSize
+  busy?: boolean
+  children: ReactNode
+} & Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'>) {
+  return (
+    <button
+      type="button"
+      {...rest}
+      aria-label={label}
+      title={title ?? label}
+      disabled={disabled || busy}
+      aria-busy={busy || undefined}
+      className={iconButtonClasses(variant, size, className)}
+    >
+      {busy ? (
+        <Loader2 size={size === 'md' ? 13 : 11} strokeWidth={2.25} className="animate-spin" />
+      ) : (
+        children
+      )}
+    </button>
+  )
+}
+
+export function Input({
+  size = 'sm',
+  className = '',
+  ...rest
+}: { size?: ControlSize } & Omit<InputHTMLAttributes<HTMLInputElement>, 'size'>) {
+  return <input {...rest} className={inputClasses(size, className)} />
+}
+
+export function Select({
+  size = 'sm',
+  className = '',
+  children,
+  ...rest
+}: { size?: ControlSize; children: ReactNode } & Omit<
+  SelectHTMLAttributes<HTMLSelectElement>,
+  'size'
+>) {
+  return (
+    <select {...rest} className={selectClasses(size, className)}>
+      {children}
+    </select>
+  )
+}
+
+/**
+ * A row of controls. Exists so the gap and the optional rule under a header bar
+ * are decided once — the renderer had a dozen spellings of the same flex row.
+ */
+export function Toolbar({
+  children,
+  bordered = false,
+  className = '',
+}: {
+  children: ReactNode
+  bordered?: boolean
+  className?: string
+}) {
+  return (
+    <div
+      className={join(
+        'flex items-center gap-1.5',
+        bordered && 'border-b border-[var(--gt-border)] px-2 py-1.5',
+        className,
+      )}
+    >
+      {children}
+    </div>
+  )
+}
 
 /**
  * How much frame a `Card` draws. 'card' is the cockpit's boxed widget. 'bare'

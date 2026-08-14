@@ -7,6 +7,7 @@ import {
   Trash2,
   BookOpen,
   ChevronDown,
+  Pencil,
 } from 'lucide-react'
 import type { KnowledgeScope, Tab, TabContext } from '../../lib/types'
 import { appendKnowledgeItem, singleHttpUrl } from '../../lib/knowledge'
@@ -17,6 +18,13 @@ import {
   WebviewContextMenu,
   normalizeUrl,
 } from './webSurface'
+import {
+  normalizeIconEmoji,
+  parseBookmarkIcons,
+  resolveBookmarkIcon,
+  setBookmarkIcon,
+  type BookmarkIcons,
+} from '../../../../shared/bookmark-icons'
 import chatgptLogo from '../../assets/ai-tools/chatgpt.png'
 import claudeLogo from '../../assets/ai-tools/claude.png'
 import geminiLogo from '../../assets/ai-tools/gemini.png'
@@ -36,6 +44,10 @@ const HOME = 'https://www.google.com'
 const SIDEBAR_KEY = 'gt.browser.aiToolsExpanded'
 const CUSTOM_KEY = 'gt.browser.customBookmarks'
 const HIDDEN_PRESETS_KEY = 'gt.browser.hiddenPresetBookmarks'
+// Icons live beside the bookmarks rather than inside their records: the repo
+// bookmark and the presets are derived every render and have no record to write
+// to, and a bookmark saved before this feature simply has no entry here.
+const ICONS_KEY = 'gt.browser.bookmarkIcons'
 const AI_TOOLS = [
   { id: 'skills', title: 'Skills', url: 'https://skills.sh/' },
   { id: 'integrations', title: 'Integrations', url: 'https://integrations.sh/' },
@@ -95,6 +107,14 @@ function saveJson(key: string, value: unknown) {
   }
 }
 
+function sameOrigin(a: string, b: string): boolean {
+  try {
+    return new URL(a).origin === new URL(b).origin
+  } catch {
+    return false
+  }
+}
+
 function repoBookmarkFor(ctx: TabContext): BrowserBookmark | null {
   const host = ctx.repoHost?.trim()
   const path = ctx.repoPath?.trim().replace(/\.git$/i, '')
@@ -120,6 +140,14 @@ function BrowserTab({ ctx }: { ctx: TabContext }) {
   const [hiddenPresets, setHiddenPresets] = useState<string[]>(() =>
     loadJson<string[]>(HIDDEN_PRESETS_KEY, []),
   )
+  const [icons, setIcons] = useState<BookmarkIcons>(() =>
+    parseBookmarkIcons(loadJson<unknown>(ICONS_KEY, {})),
+  )
+  // Cached icon bytes, keyed by cache filename. Populated lazily; a file that
+  // fails to read simply stays absent and the row keeps its fallback.
+  const [faviconSrc, setFaviconSrc] = useState<Record<string, string>>({})
+  const [editingIcon, setEditingIcon] = useState('')
+  const [emojiDraft, setEmojiDraft] = useState('')
   const [adding, setAdding] = useState(false)
   const [kbMenuOpen, setKbMenuOpen] = useState(false)
   const [kbSaving, setKbSaving] = useState(false)
@@ -168,6 +196,7 @@ function BrowserTab({ ctx }: { ctx: TabContext }) {
   }, [kbMenuOpen])
   useEffect(() => saveJson(CUSTOM_KEY, customBookmarks), [customBookmarks])
   useEffect(() => saveJson(HIDDEN_PRESETS_KEY, hiddenPresets), [hiddenPresets])
+  useEffect(() => saveJson(ICONS_KEY, icons), [icons])
 
   // When the active repo changes, follow its bookmark home — but only if the
   // user hasn't navigated away themselves.
@@ -188,6 +217,77 @@ function BrowserTab({ ctx }: { ctx: TabContext }) {
     ...presetBookmarks,
     ...customBookmarks,
   ]
+  // Capture: whenever the page in view declares a favicon and at least one
+  // bookmark points at that origin, cache the bytes in main and record the
+  // filename. This covers both "visited an already-bookmarked URL" and "just
+  // saved this page" — a freshly added bookmark matches the current page by
+  // definition, so it needs no separate path. Failures resolve to '' and leave
+  // the bookmark on its previous icon.
+  const pageFavicon = surface.pageFavicon
+  const idsForPage = bookmarks
+    .filter((b) => sameOrigin(b.url, addr))
+    .map((b) => b.id)
+    .join(' ')
+  useEffect(() => {
+    if (!pageFavicon || !idsForPage) return
+    let cancelled = false
+    window.gt.favicons
+      .cache(addr, pageFavicon)
+      .then((file) => {
+        if (cancelled || !file) return
+        // The cache name is per-origin, so a site that changed its icon reuses
+        // the same filename — drop the loaded bytes so they are read again.
+        setFaviconSrc((prev) => {
+          if (prev[file] === undefined) return prev
+          const next = { ...prev }
+          delete next[file]
+          return next
+        })
+        setIcons((prev) =>
+          idsForPage
+            .split(' ')
+            .reduce((acc, id) => setBookmarkIcon(acc, id, { faviconFile: file }), prev),
+        )
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [addr, pageFavicon, idsForPage])
+
+  // Serve: pull each referenced cache file over as a data URL once.
+  const filesKey = [...new Set(Object.values(icons).map((e) => e.faviconFile))]
+    .filter(Boolean)
+    .join(' ')
+  useEffect(() => {
+    let cancelled = false
+    for (const file of filesKey ? filesKey.split(' ') : []) {
+      if (faviconSrc[file] !== undefined) continue
+      window.gt.favicons
+        .read(file)
+        .then((src) => {
+          if (!cancelled && src) setFaviconSrc((prev) => ({ ...prev, [file]: src }))
+        })
+        .catch(() => {})
+    }
+    return () => {
+      cancelled = true
+    }
+  }, [filesKey, faviconSrc])
+
+  const openIconEditor = (id: string) => {
+    setEditingIcon((cur) => (cur === id ? '' : id))
+    setEmojiDraft(icons[id]?.emoji || '')
+  }
+  const applyIconEmoji = (id: string) => {
+    setIcons((prev) => setBookmarkIcon(prev, id, { emoji: normalizeIconEmoji(emojiDraft) }))
+    setEditingIcon('')
+  }
+  const resetIcon = (id: string) => {
+    setIcons((prev) => setBookmarkIcon(prev, id, { emoji: '' }))
+    setEditingIcon('')
+  }
+
   const addBookmark = () => {
     const url = normalizeUrl(newUrl || addr)
     if (!url) return
@@ -218,6 +318,10 @@ function BrowserTab({ ctx }: { ctx: TabContext }) {
       return
     }
     setCustomBookmarks((prev) => prev.filter((b) => b.id !== bookmark.id))
+    // The entry goes; the cached file may stay. It is keyed by origin, not by
+    // bookmark, so another bookmark (or the next visit) can still want it, and
+    // a few orphaned KB is cheaper than a sweep.
+    setIcons((prev) => setBookmarkIcon(prev, bookmark.id, { emoji: '', faviconFile: '' }))
   }
   const resetPresets = () => setHiddenPresets([])
   const flashKb = (message: string) => {
@@ -412,59 +516,109 @@ function BrowserTab({ ctx }: { ctx: TabContext }) {
             {bookmarks.map((tool) => {
               const toolHost = new URL(tool.url).hostname.replace(/^www\./, '')
               const active = currentHost === toolHost || currentHost.endsWith(`.${toolHost}`)
+              const entry = icons[tool.id]
+              const icon = resolveBookmarkIcon({
+                entry,
+                logo: tool.logo,
+                faviconSrc: entry?.faviconFile ? faviconSrc[entry.faviconFile] : undefined,
+              })
               return (
-                <button
-                  key={tool.id}
-                  onClick={() => loadTool(tool.url)}
-                  title={tool.title}
-                  className={`group mb-1 flex h-9 w-full items-center gap-2 rounded-md transition-colors ${
-                    toolsExpanded ? 'px-2 text-left' : 'justify-center px-0'
-                  } ${
-                    active
-                      ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
-                      : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-100'
-                  }`}
-                >
-                  {tool.logo ? (
-                    <img
-                      src={tool.logo}
-                      alt=""
-                      draggable={false}
-                      className="h-5 w-5 shrink-0 rounded-[5px] object-contain"
-                    />
-                  ) : (
-                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] border border-[var(--gt-border)] bg-black/30 text-zinc-500">
-                      <Globe size={12} strokeWidth={2} />
-                    </span>
-                  )}
-                  {toolsExpanded && (
-                    <>
-                      <span className="min-w-0 flex-1 truncate text-[12px] font-medium">
-                        {tool.title}
+                <div key={tool.id}>
+                  <button
+                    onClick={() => loadTool(tool.url)}
+                    title={tool.title}
+                    className={`group mb-1 flex h-9 w-full items-center gap-2 rounded-md transition-colors ${
+                      toolsExpanded ? 'px-2 text-left' : 'justify-center px-0'
+                    } ${
+                      active
+                        ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
+                        : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-100'
+                    }`}
+                  >
+                    {icon.kind === 'image' ? (
+                      <img
+                        src={icon.src}
+                        alt=""
+                        draggable={false}
+                        className="h-5 w-5 shrink-0 rounded-[5px] object-contain"
+                      />
+                    ) : icon.kind === 'emoji' ? (
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center text-[13px] leading-none">
+                        {icon.emoji}
                       </span>
-                      {tool.source !== 'preset' && (
-                        <span className="shrink-0 text-[9px] uppercase text-zinc-700">
-                          {tool.source}
+                    ) : (
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] border border-[var(--gt-border)] bg-black/30 text-zinc-500">
+                        <Globe size={12} strokeWidth={2} />
+                      </span>
+                    )}
+                    {toolsExpanded && (
+                      <>
+                        <span className="min-w-0 flex-1 truncate text-[12px] font-medium">
+                          {tool.title}
                         </span>
-                      )}
-                      {active && (
-                        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--gt-accent-2)]" />
-                      )}
-                      {tool.source !== 'repo' && (
+                        {tool.source !== 'preset' && (
+                          <span className="shrink-0 text-[9px] uppercase text-zinc-700">
+                            {tool.source}
+                          </span>
+                        )}
+                        {active && (
+                          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--gt-accent-2)]" />
+                        )}
                         <span
                           onClick={(e) => {
                             e.stopPropagation()
-                            deleteBookmark(tool)
+                            openIconEditor(tool.id)
                           }}
-                          title={tool.source === 'preset' ? 'Hide preset' : 'Delete bookmark'}
-                          className="hidden rounded p-1 text-zinc-600 hover:bg-white/10 hover:text-[var(--gt-red)] group-hover:inline-flex"
+                          title="Set a custom icon"
+                          className="hidden rounded p-1 text-zinc-600 hover:bg-white/10 hover:text-zinc-200 group-hover:inline-flex"
                         >
-                          <Trash2 size={11} strokeWidth={2} />
+                          <Pencil size={11} strokeWidth={2} />
                         </span>
-                      )}
-                    </>
+                        {tool.source !== 'repo' && (
+                          <span
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              deleteBookmark(tool)
+                            }}
+                            title={tool.source === 'preset' ? 'Hide preset' : 'Delete bookmark'}
+                            className="hidden rounded p-1 text-zinc-600 hover:bg-white/10 hover:text-[var(--gt-red)] group-hover:inline-flex"
+                          >
+                            <Trash2 size={11} strokeWidth={2} />
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </button>
+                  {toolsExpanded && editingIcon === tool.id && (
+                    <div className="mb-1 space-y-1 rounded-lg border border-[var(--gt-border)] bg-black/20 p-2">
+                      <input
+                        value={emojiDraft}
+                        onChange={(e) => setEmojiDraft(normalizeIconEmoji(e.target.value))}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') applyIconEmoji(tool.id)
+                          if (e.key === 'Escape') setEditingIcon('')
+                        }}
+                        placeholder="Icon emoji (1–2)"
+                        className="w-full rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
+                      />
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => applyIconEmoji(tool.id)}
+                          className="inline-flex flex-1 items-center justify-center rounded-md bg-[var(--gt-accent)] px-2 py-1 text-[11px] font-semibold text-white hover:opacity-90"
+                        >
+                          Save icon
+                        </button>
+                        <button
+                          onClick={() => resetIcon(tool.id)}
+                          title="Drop the custom emoji and use the site favicon"
+                          className="rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
+                        >
+                          Reset
+                        </button>
+                      </div>
+                    </div>
                   )}
-                </button>
+                </div>
               )
             })}
           </div>

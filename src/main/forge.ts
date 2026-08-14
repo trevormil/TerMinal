@@ -4,6 +4,8 @@ import { join } from 'node:path'
 import { repoForCwd, ghEnvFor } from './repo'
 import { repoStatePathForRead } from './repo-state'
 import { readSettings, type ForgePref } from './settings'
+import type { CiInfo, CiJob } from '../shared/types/mrs'
+export type { CiInfo, CiJob } from '../shared/types/mrs'
 
 // The single seam between the app and the user's code-forge CLI. GitHub repos
 // drive `gh` (+ "PR"/"#" vocabulary); everything else drives `glab` (+ "MR"/"!").
@@ -25,8 +27,6 @@ export type RawMr = {
   labels: string[] // forge labels (gh + glab). The 'auto-mergeable' label is the project-template convention for low-risk PRs (documentation, backlog ticket files, or reports only).
 }
 export type RawMrDetail = RawMr & { description: string; targetBranch: string; baseShort: string }
-export type CiJob = { id: number; name: string; stage: string; status: string; webUrl: string }
-export type CiInfo = { status: string; webUrl: string; jobs: CiJob[] }
 export type ListResult = { items: RawMr[]; error?: string }
 
 // --- pure forge selection ----------------------------------------------------

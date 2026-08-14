@@ -32,7 +32,9 @@ import { useCustomTabs } from './components/CustomTabView'
 import { commandWidgetsToPlugins } from './lib/commandWidget'
 import { applyVisibleOrder, mergeWidgetOrder } from './lib/widgetOrder'
 import { createTickCoalescer } from './lib/tickCoalescer'
-import type { AppearanceTabLayout, Plugin, SessionEngine, TabContext } from './lib/types'
+import type { LoopState, Plugin, TabContext } from './lib/types'
+import { useLayout } from './lib/layoutContext'
+import { useSessions, type PeerSession } from './lib/sessionsContext'
 import { navigateTo, onNavigate } from './lib/nav'
 import { loadHiddenTabs } from './lib/tabVisibility'
 import { readCollapsed, writeCollapsed } from './lib/panelCollapse'
@@ -210,11 +212,160 @@ function BootstrapBanner({ repoRoot, active }: { repoRoot: string; active: boole
   )
 }
 
+// The only place in the app a running loop is observable and stoppable.
+//
+// Deliberately a strip, not a tab: a loop has exactly two or three sessions and
+// they are already on screen, so the honest amount of chrome is one line of
+// phase/iteration/score next to the role chip plus the control that winds it
+// down. `gt.loops.stop` was unreachable from the UI before this — a loop could
+// be started and never stopped.
+//
+// Rendered outside the `terminalTile ? hidden` chrome on purpose: paired loops
+// open in split layout, where the session header is hidden, and that is exactly
+// when you most want the stop control.
+function LoopStrip({
+  loopId,
+  role,
+  visible,
+}: {
+  loopId: string
+  role?: 'driver' | 'worker'
+  visible: boolean
+}) {
+  const [state, setState] = useState<LoopState | null>(null)
+  const [error, setError] = useState('')
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [stopping, setStopping] = useState(false)
+  const [stopped, setStopped] = useState(false)
+  // Poll only while this session is on screen — a hidden loop session must not
+  // keep reading progress.md every few seconds for nobody.
+  useEffect(() => {
+    if (!visible) return
+    let alive = true
+    const run = () => {
+      window.gt.loops
+        .state(loopId)
+        .then((s) => {
+          if (!alive || !s) return
+          if ('error' in s) setState(null)
+          else setState(s)
+        })
+        .catch(() => {})
+    }
+    run()
+    const id = setInterval(run, 5000)
+    return () => {
+      alive = false
+      clearInterval(id)
+    }
+  }, [loopId, visible])
+  const stop = async () => {
+    setConfirmOpen(false)
+    setStopping(true)
+    setError('')
+    const r = await window.gt.loops.stop(loopId)
+    setStopping(false)
+    if (!r || 'error' in r) setError((r as { error?: string })?.error || 'Could not stop the loop.')
+    else setStopped(true)
+  }
+  const phase = stopped ? 'stopped' : state?.phase || '…'
+  const a = state?.assertions
+  return (
+    <>
+      <div
+        data-loop-strip={loopId}
+        className="flex h-6 shrink-0 items-center gap-2 border-b border-[var(--gt-accent)]/30 bg-[var(--gt-accent)]/10 px-2 text-[10.5px] text-zinc-400"
+      >
+        <span
+          title={`Loop ${loopId}`}
+          className="flex shrink-0 items-center gap-1 font-medium text-[var(--gt-accent-light)]"
+        >
+          <Repeat size={10} strokeWidth={2.5} />
+          loop {loopId.slice(-4)}
+          {role ? ` · ${role}` : ''}
+        </span>
+        <span className="shrink-0 text-zinc-500">
+          phase <span className="text-zinc-300">{phase}</span>
+        </span>
+        <span className="shrink-0 text-zinc-500">
+          iter <span className="text-zinc-300">{state ? state.iteration : '–'}</span>
+        </span>
+        <span className="shrink-0 text-zinc-500">
+          score <span className="text-zinc-300">{state?.lastScore || '–'}</span>
+        </span>
+        {a && a.total > 0 && (
+          <span title="Contract assertions" className="shrink-0 text-zinc-500">
+            <span className="text-[var(--gt-green)]">{a.pass}</span>/
+            <span className="text-[var(--gt-red)]">{a.fail}</span>/{a.total}
+          </span>
+        )}
+        {error && <span className="truncate text-[var(--gt-red)]">{error}</span>}
+        <div className="flex-1" />
+        {!stopped && (
+          <button
+            style={noDrag}
+            data-loop-stop={loopId}
+            aria-label="Stop loop"
+            disabled={stopping}
+            onClick={() => setConfirmOpen(true)}
+            title="Stop this loop — its worktree and state are left in place"
+            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[var(--gt-red)]/50 bg-[var(--gt-red)]/10 px-1.5 py-px font-medium text-zinc-200 hover:bg-[var(--gt-red)]/20 disabled:opacity-50"
+          >
+            <XCircle size={10} strokeWidth={2.4} />
+            {stopping ? 'Stopping…' : 'Stop loop'}
+          </button>
+        )}
+      </div>
+      {confirmOpen && (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-5"
+          onClick={() => setConfirmOpen(false)}
+        >
+          <div
+            className="w-[460px] max-w-full rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] p-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-2 text-[13px] font-semibold text-zinc-100">Stop this loop?</div>
+            <p className="mb-3 text-[12px] leading-5 text-zinc-400">
+              The loop stops advancing — no further planner/generator/evaluator turns are scheduled.
+              Its worktree, branch, and state directory are left in place, and the sessions already
+              open stay open.
+            </p>
+            <div className="mb-4 truncate rounded-md bg-black/30 px-2 py-1.5 font-mono text-[11px] text-zinc-500">
+              {loopId}
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setConfirmOpen(false)}
+                className="rounded-md border border-[var(--gt-border)] bg-black/20 px-3 py-1.5 text-[12px] font-medium text-zinc-300 hover:bg-white/5 hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void stop()}
+                className="rounded-md border border-[var(--gt-red)]/60 bg-[var(--gt-red)]/20 px-3 py-1.5 text-[12px] font-semibold text-zinc-100 hover:bg-[var(--gt-red)]/20"
+              >
+                Stop loop
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
 // Banner shown when a repo still carries pre-sidecar workflow leftovers:
 // state files (tickets/reviews/sessions) that belong in the per-project
 // sidecar, and per-repo skill/bin/hook copies the global tm plugin now
 // serves. One click runs the same one-time move as Settings → Updates →
 // Project state. Dismissed state is per-repo + persisted.
+//
+// This is the AMBIENT half of the migration and it retires on
+// MIGRATION_SUNSET (src/shared/migration-sunset.ts): from that date the banner
+// never appears, the move is Settings-only, and a repo that still carries
+// state gets one Activity warning instead — filed by the status probe below,
+// which is why the probe outlives the banner.
 function MigrateBanner({ repoRoot, active }: { repoRoot: string; active: boolean }) {
   const [state, setState] = useState<'unknown' | 'needed' | 'ok' | 'running' | 'done' | 'error'>(
     'unknown',
@@ -229,10 +380,17 @@ function MigrateBanner({ repoRoot, active }: { repoRoot: string; active: boolean
     }
   })()
   useEffect(() => {
-    if (!active || !repoRoot || dismissed) return
+    if (!active || !repoRoot) return
     let cancelled = false
+    // Probed even when the banner is dismissed or retired: past the sunset
+    // this call is what files the one-per-repo warning, and a repo dismissed
+    // months ago is exactly the one that needs telling.
     void window.gt.repoState.status(repoRoot).then((r) => {
       if (cancelled) return
+      if (dismissed || !r.migrationOpen) {
+        setState('ok')
+        return
+      }
       const parts: string[] = []
       if (r.pending) parts.push(`${r.pending} workflow state file(s)`)
       if (r.legacyCopies) parts.push(`${r.legacyCopies} plugin-served skill/hook copies`)
@@ -325,65 +483,59 @@ export function SessionView({
   sessionKey,
   choice,
   active,
+  visible = true,
   onStarted,
-  peerSessions = [
-    { key: sessionKey, label: 'S1', status: 'idle', mode: choice.mode, engine: choice.engine },
-  ],
-  onSwitchSession,
-  onAddSession,
-  onCloseSession,
-  onRenameSession,
-  onReorderSession,
-  terminalTile = false,
-  terminalLayout = 'single',
-  tabLayout = 'horizontal',
-  onTerminalLayoutChange,
-  sessionRail = 'top',
-  onSessionRailChange,
-  canSplitTerminal = false,
-  canGridTerminal = false,
-  focusTerminal = false,
-  needsAttention = false,
-  onClearAttention,
 }: {
   sessionKey: string
   choice: Choice
   active: boolean
+  /** Is this session's tile actually on screen? All sessions stay mounted so
+   *  their ptys survive, so `active` alone can't gate polling in tiled layouts
+   *  (every visible tile but one is inactive). */
+  visible?: boolean
   onStarted: (info: Info) => void
-  /** Split/grid layouts are terminal-focused; hide workspace chrome and the work column. */
-  terminalTile?: boolean
-  /** Every session in THIS workspace, in stable order. Rendered as a thin
-   *  sub-bar above the terminal pane so the user can swap pty instances
-   *  without leaving the Terminal tab. */
-  peerSessions?: {
-    key: string
-    label: string
-    status: string
-    mode: 'new' | 'resume'
-    engine: SessionEngine
-    needsAttention?: boolean
-    loopRole?: 'driver' | 'worker'
-  }[]
-  onSwitchSession?: (key: string) => void
-  onAddSession?: () => void
-  onCloseSession?: (key: string) => void
-  onRenameSession?: (key: string, name: string) => void
-  onReorderSession?: (fromKey: string, toKey: string) => void
-  terminalLayout?: TerminalLayout
-  tabLayout?: AppearanceTabLayout
-  onTerminalLayoutChange?: (layout: TerminalLayout) => void
-  /** Position of the peer-session sub-bar: a horizontal row on top, or a
-   *  vertical rail on the left of the terminal pane. */
-  sessionRail?: SessionRail
-  onSessionRailChange?: (rail: SessionRail) => void
-  /** Both split (2 tiles) and grid (4 tiles) tile sessions across repos, so each
-   *  is enabled whenever ≥2 sessions exist app-wide. */
-  canSplitTerminal?: boolean
-  canGridTerminal?: boolean
-  focusTerminal?: boolean
-  needsAttention?: boolean
-  onClearAttention?: () => void
 }) {
+  // Everything that describes the shell rather than THIS session comes from the
+  // two shell contexts, so a rail toggle doesn't have to travel through 20-odd
+  // props. See lib/layoutContext.tsx for the memoization contract.
+  const {
+    terminalTile,
+    terminalLayout,
+    tabLayout,
+    sessionRail,
+    canSplitTerminal,
+    canGridTerminal,
+    focusedSessionKey,
+    onTerminalLayoutChange,
+    onSessionRailChange,
+  } = useLayout()
+  const {
+    peersByKey,
+    attentionKeys,
+    onSwitchSession,
+    onAddSession,
+    onCloseSession,
+    onRenameSession,
+    onReorderSession,
+    onClearAttention,
+  } = useSessions()
+  const focusTerminal = focusedSessionKey === sessionKey
+  const needsAttention = attentionKeys.has(sessionKey)
+  // Every session in THIS workspace, in stable order. Rendered as a thin
+  // sub-bar above the terminal pane so the user can swap pty instances without
+  // leaving the Terminal tab. Outside a provider (or before the roster has this
+  // key) a session is its own only peer.
+  const peerSessions = useMemo<PeerSession[]>(
+    () =>
+      peersByKey.get(sessionKey) ?? [
+        { key: sessionKey, label: 'S1', status: 'idle', mode: choice.mode, engine: choice.engine },
+      ],
+    [peersByKey, sessionKey, choice.mode, choice.engine],
+  )
+  const clearAttention = useMemo(
+    () => (onClearAttention ? () => onClearAttention(sessionKey) : undefined),
+    [onClearAttention, sessionKey],
+  )
   const [info, setInfo] = useState<Info>({ sessionId: '', cwd: '' })
   // Inline rename in the session sub-bar — null when not editing, otherwise
   // the peer key being edited.
@@ -407,8 +559,8 @@ export function SessionView({
   // approve-from-the-badge. Polled, because nothing pushes when the active
   // session's cwd changes.
   const trustPrompt = useRepoTrustPrompt(5000)
-  // One column, one collapse. The keys it reads are the cockpit's, which the
-  // Files column's were folded into on first launch (see lib/columnLayout).
+  // One column, one collapse. The keys it reads are the cockpit's (see
+  // lib/columnLayout).
   const [columnCollapsed, setColumnCollapsed] = useState(() =>
     readCollapsed(COLUMN_COLLAPSED_KEY, COLUMN_COLLAPSED_WHEN_UNSET),
   )
@@ -953,7 +1105,7 @@ export function SessionView({
   const renderAddSessionButton = (variant: 'top' | 'side' = 'top') =>
     onAddSession ? (
       <button
-        onClick={onAddSession}
+        onClick={() => onAddSession(sessionKey)}
         title="New session in this workspace"
         className={`flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-zinc-500 hover:bg-white/5 hover:text-zinc-200 ${
           variant === 'side' ? 'w-full justify-start' : ''
@@ -996,6 +1148,9 @@ export function SessionView({
         <BootstrapBanner repoRoot={info.cwd || choice.cwd || ''} active={active && !isRemote} />
         <MigrateBanner repoRoot={info.cwd || choice.cwd || ''} active={active && !isRemote} />
       </div>
+      {choice.loopId && (
+        <LoopStrip loopId={choice.loopId} role={choice.loopRole} visible={visible} />
+      )}
       {repoOrient && ctx && active && !terminalTile && (
         <RepoOrientation ctx={ctx} onClose={closeRepoOrient} />
       )}
@@ -1176,7 +1331,7 @@ export function SessionView({
                     onStarted={handleStarted}
                     active={focusTerminal}
                     needsAttention={needsAttention}
-                    onClearAttention={onClearAttention}
+                    onClearAttention={clearAttention}
                   />
                 </div>
               </div>

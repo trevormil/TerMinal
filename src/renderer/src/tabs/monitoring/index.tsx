@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   Activity,
   Play,
@@ -16,7 +16,15 @@ import { Badge } from '../../components/ui'
 import type { BadgeTone } from '../../components/ui'
 import { useResizableWidth, ResizeHandle } from '../../components/ResizeHandle'
 import { relativeTime } from '../../lib/time'
+import { usePolled } from '../../lib/usePolled'
 import { daemonHealth, stalenessOf } from '../../../../shared/monitor-liveness'
+import {
+  DEFAULT_MIN_CONSECUTIVE_FAILURES,
+  MAX_MIN_CONSECUTIVE_FAILURES,
+  blipNote,
+  categoryLabel,
+  normalizeMinConsecutiveFailures,
+} from '../../../../shared/monitor-flap'
 import type {
   Tab,
   TabContext,
@@ -24,6 +32,7 @@ import type {
   MonitorType,
   MonitorState,
   MonitorNotify,
+  MonitorConnectivity,
   MonitorWithState,
 } from '../../lib/types'
 
@@ -158,6 +167,7 @@ type FormState = {
   intervalSec: number
   group: string
   enabled: boolean
+  minConsecutiveFailures: number
   notify: MonitorNotify
   // typed advanced config (per type)
   warnLatencyMs: string
@@ -178,6 +188,7 @@ function emptyForm(): FormState {
     intervalSec: 60,
     group: '',
     enabled: true,
+    minConsecutiveFailures: DEFAULT_MIN_CONSECUTIVE_FAILURES,
     notify: { ...DEFAULT_NOTIFY },
     warnLatencyMs: '',
     bodyContains: '',
@@ -200,6 +211,8 @@ function formFromMonitor(m: Monitor): FormState {
     intervalSec: m.intervalSec,
     group: m.group ?? '',
     enabled: m.enabled,
+    // Monitors written before this field existed carry no value.
+    minConsecutiveFailures: normalizeMinConsecutiveFailures(m.minConsecutiveFailures),
     notify: { ...DEFAULT_NOTIFY, ...m.notify },
     warnLatencyMs: str(c.warnLatencyMs),
     bodyContains: str(c.bodyContains),
@@ -274,6 +287,7 @@ function MonitorForm({
       intervalSec: f.intervalSec,
       enabled: f.enabled,
       group: f.group.trim() || undefined,
+      minConsecutiveFailures: normalizeMinConsecutiveFailures(f.minConsecutiveFailures),
       notify: f.notify,
       config: buildConfig(f),
     }
@@ -336,6 +350,22 @@ function MonitorForm({
                 onChange={(e) => set('intervalSec', Number(e.target.value) || 0)}
               />
             </div>
+          </div>
+
+          <div>
+            <label className={labelCls}>Alert after N failed checks</label>
+            <input
+              type="number"
+              min={1}
+              max={MAX_MIN_CONSECUTIVE_FAILURES}
+              className={inputCls}
+              value={f.minConsecutiveFailures}
+              onChange={(e) => set('minConsecutiveFailures', Number(e.target.value) || 0)}
+            />
+            <p className="mt-1 text-[10.5px] leading-snug text-zinc-600">
+              A one-off blip stays quiet: the monitor only goes down, and only alerts, after this
+              many checks fail in a row. 1 alerts on the first failure.
+            </p>
           </div>
 
           <div>
@@ -569,6 +599,7 @@ function MonitorDetail({ m }: { m: MonitorWithState }) {
   const metrics = st?.metrics ? Object.entries(st.metrics) : []
   const history = st?.history ?? []
   const recent = history.slice(-30)
+  const blip = blipNote(st, m.minConsecutiveFailures)
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
@@ -586,6 +617,25 @@ function MonitorDetail({ m }: { m: MonitorWithState }) {
             <div className="mt-0.5 font-mono text-[11px] text-zinc-500">{m.target}</div>
             {st?.summary && (
               <div className="mt-1.5 text-[12.5px] leading-relaxed text-zinc-300">{st.summary}</div>
+            )}
+            {/* WHICH layer failed. "their end returned an error status" and "no
+                network path to the host" call for completely different
+                reactions; the old pane rendered both as a red dot. */}
+            {st?.category && st.status !== 'ok' && (
+              <div className="mt-1 text-[11.5px] leading-relaxed text-zinc-500">
+                Failure kind — {categoryLabel(st.category)}.
+              </div>
+            )}
+            {blip && !st?.paused && (
+              <div className="mt-1 text-[11.5px] leading-relaxed text-[var(--gt-yellow)]">
+                {blip.detail}
+              </div>
+            )}
+            {st?.paused && (
+              <div className="mt-1 text-[11.5px] leading-relaxed text-zinc-500">
+                Checks are paused — this machine has no connectivity, so the last cycle was
+                discarded rather than counted against this monitor.
+              </div>
             )}
           </div>
         </div>
@@ -778,6 +828,9 @@ function MonitorRow({
 }) {
   const st = m.state
   const stale = isStale(m)
+  // A monitor whose failures are being held below its threshold renders green,
+  // which is a lie of omission — the badge is how the suppression stays visible.
+  const blip = blipNote(st, m.minConsecutiveFailures)
   return (
     <div
       onClick={onSelect}
@@ -797,6 +850,12 @@ function MonitorRow({
             <Badge tone={expiryTone(certDays(m)!)}>{expiryLabel(certDays(m)!)}</Badge>
           )}
           {stale && <Badge tone="yellow">stale</Badge>}
+          {st?.paused && <Badge tone="mute">paused</Badge>}
+          {blip && !st?.paused && (
+            <span title={blip.detail}>
+              <Badge tone="yellow">{blip.badge}</Badge>
+            </span>
+          )}
           <span className="shrink-0 text-[9.5px] tabular-nums text-zinc-700">
             {reltime(st?.lastCheckedAt)}
           </span>
@@ -855,6 +914,36 @@ function MonitorRow({
   )
 }
 
+// ---- optimistic write, with a rollback -------------------------------------
+/**
+ * Paint `next`, persist it, and on failure paint `prev` back and report why.
+ *
+ * Swallowing the rejection (the previous `.catch(() => {})`) was the bug: a
+ * failed save left the UI asserting a monitor that was never written — a
+ * disabled check looked disabled while the daemon kept alerting on it, until the
+ * 15s poll happened to overwrite the lie. Exported so the rollback is testable
+ * without mounting the tab.
+ */
+export async function saveMonitors(
+  next: MonitorWithState[],
+  prev: MonitorWithState[],
+  io: {
+    save: (list: Monitor[]) => Promise<unknown>
+    setMonitors: (list: MonitorWithState[]) => void
+    flash: (message: string) => void
+  },
+): Promise<boolean> {
+  io.setMonitors(next)
+  try {
+    await io.save(stripState(next))
+    return true
+  } catch (e) {
+    io.setMonitors(prev)
+    io.flash(`could not save monitors · ${e instanceof Error ? e.message : String(e)}`)
+    return false
+  }
+}
+
 // ---- main tab --------------------------------------------------------------
 function MonitoringTab(_: { ctx: TabContext }) {
   const [monitors, setMonitors] = useState<MonitorWithState[] | null>(null)
@@ -862,19 +951,26 @@ function MonitoringTab(_: { ctx: TabContext }) {
   const [editing, setEditing] = useState<Monitor | null>(null)
   const [adding, setAdding] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [msg, setMsg] = useState('')
   const railW = useResizableWidth('gt.monitoringRailWidth', 384, { min: 280, max: 640 })
+  const flash = (m: string) => {
+    setMsg(m)
+    setTimeout(() => setMsg(''), 8000)
+  }
+
+  const [connectivity, setConnectivity] = useState<MonitorConnectivity>({ offline: false })
 
   const load = () => {
     window.gt.monitors
       .list()
       .then((list) => setMonitors(list))
       .catch(() => {})
+    window.gt.monitors
+      .connectivity()
+      .then(setConnectivity)
+      .catch(() => {})
   }
-  useEffect(() => {
-    load()
-    const t = setInterval(load, 15_000)
-    return () => clearInterval(t)
-  }, [])
+  usePolled(async () => setMonitors(await window.gt.monitors.list()), { intervalMs: 15_000 })
 
   // Group by `group`; list is already sorted worst-first, so preserve order.
   const groups = useMemo(() => {
@@ -891,10 +987,13 @@ function MonitoringTab(_: { ctx: TabContext }) {
   const selected = monitors?.find((m) => m.id === selectedId) ?? null
   const showForm = adding || editing !== null
 
-  const persist = async (next: MonitorWithState[]) => {
-    setMonitors(next)
-    await window.gt.monitors.save(stripState(next)).catch(() => {})
+  const io = {
+    save: (list: Monitor[]) => window.gt.monitors.save(list),
+    setMonitors,
+    flash,
   }
+
+  const persist = (next: MonitorWithState[]) => saveMonitors(next, monitors ?? [], io)
 
   const handleSave = async (m: Monitor) => {
     const current = monitors ?? []
@@ -902,7 +1001,9 @@ function MonitoringTab(_: { ctx: TabContext }) {
     const next: MonitorWithState[] = exists
       ? current.map((x) => (x.id === m.id ? { ...m, state: x.state } : x))
       : [...current, { ...m, state: null }]
-    await window.gt.monitors.save(stripState(next)).catch(() => {})
+    // Keep the form open when the write fails — closing it would throw away the
+    // edit the user just made and claim it landed.
+    if (!(await saveMonitors(next, current, io))) return
     setAdding(false)
     setEditing(null)
     setSelectedId(m.id)
@@ -966,6 +1067,38 @@ function MonitoringTab(_: { ctx: TabContext }) {
             Add monitor
           </button>
         </div>
+        {/* Local outage: OUR uplink is gone, so every monitor would otherwise
+            read as a red outage nobody should act on. Checks are not counting
+            and nothing is being filed until connectivity returns — say so
+            plainly rather than leaving the operator to infer it. */}
+        {connectivity.offline && (
+          <div className="shrink-0 border-b border-[var(--gt-border)] bg-[var(--gt-yellow)]/10 px-3 py-2">
+            <div className="flex items-start gap-1.5">
+              <Pause
+                size={13}
+                strokeWidth={2}
+                className="mt-[1px] shrink-0 text-[var(--gt-yellow)]"
+              />
+              <div className="text-[11px] leading-relaxed text-zinc-300">
+                <span className="font-semibold text-zinc-100">
+                  Checks paused — this machine is offline
+                  {connectivity.since ? ` (since ${relativeTime(connectivity.since)})` : ''}.
+                </span>{' '}
+                Every check failed at the network layer and the reference hosts were unreachable
+                too, so the fault is here, not out there. Nothing is counting and no alerts are
+                being filed; monitoring resumes on its own when connectivity returns.
+              </div>
+            </div>
+          </div>
+        )}
+        {msg && (
+          <div
+            role="alert"
+            className="shrink-0 border-b border-[var(--gt-border)] bg-[var(--gt-red)]/10 px-3 py-2 text-[11px] leading-relaxed text-[var(--gt-red)]"
+          >
+            {msg}
+          </div>
+        )}
         {daemon.stale && (
           <div className="shrink-0 border-b border-[var(--gt-border)] bg-[var(--gt-red)]/10 px-3 py-2">
             <div className="flex items-start gap-1.5">

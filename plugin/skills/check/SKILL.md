@@ -23,7 +23,7 @@ tail of any `/check <kind>` run instead of `terminal-cli state` shell calls:
 - **`list_agents({repo})`** before filing escalations that need an owner.
 - **`file_ticket(...)`** for any escalations from the run; include exactly one
   `agentId`, `agentScope`, and `agentKind`.
-- **`file_hitl(...)`** for true blockers.
+- **`file_inbox_item(...)`** for true blockers.
 
 These replace the equivalent shell calls; the per-kind `.agents/<kind>.md`
 delegation pattern below is unchanged.
@@ -155,7 +155,7 @@ Per the spec's decision rules, choose for each finding:
 - **auto-PR** (writer mode only) — branch `<kind>/<short_sha>`, commit,
   `git push -u origin`, open PR via the `/tm:pr-creation` skill (forge-aware).
 - **ticket** — the `/tm:ticket` skill with the artifact path attached.
-- **HITL** — `${CLAUDE_PLUGIN_ROOT}/bin/hitl "<title>" "<action needed>"` for true blockers
+- **HITL** — `${CLAUDE_PLUGIN_ROOT}/bin/inbox-item "<title>" "<action needed>"` for true blockers
   (Critical CVE, ADR contradiction the agent can't resolve, etc.).
 - **activity-only** — for findings worth surfacing but not actionable yet.
 

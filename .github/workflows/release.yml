@@ -1,8 +1,10 @@
 name: Release
 
-# Fires when bin/cut-release pushes a version tag: builds the (unsigned) DMG on
-# a macOS runner and publishes a GitHub Release with checksums + notes from the
-# CHANGELOG section (commit-list fallback via scripts/release/notes.ts).
+# Fires when bin/cut-release pushes a version tag: builds the DMG on a macOS
+# runner (signed + notarized when the signing secrets exist, unsigned otherwise
+# — see the Check signing secrets step) and publishes a GitHub Release with
+# checksums + notes from the CHANGELOG section (commit-list fallback via
+# scripts/release/notes.ts).
 on:
   push:
     tags: ['v*.*.*']

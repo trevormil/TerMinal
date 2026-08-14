@@ -8,14 +8,8 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-
-export type DeliveryRecord = {
-  ts: number
-  channel: string
-  ok: boolean
-  title: string
-  error?: string
-}
+import type { DeliveryRecord } from '../shared/types/activity'
+export type { DeliveryRecord } from '../shared/types/activity'
 
 /** Keep the log short — it is a debugging aid, not an audit trail. */
 export const MAX_DELIVERY_RECORDS = 100

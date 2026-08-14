@@ -132,9 +132,9 @@ const solarizedLight: ThemeTokens = {
   '--gt-grad': 'linear-gradient(135deg, #1f8378 0%, #1a6fa8 100%)',
 }
 
-/* Midnight Pastel — tuned to Trevor's macOS Terminal.app profile: a deep
-   indigo/navy base (#182133) with a pale-mint foreground (#bef4ec) and pastel
-   pink / gold / green accents. */
+/* Midnight Pastel — a deep indigo/navy base (#182133) with a pale-mint
+   foreground (#bef4ec) and pastel pink / gold / green accents, in the shape of a
+   classic macOS Terminal.app profile. */
 const midnightPastelDark: ThemeTokens = {
   '--gt-bg': '#182133',
   '--gt-panel': '#1e2739',
@@ -218,7 +218,7 @@ export const THEMES: ThemeDefinition[] = [
     id: 'midnight-pastel',
     title: 'Midnight Pastel',
     description:
-      'Deep indigo base with pale-mint text and pastel pink/gold accents — tuned to Trevor’s terminal profile.',
+      'Deep indigo base with pale-mint text and pastel pink/gold accents — a classic terminal profile.',
     modes: {
       dark: midnightPastelDark,
       light: midnightPastelLight,

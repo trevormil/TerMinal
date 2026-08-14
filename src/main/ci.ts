@@ -4,44 +4,24 @@
 
 import { run, forgeFor, type RunResult } from './forge'
 import { repoForCwd } from './repo'
-
-export type CiRunStatus =
-  'queued' | 'in_progress' | 'success' | 'failed' | 'canceled' | 'skipped' | 'pending'
-
-export type CiRun = {
-  id: string // forge-native id (string for compat across hosts)
-  name: string // workflow name (gh) / pipeline ref-name (glab fallback)
-  status: CiRunStatus
-  branch: string
-  shortSha: string // 7-char head SHA
-  event: string // push | pull_request | schedule | workflow_dispatch | (glab: source)
-  webUrl: string
-  createdAt: number // ms epoch
-  updatedAt: number // ms epoch
-  durationMs: number | null // null when still running
-}
-
-export type CiStep = {
-  name: string
-  status: CiRunStatus
-  number: number
-}
-
-export type CiJob = {
-  id: string
-  name: string
-  stage: string
-  status: CiRunStatus
-  webUrl: string
-  startedAt: number | null
-  finishedAt: number | null
-  durationMs: number | null
-  steps?: CiStep[] // GH only; GitLab jobs are themselves the smallest unit
-}
-
-export type CiListResult = { runs: CiRun[]; error?: string }
-export type CiJobsResult = { jobs: CiJob[]; error?: string }
-export type CiLogResult = { log: string; truncated?: boolean; error?: string }
+import type {
+  CiJobsResult,
+  CiListResult,
+  CiLogResult,
+  CiRun,
+  CiRunStatus,
+  CiTabJob,
+  CiTabStep,
+} from '../shared/types/ci'
+export type {
+  CiJobsResult,
+  CiListResult,
+  CiLogResult,
+  CiRun,
+  CiRunStatus,
+  CiTabJob,
+  CiTabStep,
+} from '../shared/types/ci'
 
 // --- normalize forge-specific status strings ---------------------------------
 
@@ -183,10 +163,10 @@ async function jobsGh(repoRoot: string, runId: string): Promise<CiJobsResult> {
     return { jobs: [], error: 'gh: parse failed' }
   }
   const raw = Array.isArray(parsed?.jobs) ? parsed.jobs : []
-  const jobs = raw.map((j: any): CiJob => {
+  const jobs = raw.map((j: any): CiTabJob => {
     const started = Date.parse(j.startedAt || '') || null
     const finished = Date.parse(j.completedAt || '') || null
-    const steps: CiStep[] = Array.isArray(j.steps)
+    const steps: CiTabStep[] = Array.isArray(j.steps)
       ? j.steps.map((s: any) => ({
           name: s.name || '',
           number: s.number ?? 0,
@@ -225,7 +205,7 @@ async function jobsGlab(repoRoot: string, pipelineId: string): Promise<CiJobsRes
   } catch {
     return { jobs: [], error: 'glab: parse failed' }
   }
-  const jobs = arr.map((j): CiJob => {
+  const jobs = arr.map((j): CiTabJob => {
     const started = Date.parse(j.started_at || '') || null
     const finished = Date.parse(j.finished_at || '') || null
     return {

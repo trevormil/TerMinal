@@ -98,6 +98,46 @@ console.log(JSON.stringify({ mode: rec.mode, phase: rec.phase, nextRole: rec.nex
   })
 })
 
+// The loop picker (EntryScreen's LOOP_ENGINES) offers every engine a role turn
+// can run under. buildTurnCommand ends in a codex fallthrough, so an engine the
+// picker offers but the builder never branches on runs a DIFFERENT model than
+// the one chosen, silently. One case per offered engine keeps them in step.
+describe('buildTurnCommand — every offered engine gets its own spelling', () => {
+  const commandFor = (home: string, engine: string): Record<string, unknown> =>
+    run(
+      home,
+      setup(
+        home,
+        `const rec = loops.createLoop({ repoRoot: repo, goal: 'engine spelling', mode: 'single', engine: '${engine}' });
+if ('error' in rec) throw new Error(rec.error);
+const cmd = loops.buildTurnCommand(rec, 'evaluator', 'PROMPT');
+console.log(JSON.stringify({ engine: rec.engine, bin: cmd.bin, args: cmd.args }));`,
+      ),
+    )
+
+  const OFFERED = ['claude', 'codex', 'cursor', 'pi', 'hermes']
+
+  test('each offered engine builds a distinct command carrying the prompt', () => {
+    const bins = new Map<string, string>()
+    for (const engine of OFFERED) {
+      const home = mkdtempSync(join(tmpdir(), `terminal-loops-${engine}-`))
+      try {
+        const r = commandFor(home, engine)
+        expect(r.engine).toBe(engine)
+        expect(r.args).toContain('PROMPT')
+        bins.set(engine, String(r.bin))
+      } finally {
+        rmSync(home, { recursive: true, force: true })
+      }
+    }
+    // Distinct binaries is the real assertion: an engine that fell through to
+    // the codex tail would land on codex's binary under its own name.
+    expect(new Set(bins.values()).size).toBe(OFFERED.length)
+    for (const engine of OFFERED)
+      if (engine !== 'codex') expect(bins.get(engine)).not.toBe(bins.get('codex'))
+  })
+})
+
 // The single most safety-critical property: a loop cannot run forever. decide()
 // delegates the whole stop rule to decideOutcome, and a generate turn (spawned
 // in headless, delivered to the live session in single mode) only happens after

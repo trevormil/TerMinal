@@ -66,13 +66,14 @@ at `$TERMINAL_BACKLOG_DIR/NNNN-kebab-slug.md`.
     - "existing auth tests still pass"
   ```
 
-  **Required before running more than one implementation lane.** When the
-  implementer launches N>1 lanes (parallel variant attempts of this ticket),
-  each lane is *gated* on tests passing AND every acceptance criterion being
-  met (judged per-criterion with evidence), then eligible lanes are *ranked*
-  by `/code-review` overall score (lower `risk_score` breaks ties). The winning
-  lane's PR/MR is surfaced for human merge. Lane count is chosen by the
-  implementer at launch — it is **not** a ticket field. Default 1 lane.
+  **Required before running more than one implementation lane.** A fan-out to
+  N>1 lanes (parallel variant attempts of this ticket) is *refused* unless the
+  ticket has acceptance criteria: every lane must satisfy all of them, and they
+  are what a human compares the lanes against. There is no automated judge —
+  each lane opens its own PR/MR and a human reads them and picks the winner to
+  merge. Lane count is chosen by the implementer at launch (capped at 8) — it is
+  **not** a ticket field. Default 1 lane; lanes>1 also requires the Ticket lanes
+  experiment (Settings → Experimental).
 - `depends_on` — optional array of **ticket IDs** (integers) this one is
   blocked by. A ticket is **blocked** when any id in this list points to a
   ticket whose `status` is not `closed`. The Tickets tab renders a red
