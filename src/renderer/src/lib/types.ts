@@ -307,7 +307,7 @@ export type TabContext = {
   forgeLabel: 'PR' | 'MR'
   forgeSym: '#' | '!'
   hasBacklog: boolean
-  ticketProvider: 'local' | 'github' | 'linear'
+  ticketProvider: TicketProviderKind
   ticketProviderLabel: string
   hasSessions: boolean
   hasAgents: boolean

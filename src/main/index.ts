@@ -854,7 +854,7 @@ handle('remote:scaffold', async (_e, hostId: string, name: string, parentDir?: s
   )
   return r
 })
-ipcMain.handle('window:is-fullscreen', () => win?.isFullScreen() ?? false)
+handle('window:is-fullscreen', () => win?.isFullScreen() ?? false)
 handle('activity:list', () => readActivity())
 // Count-only badge endpoints — the tab badges poll ~1/s while a terminal
 // streams; shipping the full lists over IPC just to count them was ~1MB/s of
@@ -866,7 +866,7 @@ handle('activity:unseen-count', (_e, since: number, kinds: string[]) => {
 handle('activity:clear', () => clearActivity())
 handle('env:detect', () => detectEnv())
 handle('env:install-gt-notify', () => installGtNotify())
-ipcMain.handle('telegram:test', () => testTelegram())
+handle('telegram:test', () => testTelegram())
 handle('slack:test', () => testSlack())
 // One "send test alert" entry point per outbound channel (Settings → Alerts).
 // `webhookId` picks one destination out of the list; the renderer only holds a
@@ -1377,11 +1377,11 @@ function repoTrustContext(cwd: string) {
 const entryTrusted = (source: 'global' | 'repo', repoTrusted: boolean) =>
   source === 'global' || repoTrusted
 
-ipcMain.handle('widgets:list', () => {
+handle('widgets:list', () => {
   const ctx = repoTrustContext(cur().cwd)
   return ctx.widgets.map((w) => ({ ...w, trusted: entryTrusted(w.source, ctx.trusted) }))
 })
-ipcMain.handle('widgets:run', (_e, id: string) => {
+handle('widgets:run', (_e, id: string) => {
   const cwd = cur().cwd
   const ctx = repoTrustContext(cwd)
   const w = ctx.widgets.find((x) => x.id === id)
@@ -1402,11 +1402,11 @@ const openSessionCwd = (cwd?: string): string => {
   return cur().cwd
 }
 
-ipcMain.handle('tabs:list', (_e, cwd?: string) => {
+handle('tabs:list', (_e, cwd?: string) => {
   const ctx = repoTrustContext(openSessionCwd(cwd))
   return ctx.tabs.map((t) => ({ ...t, trusted: entryTrusted(t.source, ctx.trusted) }))
 })
-ipcMain.handle('tabs:run', (_e, id: string, cwd?: string) => {
+handle('tabs:run', (_e, id: string, cwd?: string) => {
   const dir = openSessionCwd(cwd)
   const ctx = repoTrustContext(dir)
   const t = ctx.tabs.find((x) => x.id === id)
@@ -1460,7 +1460,7 @@ handle('scratch:dir', () => {
 })
 
 // ---- tabs: repo context + tickets/MRs (scoped to the session's repo) ----
-ipcMain.handle('tab:context', async () => {
+handle('tab:context', async () => {
   return activeDaemon().context(cur().sessionId)
 })
 handle('docs:list', () => {
@@ -1785,7 +1785,7 @@ handle('data:first-prompt', (_e, sessionId: string) => {
   return readTranscriptStats(sessionId).firstUserText || ''
 })
 
-ipcMain.handle('workspace:is-bootstrapped', (_e, repoRoot: string) => {
+handle('workspace:is-bootstrapped', (_e, repoRoot: string) => {
   const remote = curRemote()
   if (remote)
     return remoteProject.bootstrapStatus(remote).catch((e) => ({
@@ -1801,7 +1801,7 @@ ipcMain.handle('workspace:is-bootstrapped', (_e, repoRoot: string) => {
 // keeps repo data, writes `<name>.workflow` sidecars on conflict, and moves
 // legacy per-repo Claude machinery to .claude/pre-tm-backup/ (the tm plugin
 // serves it now). Streams nothing — we just wait and return ok/error.
-ipcMain.handle('workspace:bootstrap', async (_e, repoRoot: string) => {
+handle('workspace:bootstrap', async (_e, repoRoot: string) => {
   const remote = curRemote()
   if (remote) {
     const templateRepo = remote.daemon?.templateRepo || resolvedTemplateRepo()
@@ -1859,7 +1859,7 @@ function runUpdateCheck() {
     repoSlug: __BUILD_REPO_SLUG__ || undefined,
   })
 }
-ipcMain.handle('update:check', () => runUpdateCheck())
+handle('update:check', () => runUpdateCheck())
 
 // Global tm plugin status/sync for the Settings panel. Sync re-copies the
 // bundled plugin and repairs the ~/.claude/skills/tm symlink.
@@ -2240,9 +2240,9 @@ handle('knowledge:rag-search', (_e, scope: KnowledgeScope, item: any, query: str
 registerFilesIpc({ activeDaemon })
 
 // ---- my workflow (local Claude/Codex configuration) ----
-ipcMain.handle('workflow:list', (_e, rel: string) => listWorkflowFiles(rel || ''))
-ipcMain.handle('workflow:read', (_e, rel: string) => readWorkflowFile(rel))
-ipcMain.handle('workflow:write', (_e, rel: string, content: string) =>
+handle('workflow:list', (_e, rel: string) => listWorkflowFiles(rel || ''))
+handle('workflow:read', (_e, rel: string) => readWorkflowFile(rel))
+handle('workflow:write', (_e, rel: string, content: string) =>
   writeWorkflowFile(rel, content),
 )
 
