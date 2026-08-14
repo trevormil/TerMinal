@@ -734,7 +734,7 @@ function fleetSnapshot() {
   }
   return restoreFleetSnapshotEntryOrder(out, entries)
 }
-ipcMain.handle('fleet:list', () => fleetSnapshot())
+handle('fleet:list', () => fleetSnapshot())
 
 const bridgeDeps = createBridgeDeps({
   liveSessions: () =>
@@ -864,8 +864,8 @@ handle('activity:unseen-count', (_e, since: number, kinds: string[]) => {
   return readActivity().filter((ev) => ev.ts > since && hi.has(ev.kind)).length
 })
 handle('activity:clear', () => clearActivity())
-ipcMain.handle('env:detect', () => detectEnv())
-ipcMain.handle('env:install-gt-notify', () => installGtNotify())
+handle('env:detect', () => detectEnv())
+handle('env:install-gt-notify', () => installGtNotify())
 ipcMain.handle('telegram:test', () => testTelegram())
 ipcMain.handle('slack:test', () => testSlack())
 // One "send test alert" entry point per outbound channel (Settings → Alerts).
@@ -1641,44 +1641,44 @@ handle('mrs:get', (_e, iid: number) => {
 handle('mrs:diff', (_e, iid: number) => {
   return activeDaemon().mrDiff(iid)
 })
-ipcMain.handle('git:working-diff', () => {
+handle('git:working-diff', () => {
   return activeDaemon().workingDiff()
 })
-ipcMain.handle('git:file-at-head', (_e, rel: string) => {
+handle('git:file-at-head', (_e, rel: string) => {
   return activeDaemon().fileAtHead(rel)
 })
-ipcMain.handle('git:file-at-head-binary', (_e, rel: string) => {
+handle('git:file-at-head-binary', (_e, rel: string) => {
   return activeDaemon().fileAtHeadBinary(rel)
 })
-ipcMain.handle('git:status-porcelain', () => {
+handle('git:status-porcelain', () => {
   return activeDaemon().statusPorcelain()
 })
 // Git views for the Files tab (history / branches / stashes / tags).
-ipcMain.handle('git:log', (_e, opts?: { limit?: number; skip?: number; ref?: string }) => {
+handle('git:log', (_e, opts?: { limit?: number; skip?: number; ref?: string }) => {
   return activeDaemon().gitLog(opts)
 })
-ipcMain.handle('git:show', (_e, ref: string) => {
+handle('git:show', (_e, ref: string) => {
   return activeDaemon().gitShow(ref)
 })
-ipcMain.handle('git:branches', () => {
+handle('git:branches', () => {
   return activeDaemon().gitBranches()
 })
-ipcMain.handle('git:checkout', (_e, branch: string) => {
+handle('git:checkout', (_e, branch: string) => {
   return activeDaemon().gitCheckout(branch)
 })
-ipcMain.handle('git:create-branch', (_e, name: string, from?: string) => {
+handle('git:create-branch', (_e, name: string, from?: string) => {
   return activeDaemon().gitCreateBranch(name, from)
 })
-ipcMain.handle('git:stashes', () => {
+handle('git:stashes', () => {
   return activeDaemon().gitStashes()
 })
-ipcMain.handle('git:tags', () => {
+handle('git:tags', () => {
   return activeDaemon().gitTags()
 })
-ipcMain.handle('git:working-file-patch', (_e, rel: string) => {
+handle('git:working-file-patch', (_e, rel: string) => {
   return activeDaemon().gitWorkingFilePatch(rel)
 })
-ipcMain.handle('git:compare-files-patch', (_e, a: string, b: string) => {
+handle('git:compare-files-patch', (_e, a: string, b: string) => {
   return activeDaemon().gitCompareFilesPatch(a, b)
 })
 handle('checkpoints:list', () => listCheckpoints(activeDaemon().repoRoot()))
@@ -1694,7 +1694,7 @@ handle('checkpoints:ranges', (_e, sha: string) =>
 handle('checkpoints:review-base', (_e, rel: string, buffer: string) =>
   reviewBaseFor(activeDaemon().repoRoot(), rel, buffer),
 )
-ipcMain.handle('git:working-structural-diff', (_e, path: string, width?: number) => {
+handle('git:working-structural-diff', (_e, path: string, width?: number) => {
   return activeDaemon().workingStructuralDiff(path, width)
 })
 handle('mrs:structural-diff', (_e, iid: number, path: string, width?: number) => {
