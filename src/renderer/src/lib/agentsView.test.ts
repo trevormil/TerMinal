@@ -253,10 +253,12 @@ describe('status dots', () => {
     expect(definitionStatusDot(definition(), false, null, now)).toEqual({ dot: '', dotTitle: '' })
   })
   test('classic dot dims any non-terminal last run instead of going accent', () => {
-    expect(classicStatusDot(false, { status: 'canceled', startedAt: now - 3600_000 }, now)).toEqual({
-      dot: 'bg-white/20',
-      dotTitle: 'Last run: canceled · 1h ago',
-    })
+    expect(classicStatusDot(false, { status: 'canceled', startedAt: now - 3600_000 }, now)).toEqual(
+      {
+        dot: 'bg-white/20',
+        dotTitle: 'Last run: canceled · 1h ago',
+      },
+    )
     expect(classicStatusDot(false, { status: 'done', startedAt: now }, now).dot).toBe(
       'bg-[var(--gt-green)]',
     )
@@ -312,15 +314,15 @@ describe('artifacts', () => {
   test('artifactDefaultPath prefers the declared primary file', () => {
     const a = artifact({
       primaryPath: 'r/report.md',
-      files: [{ name: 'report.md', path: 'r/report.md', size: 1 }],
+      files: [{ name: 'report.md', path: 'r/report.md', size: 1, mtime: 0, kind: 'markdown' }],
     })
     expect(artifactDefaultPath(a)).toBe('r/report.md')
   })
   test('artifactDefaultPath skips the artifact.json manifest', () => {
     const a = artifact({
       files: [
-        { name: 'artifact.json', path: 'r/artifact.json', size: 1 },
-        { name: 'report.md', path: 'r/report.md', size: 2 },
+        { name: 'artifact.json', path: 'r/artifact.json', size: 1, mtime: 0, kind: 'json' },
+        { name: 'report.md', path: 'r/report.md', size: 2, mtime: 0, kind: 'markdown' },
       ],
     })
     expect(artifactDefaultPath(a)).toBe('r/report.md')

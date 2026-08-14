@@ -1,10 +1,5 @@
 import type { BadgeTone } from '../components/ui'
-import type {
-  Agent,
-  AgentDefinition,
-  PersistentAgent,
-  PersistentArtifact,
-} from './types'
+import type { Agent, AgentDefinition, PersistentAgent, PersistentArtifact } from './types'
 import { relativeTime } from './time'
 
 // Pure view-logic for the Agents tab: formatting, roster filtering, run
@@ -201,7 +196,11 @@ export function definitionStatusDot(
 }
 
 /** The same dot for the classic-only roster, which has no persistent fallback. */
-export function classicStatusDot(busy: boolean, last: LastRun, now: number = Date.now()): StatusDot {
+export function classicStatusDot(
+  busy: boolean,
+  last: LastRun,
+  now: number = Date.now(),
+): StatusDot {
   if (busy) return { dot: 'bg-[var(--gt-green)] gt-pulse', dotTitle: 'Run in progress' }
   return {
     dot:
@@ -283,16 +282,17 @@ export function runSparkline(runs: UnifiedRunRow[], agentId: string): SparkBar[]
 }
 
 /** The file an artifact opens on: its declared primary, else the first non-manifest file. */
-export function artifactDefaultPath(artifact: PersistentArtifact | null | undefined): string | null {
+export function artifactDefaultPath(
+  artifact: PersistentArtifact | null | undefined,
+): string | null {
   if (!artifact) return null
-  return artifact.primaryPath || artifact.files.find((f) => f.name !== 'artifact.json')?.path || null
+  return (
+    artifact.primaryPath || artifact.files.find((f) => f.name !== 'artifact.json')?.path || null
+  )
 }
 
 /** Keep the current artifact selected if it survived a refresh, else take the newest. */
-export function nextArtifactId(
-  list: PersistentArtifact[],
-  prev: string | null,
-): string | null {
+export function nextArtifactId(list: PersistentArtifact[], prev: string | null): string | null {
   return prev && list.some((a) => a.id === prev) ? prev : list[0]?.id || null
 }
 
