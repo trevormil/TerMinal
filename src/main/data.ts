@@ -1,19 +1,15 @@
-import { readFileSync, readdirSync, existsSync, openSync, readSync, closeSync } from 'node:fs'
+import { readFileSync, openSync, readSync, closeSync } from 'node:fs'
 import {
-  isRecord,
   messageOf,
   parseLine,
   isToolResultBlock,
   isToolUseBlock,
   toolFailed,
 } from './transcript-schema'
-import { join } from 'node:path'
-import { homedir } from 'node:os'
-import Database from 'better-sqlite3'
 import { repoRootOf } from './repo'
+import { listSessions } from './transcripts'
 import {
   findSessionFile,
-  listClaudeSessions,
   parseTranscriptDetailFile,
   parseTranscriptFile,
   readTranscriptStats,
@@ -21,17 +17,13 @@ import {
 } from './transcripts/claude'
 import {
   inputRecord,
-  newestFileStats,
-  readPickerWindow,
   resultText,
-  sessionMetaCache,
   stableJson,
   statMtimeMs,
   stringProp,
   textOf,
   timestampMs,
   toolCallKind,
-  walkJsonlFiles,
 } from './transcripts/common'
 import type {
   ObservabilityEventKind,
@@ -83,10 +75,6 @@ export {
   type TranscriptStatsFileParseState,
 } from './transcripts/claude'
 
-const CODEX_SESSIONS_DIR = join(homedir(), '.codex', 'sessions')
-const CURSOR_PROJECTS_DIR = join(homedir(), '.cursor', 'projects')
-const HERMES_DB = join(homedir(), '.hermes', 'state.db')
-
 // Full (untruncated) records used by the SQLite indexer so the index becomes the
 // complete record of a session — every tool call's exact request/response JSON and
 // every transcript event, not just the previews the live detail views carry.
@@ -127,213 +115,15 @@ export type ObservabilityIndexRecords = {
   events: ObservabilityIndexEvent[]
 }
 
-export function parseCodexSessionFile(file: string): SessionMeta | null {
-  const win = readPickerWindow(file)
-  if (!win) return null
-
-  let id =
-    file
-      .replace(/\.jsonl$/, '')
-      .split('/')
-      .pop() || ''
-  id = id.replace(/^rollout-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-/, '')
-  let cwd = ''
-  let model = ''
-  let firstUserText = ''
-  let turns = 0
-
-  for (const line of win.raw.split('\n')) {
-    if (!line.trim()) continue
-    const obj = parseLine(line)
-    if (!obj) continue
-    const payload = isRecord(obj.payload) ? obj.payload : {}
-    if (obj.type === 'session_meta') {
-      if (typeof payload.id === 'string') id = payload.id
-      if (!cwd && typeof payload.cwd === 'string') cwd = payload.cwd
-    } else if (obj.type === 'turn_context') {
-      if (!cwd && typeof payload.cwd === 'string') cwd = payload.cwd
-      if (typeof payload.model === 'string') model = payload.model
-    } else if (obj.type === 'event_msg' && payload.type === 'user_message') {
-      turns++
-      if (!firstUserText && typeof payload.message === 'string') firstUserText = payload.message
-    } else if (
-      obj.type === 'response_item' &&
-      payload.type === 'message' &&
-      payload.role === 'user'
-    ) {
-      turns++
-      if (!firstUserText) firstUserText = textOf(payload.content)
-    }
-  }
-
-  if (!id || (!cwd && !firstUserText)) return null
-  return {
-    id,
-    engine: 'codex',
-    cwd,
-    gitBranch: '',
-    model: model || 'codex',
-    turns,
-    firstUserText,
-    mtime: win.mtime,
-  }
-}
-
-function listCodexSessions(): SessionMeta[] {
-  if (!existsSync(CODEX_SESSIONS_DIR)) return []
-  return newestFileStats(walkJsonlFiles(CODEX_SESSIONS_DIR))
-    .map((st) =>
-      sessionMetaCache().get(st.file, st.size, st.mtimeMs, () => parseCodexSessionFile(st.file)),
-    )
-    .filter((s): s is SessionMeta => !!s)
-}
-
-function slugToPath(slug: string): string {
-  if (!slug || /^\d+$/.test(slug) || slug === 'empty-window' || slug.startsWith('var-folders-'))
-    return ''
-  return '/' + slug.replace(/-/g, '/')
-}
-
-export function parseCursorSessionFile(file: string): SessionMeta | null {
-  const win = readPickerWindow(file)
-  if (!win) return null
-  let id =
-    file
-      .split('/')
-      .pop()
-      ?.replace(/\.jsonl$/, '') || ''
-  const parts = file.split('/')
-  const projectsIdx = parts.lastIndexOf('projects')
-  const slug = projectsIdx >= 0 ? parts[projectsIdx + 1] || '' : ''
-  const cwd = slugToPath(slug)
-  let firstUserText = ''
-  let model = 'cursor'
-  let turns = 0
-  for (const line of win.raw.split('\n')) {
-    if (!line.trim()) continue
-    const obj = parseLine(line)
-    if (!obj) continue
-    if (typeof obj.session_id === 'string') id = obj.session_id
-    if (typeof obj.model === 'string') model = obj.model
-    if (obj.role === 'user' || messageOf(obj)?.role === 'user') {
-      turns++
-      if (!firstUserText) {
-        firstUserText = textOf(messageOf(obj)?.content ?? obj.content)
-          .replace(/<timestamp>[\s\S]*?<\/timestamp>/g, '')
-          .replace(/<\/?user_query>/g, '')
-          .trim()
-          .slice(0, 140)
-      }
-    }
-  }
-  if (!id || (!cwd && !firstUserText)) return null
-  return {
-    id,
-    engine: 'cursor',
-    cwd,
-    gitBranch: '',
-    model,
-    turns,
-    firstUserText,
-    mtime: win.mtime,
-  }
-}
-
-function listCursorSessions(): SessionMeta[] {
-  if (!existsSync(CURSOR_PROJECTS_DIR)) return []
-  const files: string[] = []
-  for (const project of readdirSync(CURSOR_PROJECTS_DIR)) {
-    const dir = join(CURSOR_PROJECTS_DIR, project, 'agent-transcripts')
-    if (!existsSync(dir)) continue
-    for (const sessionDir of readdirSync(dir)) {
-      const f = join(dir, sessionDir, `${sessionDir}.jsonl`)
-      if (existsSync(f)) files.push(f)
-    }
-  }
-  return newestFileStats(files)
-    .map((st) =>
-      sessionMetaCache().get(st.file, st.size, st.mtimeMs, () => parseCursorSessionFile(st.file)),
-    )
-    .filter((s): s is SessionMeta => !!s)
-}
-
-// Hermes keeps its session history in a SQLite store (`sessions` table in
-// ~/.hermes/state.db), not JSONL transcripts. Read it directly (better-sqlite3
-// is already a dep) and map the local interactive sources (cli/tui) to
-// SessionMeta so they show up in — and resume from — the picker. Read-only and
-// fully guarded: a missing store, broken schema, or absent Hermes yields [].
-function listHermesSessions(): SessionMeta[] {
-  if (!existsSync(HERMES_DB)) return []
-  let db: Database.Database | null = null
-  try {
-    db = new Database(HERMES_DB, { readonly: true, fileMustExist: true })
-    const rows = db
-      .prepare(
-        `SELECT id, title, display_name, model, message_count, started_at, ended_at, cwd, git_branch, git_repo_root
-         FROM sessions
-         WHERE archived = 0 AND source IN ('cli', 'tui')
-         ORDER BY COALESCE(ended_at, started_at) DESC
-         LIMIT 200`,
-      )
-      .all() as Record<string, unknown>[]
-    return rows
-      .map((r): SessionMeta | null => {
-        const id = typeof r.id === 'string' ? r.id : ''
-        if (!id) return null
-        const at =
-          typeof r.ended_at === 'number'
-            ? r.ended_at
-            : typeof r.started_at === 'number'
-              ? r.started_at
-              : 0
-        const str = (v: unknown) => (typeof v === 'string' ? v : '')
-        return {
-          id,
-          engine: 'hermes',
-          cwd: str(r.cwd) || str(r.git_repo_root),
-          gitBranch: str(r.git_branch),
-          model: str(r.model) || 'hermes',
-          turns: typeof r.message_count === 'number' ? r.message_count : 0,
-          firstUserText: str(r.title) || str(r.display_name),
-          mtime: at ? Math.round(at * 1000) : 0,
-        }
-      })
-      .filter((s): s is SessionMeta => !!s)
-  } catch {
-    return [] // store locked/malformed or better-sqlite3 unavailable — degrade quietly
-  } finally {
-    try {
-      db?.close()
-    } catch {
-      /* ignore */
-    }
-  }
-}
-
-// Which engines have a resumable local session store, and how to read it.
-// An engine ABSENT from this map has none, so an explicit request for it must
-// return [] rather than the other engines' sessions — resuming a foreign id
-// would run e.g. `opencode -s <a-claude-session-id>`.
-//
-// A keyed lookup rather than a ternary chain on purpose: the chain's final
-// `else` doubled as both "no engine given" and "engine I don't recognise", so
-// registering opencode silently opted it into the all-engines list. An engine
-// that isn't listed here now defaults to none, which is the safe direction.
-// prettier-ignore
-const SESSION_LISTERS: Partial<Record<import('../shared/engines').EngineId, () => SessionMeta[]>> = {
-  claude: listClaudeSessions,
-  codex: listCodexSessions,
-  cursor: listCursorSessions,
-  hermes: listHermesSessions,
-}
-
-/** Sessions for the entry picker. Engine-scoped calls keep startup cheap. */
-export function listSessions(engine?: import('../shared/engines').EngineId): SessionMeta[] {
-  const out = !engine
-    ? [...listClaudeSessions(), ...listCodexSessions(), ...listCursorSessions()]
-    : (SESSION_LISTERS[engine]?.() ?? [])
-  return out.sort((a, b) => b.mtime - a.mtime)
-}
+// Per-engine session readers live in transcripts/*.ts behind a lister registry
+// keyed on EngineId; transcripts/index.ts orchestrates listSessions.
+export {
+  listSessions,
+  parseCodexSessionFile,
+  parseCursorSessionFile,
+  SESSION_LISTERS,
+  type SessionLister,
+} from './transcripts'
 
 function repoLabel(cwd: string): string {
   if (!cwd) return 'unknown'
