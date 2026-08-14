@@ -822,14 +822,14 @@ ipcMain.handle(
     return r
   },
 )
-ipcMain.handle('remote:dirs', (_e, hostId: string, path?: string) => {
+handle('remote:dirs', (_e, hostId: string, path?: string) => {
   const remote = remoteFromHostId(hostId, path)
   if (!remote) return { cwd: path || '', parent: '', entries: [], error: 'remote host not found' }
   return remoteDirs
     .list(remote, path)
     .catch((e) => ({ cwd: path || '', parent: '', entries: [], error: (e as Error).message }))
 })
-ipcMain.handle('remote:scaffold', async (_e, hostId: string, name: string, parentDir?: string) => {
+handle('remote:scaffold', async (_e, hostId: string, name: string, parentDir?: string) => {
   const remote = remoteFromHostId(hostId, parentDir)
   if (!remote) return { ok: false, error: 'remote host not found' }
   const templateRepo = remote.daemon?.templateRepo || resolvedTemplateRepo()
@@ -1109,7 +1109,7 @@ registerSchedulesIpc({
 // Local runs only — always fast, safe to poll. Remote runs come from the
 // separate `runs:remote-all` fan-out so the Runs tab can show BOTH in one view
 // without switching the session's daemon profile.
-ipcMain.handle('runs:all', () => listAllRuns())
+handle('runs:all', () => listAllRuns())
 ipcMain.handle(
   'runs:running-count',
   () => listAllRuns().filter((r) => r.source !== 'session' && r.status === 'running').length,
@@ -1117,7 +1117,7 @@ ipcMain.handle(
 // Fan out to every configured remote host in parallel, stamped with hostId so
 // the tab can merge them with local runs and badge/filter by host. Best-effort:
 // an unreachable host contributes an error entry, not a failed view.
-ipcMain.handle('runs:remote-all', () => {
+handle('runs:remote-all', () => {
   const hosts = readSettings().remoteHosts.map((h) => ({ id: h.id, label: h.label }))
   return collectRemoteRuns(hosts, async (h) => {
     const ref = remoteFromHostId(h.id)
@@ -1179,11 +1179,11 @@ ipcMain.handle(
 // Artifacts a run produced — agent-request reports under the repo's
 // .TerMinal/agent-requests/ (#8). Local runs only; a remote run's artifacts live
 // on its host. The renderer opens a report via openExternal(file://…).
-ipcMain.handle('runs:artifacts', (_e, repoRoot: string) => listRepoArtifacts(repoRoot))
+handle('runs:artifacts', (_e, repoRoot: string) => listRepoArtifacts(repoRoot))
 // Cancel a running CRON run (#9). Local: SIGTERM the runner's own pid — its
 // cooperative handler kills the current attempt and stops retrying, recording the
 // run as canceled. Remote: route to the host's runs.cancel op.
-ipcMain.handle('runs:cancel-cron', async (_e, id: string, hostId?: string) => {
+handle('runs:cancel-cron', async (_e, id: string, hostId?: string) => {
   if (hostId) {
     const remote = remoteFromHostId(hostId)
     if (!remote) return { ok: false, error: `unknown host: ${hostId}` }
@@ -1418,7 +1418,7 @@ ipcMain.handle('tabs:run', (_e, id: string, cwd?: string) => {
 
 // The approval surface: the literal commands the repo wants to run, so the user
 // approves what they can actually read.
-ipcMain.handle('repoTrust:status', () => {
+handle('repoTrust:status', () => {
   const ctx = repoTrustContext(cur().cwd)
   return { repoRoot: ctx.repoRoot, hash: ctx.hash, trusted: ctx.trusted, commands: ctx.commands }
 })
@@ -1426,7 +1426,7 @@ ipcMain.handle('repoTrust:status', () => {
 // must not be able to point anywhere: `approve('/attacker/repo')` followed by
 // `tabs:run(id, '/attacker/repo')` would walk straight around the gate. The
 // approval always applies to the session the user is actually looking at.
-ipcMain.handle('repoTrust:approve', () => {
+handle('repoTrust:approve', () => {
   const ctx = repoTrustContext(cur().cwd)
   if (!ctx.repoRoot || !ctx.commands.length) return false
   writeTrustStore(approveRepo(readTrustStore(), ctx.repoRoot, ctx.hash))
@@ -1437,7 +1437,7 @@ ipcMain.handle('repoTrust:approve', () => {
   })
   return true
 })
-ipcMain.handle('repoTrust:revoke', () => {
+handle('repoTrust:revoke', () => {
   const ctx = repoTrustContext(cur().cwd)
   if (!ctx.repoRoot) return false
   writeTrustStore(revokeRepo(readTrustStore(), ctx.repoRoot))
@@ -1867,7 +1867,7 @@ handle('plugin:status', () => tmPluginStatus())
 
 // Per-project sidecar: where this repo's tickets/reviews/sessions live, how
 // many files are still sitting in the repo, and the one-time move.
-ipcMain.handle('repoState:status', (_e, repoRoot: string) => {
+handle('repoState:status', (_e, repoRoot?: string) => {
   const root = repoRoot || cur().cwd
   const pluginDir = join(terminalConfigDir(), 'plugin')
   return {
@@ -1882,7 +1882,7 @@ ipcMain.handle('repoState:status', (_e, repoRoot: string) => {
 // the Codex stop hook, seed artifacts, the layout marker, the forge selector
 // (preserved into the sidecar), and unmodified default script agents. All
 // banked in .claude/pre-tm-backup, never deleted.
-ipcMain.handle('repoState:migrate', (_e, repoRoot: string) => {
+handle('repoState:migrate', (_e, repoRoot?: string) => {
   const root = repoRoot || cur().cwd
   const pluginDir = join(terminalConfigDir(), 'plugin')
   const r = migrateRepoState(root)
@@ -1905,7 +1905,7 @@ handle('plugin:sync', () => installTmPlugin(tmPluginSrcDir()))
 // fresh app in /Applications a minute or so later.
 const RELEASE_LOG = (): string => configPath('release.log')
 let releasePid: number | null = null
-ipcMain.handle('release:start', () => {
+handle('release:start', () => {
   if (releasePid) {
     try {
       process.kill(releasePid, 0) // throws if process is gone
@@ -1963,7 +1963,7 @@ ipcMain.handle('release:start', () => {
   )
   return { ok: true, pid: releasePid, log: RELEASE_LOG(), repoRoot }
 })
-ipcMain.handle('release:tail', () => {
+handle('release:tail', () => {
   try {
     return readFileSync(RELEASE_LOG(), 'utf8')
   } catch {
@@ -2130,7 +2130,7 @@ handle('harness:status', () => {
     configDir: cfgDir,
   }
 })
-ipcMain.handle('release:status', () => {
+handle('release:status', () => {
   if (!releasePid) return { running: false }
   try {
     process.kill(releasePid, 0)
