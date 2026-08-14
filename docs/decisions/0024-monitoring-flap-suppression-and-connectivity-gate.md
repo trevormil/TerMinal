@@ -78,11 +78,20 @@ setup — i.e. every real one. `categorizeError` deliberately still returns
 `unknown` for it (guessing "unreachable" would let a refused port mute a real
 outage); the daemon disambiguates with a name lookup, on the failure path only.
 
-## [24.5] Duplication, on purpose, for now
+## [24.5] The duplication is gone (ticket 0132)
 
-`bin/terminal-monitor` runs from `~/.config/TerMinal/bin` under launchd and
-cannot import from the app bundle, so the pure logic is mirrored there the same
-way the classifiers already are. Both copies are exercised: the canonical one by
-`src/shared/monitor-flap.test.ts`, the daemon's by
-`src/main/monitor-threshold.test.ts` and `src/main/monitor-connectivity.test.ts`,
-which drive the real binary. The typed-bin refactor is where the two collapse.
+This section used to record a deliberate mirror: `bin/terminal-monitor` ran from
+`~/.config/TerMinal/bin` under launchd, could not import from the app bundle, and
+so carried a hand-copy of this module — and of the classifiers.
+
+It no longer does. The daemon is now typed modules under `src/monitor/`, BUNDLED
+to `bin/terminal-monitor` by `scripts/build-bin.ts`. The artifact is still a
+single self-contained file with nothing to resolve at runtime, which is the
+property that ever mattered; the bundler inlines `src/shared/monitor-flap.ts` and
+`src/shared/monitor-classify.ts` at build time instead of a human inlining them
+by hand. One copy, one set of tests.
+
+`src/bin-build-sync.test.ts` regenerates the artifact and diffs it, so a source
+edit without a rebuild fails the suite — the one risk a committed built artifact
+introduces, closed. `src/main/monitor-threshold.test.ts` and
+`src/main/monitor-connectivity.test.ts` still drive the real binary end to end.

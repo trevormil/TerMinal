@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
+import { TARGETS as BUILT } from '../../scripts/build-bin'
 
 // Ticket 110. `withFileLock` is ADVISORY: it protects a file only if every
 // process that writes it takes it. Three writers cooperating while a fourth
@@ -37,11 +38,11 @@ function sourceFiles(): string[] {
     }
   }
   walk(join(ROOT, 'src/main'))
-  walk(join(ROOT, 'src/runner'))
+  for (const dir of new Set(Object.values(BUILT))) walk(join(ROOT, 'src', dir))
   for (const name of readdirSync(join(ROOT, 'bin'))) {
-    // bin/terminal-cron is BUILT from src/runner (walked above); scanning the
-    // bundle would pin the bundler's quoting style, not a writer.
-    if (name.startsWith('terminal-') && name !== 'terminal-cron') out.push(join('bin', name))
+    // The BUILT artifacts are bundles of the src/ dirs walked above; scanning
+    // one would pin the bundler's quoting style, not a writer.
+    if (name.startsWith('terminal-') && !BUILT[name]) out.push(join('bin', name))
   }
   return out.sort()
 }
@@ -74,7 +75,9 @@ const EXPECTED: Record<
   'monitors.json': {
     'src/main/monitors.ts': 'updateJsonState',
     'bin/terminal-cli': 'updateJsonListShared',
-    'bin/terminal-monitor': 'read-only',
+    // The daemon names the path once, in its own path module, and never writes
+    // it — the app is the single writer, through its lock.
+    'src/monitor/paths.ts': 'read-only',
   },
   'schedules.json': {
     'src/main/schedules.ts': 'updateJsonState',

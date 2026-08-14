@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // @bun
-// GENERATED — do not edit. Built from src/runner/ by scripts/build-runner.ts.
-// Edit the TypeScript modules there, then run `bun run build:runner`.
+// GENERATED — do not edit. Built from src/runner/ by scripts/build-bin.ts.
+// Edit the TypeScript modules there, then run `bun run build:bin`.
 
 // src/runner/retention.ts
 import { readFileSync as readFileSync3, readdirSync, statSync, unlinkSync as unlinkSync2, writeFileSync as writeFileSync2 } from "fs";
