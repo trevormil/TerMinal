@@ -5,7 +5,6 @@
 // renderer seam is bindSessionSender — the module never touches the window.
 
 import * as pty from 'node-pty'
-import { type Engine } from './agents'
 import { getTicket, updateTicket } from './backlog'
 import { appendSessionRunLog, beginSessionRun, finalizeSessionRun } from './cron-runs'
 import { findSessionFile, lastAssistantText } from './data'
@@ -24,8 +23,6 @@ import {
   readSettings,
   resolvedOpenAICompatKey,
   resolvedOpenRouterKey,
-  type DaemonCfg,
-  type RemotePlatform,
 } from './settings'
 import { processSpawnCwd } from './spawn-cwd'
 import { statuslineSettingsArg } from './statusline'

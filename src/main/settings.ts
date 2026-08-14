@@ -14,7 +14,7 @@ import {
 } from '../shared/notifications'
 import { ENGINE_IDS, engineOf, type EngineId } from '../shared/engines'
 import { normalizeDestination, type InboxDestination } from '../shared/slack'
-import { normalizeExperiments, type ExperimentsCfg } from '../shared/experiments'
+import { normalizeExperiments } from '../shared/experiments'
 import { expandSecretPaths } from './secret-paths'
 import type { DaemonCfg, EngineCfg, PinnedPanel, ProjectsDirValidation, RemoteHost, RemotePlatform, Settings, SettingsPatch, SlackCfg, WebhookCfg } from '../shared/types/settings'
 export type { AlertsCfg, AppearanceCfg, AppearanceMode, AppearanceTabLayout, AppsCfg, BridgeCfg, DaemonCfg, EngineCfg, ForgePref, InboxCfg, PinnedPanel, ProjectsDirValidation, RemoteHost, RemotePlatform, Settings, SettingsPatch, SlackCfg, SuggestionsCfg, TelegramCfg, WebhookCfg } from '../shared/types/settings'

@@ -1,8 +1,6 @@
 import { readJsonState, updateJsonState } from './atomic-write'
 import { configPath } from './config-dir'
 import { randomUUID } from 'node:crypto'
-import type { Engine } from './agents'
-import type { ScheduleSpec } from './cron'
 import type { Schedule } from '../shared/types/schedules'
 export type { Schedule, ScheduleStatus } from '../shared/types/schedules'
 

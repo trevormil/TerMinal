@@ -1,7 +1,5 @@
 import type { ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import type { NotifyCategory, NotifyMatrix } from '../../../shared/notifications'
-import type { ExperimentsCfg } from '../../../shared/experiments'
 
 // The renderer's view of the `gt` bridge. The DOMAIN vocabulary is no longer
 // declared here — it lives once in `src/shared/types` and is re-exported below,

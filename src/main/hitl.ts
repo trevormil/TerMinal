@@ -11,7 +11,7 @@ import { emitActivity } from './events'
 import { readSettings } from './settings'
 import { sendUrl } from './telegram-api'
 import { hitlRecurrenceKey, hitlRecurrenceBump } from './hitl-recurrence'
-import { defaultSeverity, itemSeverity, shouldNotify, type HitlSeverity } from './hitl-severity'
+import { defaultSeverity, itemSeverity, shouldNotify } from './hitl-severity'
 import {
   hitlActivityKind,
   hitlNotifyKind,
