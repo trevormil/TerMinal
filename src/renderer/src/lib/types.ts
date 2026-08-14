@@ -262,14 +262,6 @@ export type MonitorStatusState = {
   id: string
   status: MonitorState
   summary: string
-  /** Failed checks in a row, including ones held below the alert threshold. */
-  consecutiveFailures?: number
-  category?: MonitorFailureCategory
-  /** The raw probe verdict — differs from `status` while a blip is held back. */
-  observed?: MonitorState
-  /** The last cycle was discarded for lack of local connectivity. */
-  paused?: boolean
-  pausedSince?: number
   metrics?: Record<string, unknown>
   detail?: {
     sections: {
@@ -679,8 +671,6 @@ export type GtApi = {
   }
   monitors: {
     list: () => Promise<MonitorWithState[]>
-    /** Whether the daemon has established that THIS machine is offline. */
-    connectivity: () => Promise<MonitorConnectivity>
     /** Reports what was actually written — it used to return `true` even when
      *  nothing was saved. Callers may ignore it; a UI that surfaces failures
      *  should not. */

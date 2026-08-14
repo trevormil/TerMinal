@@ -14,6 +14,7 @@ const monitor = (id: string, enabled = true): MonitorWithState => ({
   type: 'http',
   target: 'https://example.com',
   intervalSec: 60,
+  minConsecutiveFailures: 2,
   enabled,
   notify: {
     onFailure: 'normal',
