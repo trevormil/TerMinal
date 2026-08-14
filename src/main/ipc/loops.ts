@@ -18,6 +18,8 @@ import {
   type CreateLoopInput,
 } from '../loops'
 import { type RemoteSessionRef } from '../remote'
+import { experimentGate } from '../../shared/experiments'
+import { readSettings } from '../settings'
 
 export type LoopsIpcDeps = {
   cur(): { cwd: string; sessionId: string }
@@ -32,6 +34,12 @@ export function registerLoopsIpc(deps: LoopsIpcDeps): void {
     deps.curRemote() ? { error: 'remote' } : readLoopState(id),
   )
   handle('loops:create', (_e, input: CreateLoopInput) => {
+    // Behind the `loops` experiment. Only CREATION is gated: it is the one handler
+    // that starts work (cuts a worktree, spawns agents). list/get/state are reads
+    // and stop only ever winds a loop down, so gating them would strand a loop
+    // created while the flag was on with no way to see or stop it after a flip off.
+    const gate = experimentGate(readSettings(), 'loops')
+    if (gate) return gate
     if (deps.curRemote()) return { error: 'remote' }
     let repoRoot = input.repoRoot
     if (!repoRoot) {
