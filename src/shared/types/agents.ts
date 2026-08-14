@@ -144,8 +144,9 @@ export type Agent = {
   source?: 'default' | 'repo-override' | 'global-override' | 'repo' | 'global'
 }
 
-// Derived from the ONE shared vocabulary (ticket 91) — this store never
-// writes 'queued'.
+// Derived from the ONE shared vocabulary (ticket 91) — the in-process run STORE
+// never writes 'queued'. `AgentRun.status` is deliberately wider: `agents:runs`
+// merges that store with runs read off a remote host, and those can be queued.
 export type AgentRunStatus = Exclude<RunStatus, 'queued'>
 
 export type AgentRun = {
@@ -159,7 +160,7 @@ export type AgentRun = {
   persona?: string
   pipeline?: string // display label when this run chained multiple stages
   rerun?: RerunSpec
-  status: AgentRunStatus
+  status: RunStatus
   startedAt: number
   endedAt?: number
   exitCode?: number

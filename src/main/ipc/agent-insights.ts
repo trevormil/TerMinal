@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { handle } from '../typed-ipc'
 import { listAllRuns } from '../cron-runs'
 import { scoreAgentRuns } from '../agent-scorecard'
 import type { AgentScorecard, ScorecardRun } from '../agent-scorecard'
@@ -16,7 +16,7 @@ const pool = (): ScorecardRun[] => listAllRuns(RUN_POOL) as ScorecardRun[]
 
 export function registerAgentInsightsIpc(): void {
   // One agent's scorecard (last SCORECARD_WINDOW runs).
-  ipcMain.handle('agents:scorecard', (_e, agentId: string): AgentScorecard | null => {
+  handle('agents:scorecard', (_e, agentId: string): AgentScorecard | null => {
     if (!agentId) return null
     const runs = pool().filter((r) => r.agentId === agentId)
     if (!runs.length) return null
@@ -24,8 +24,8 @@ export function registerAgentInsightsIpc(): void {
   })
 
   // Disabled roster with WHY/WHEN, and the re-enable.
-  ipcMain.handle('agents:disabled-detail', (): DisabledEntry[] => listDisabledDetail())
-  ipcMain.handle(
+  handle('agents:disabled-detail', (): DisabledEntry[] => listDisabledDetail())
+  handle(
     'agents:set-disabled',
     (_e, id: string, disabled: boolean, reason?: string): DisabledEntry[] => {
       setDisabled(id, disabled, reason)
