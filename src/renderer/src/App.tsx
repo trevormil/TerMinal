@@ -25,6 +25,12 @@ import { Onboarding } from './components/Onboarding'
 import { Orientation } from './components/Orientation'
 import { firstRunPhase } from './lib/orientation'
 import { SessionView, type Info } from './SessionView'
+import { LayoutProvider, type LayoutContextValue } from './lib/layoutContext'
+import {
+  SessionsProvider,
+  type PeerSession,
+  type SessionsContextValue,
+} from './lib/sessionsContext'
 import logo from './assets/logo.png'
 import { InboxDrawer } from './tabs/hitl'
 import { ActivityTab } from './tabs/activity'
@@ -1076,18 +1082,7 @@ export default function App() {
   // SessionView prop, which makes React see "new" props on every render and
   // bypass any downstream memoization in SessionView.
   const peersByKey = useMemo(() => {
-    const m = new Map<
-      string,
-      {
-        key: string
-        label: string
-        status: string
-        mode: 'new' | 'resume'
-        engine: SessionEngine
-        needsAttention: boolean
-        loopRole?: 'driver' | 'worker'
-      }[]
-    >()
+    const m = new Map<string, PeerSession[]>()
     for (const ws of workspaces) {
       const peers = ws.sessions.map((x, i) => ({
         key: x.key,
@@ -1240,6 +1235,71 @@ export default function App() {
     setGridKeys(next)
     if (next.length >= 2 && terminalLayout === 'single') setTerminalLayout('grid4')
   }
+
+  // Opening the new-session screen is per-workspace, and the session tile only
+  // knows its own key — so resolve the workspace here rather than binding a
+  // fresh closure per tile.
+  const addSessionFrom = (key: string) => {
+    const s = sessions.find((x) => x.key === key)
+    if (!s) return
+    setAdding({ repoRoot: cwdOf(s) || '', remote: s.choice.remote })
+  }
+
+  // The shell contexts' callbacks have to keep stable identities or the
+  // useMemos below re-run on every App render and the two-context split stops
+  // buying anything (see lib/layoutContext.tsx). These handlers close over App
+  // state — `closeSession` reads `activeKey` — so useCallback would need deps
+  // that change constantly. A latest-value ref gives the wrappers a permanent
+  // identity while every call still reads this render's closure.
+  const shellHandlersRef = useRef({
+    switchLayout,
+    activate,
+    addSessionFrom,
+    closeSession,
+    renameSession,
+    reorderSession,
+    clearAttention,
+  })
+  shellHandlersRef.current = {
+    switchLayout,
+    activate,
+    addSessionFrom,
+    closeSession,
+    renameSession,
+    reorderSession,
+    clearAttention,
+  }
+  const attentionKeys = useMemo(() => new Set(attentionByKey.keys()), [attentionByKey])
+  const layoutValue = useMemo<LayoutContextValue>(
+    () => ({
+      terminalTile: multiTerminal,
+      terminalLayout,
+      tabLayout: appearance.tabLayout,
+      sessionRail,
+      // Both split (2 tiles) and grid (4 tiles) tile across repos, so each is
+      // enabled whenever ≥2 sessions exist app-wide.
+      canSplitTerminal: sessions.length >= 2,
+      canGridTerminal: sessions.length >= 2,
+      focusedSessionKey: activeKey,
+      onTerminalLayoutChange: (mode) => shellHandlersRef.current.switchLayout(mode),
+      onSessionRailChange: setSessionRail,
+    }),
+    [multiTerminal, terminalLayout, appearance.tabLayout, sessionRail, sessions.length, activeKey],
+  )
+  const sessionsValue = useMemo<SessionsContextValue>(
+    () => ({
+      peersByKey,
+      attentionKeys,
+      onSwitchSession: (key) => shellHandlersRef.current.activate(key),
+      onAddSession: (key) => shellHandlersRef.current.addSessionFrom(key),
+      onCloseSession: (key) => shellHandlersRef.current.closeSession(key),
+      onRenameSession: (key, name) => shellHandlersRef.current.renameSession(key, name),
+      onReorderSession: (from, to) => shellHandlersRef.current.reorderSession(from, to),
+      onClearAttention: (key) => shellHandlersRef.current.clearAttention(key),
+    }),
+    [peersByKey, attentionKeys],
+  )
+
   // hold the UI until we know onboarding state (avoids the entry screen flashing
   // before first-run setup)
   const phase = firstRunPhase({ onboarded, completedThisSession, orientationDismissed })
@@ -1791,92 +1851,81 @@ export default function App() {
               </div>
             </div>
           )}
-          <div
-            className={`absolute inset-0 ${multiTerminal ? 'grid gap-px bg-[var(--gt-border)] pt-[60px]' : ''}`}
-            style={
-              multiTerminal
-                ? {
-                    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-                    gridTemplateRows:
-                      terminalLayout === 'grid4' ? 'repeat(2, minmax(0, 1fr))' : 'minmax(0, 1fr)',
-                  }
-                : undefined
-            }
-          >
-            {sessions.map((s) => {
-              const peers = peersByKey.get(s.key)
-              const visible = !showEntry && visibleSessionKeys.has(s.key)
-              const status = statusByKey[s.key] || 'idle'
-              const needsAttention = attentionByKey.has(s.key)
-              return (
-                <div
-                  key={s.key}
-                  onPointerDownCapture={() => {
-                    if (multiTerminal && s.key !== activeKey) activate(s.key)
-                  }}
-                  onFocusCapture={() => {
-                    if (multiTerminal && s.key !== activeKey) activate(s.key)
-                  }}
-                  className={
-                    visible
-                      ? multiTerminal
-                        ? `relative min-h-0 min-w-0 overflow-hidden border bg-[var(--gt-bg)] ${
-                            status === 'working'
-                              ? 'border-[var(--gt-green)]/25'
-                              : needsAttention
-                                ? 'border-[var(--gt-yellow)]/70'
-                                : 'border-[var(--gt-border)]'
-                          } ${s.key === activeKey ? 'outline outline-2 -outline-offset-2 outline-[var(--gt-accent)]/90' : ''}`
-                        : 'absolute inset-0'
-                      : 'absolute inset-0'
-                  }
-                  style={{
-                    visibility: visible ? 'visible' : 'hidden',
-                    order: multiTerminal ? visibleSessionRank.get(s.key) : undefined,
-                  }}
-                >
-                  {visible && multiTerminal && (
-                    <div className="pointer-events-none absolute left-1 top-1 z-20 flex max-w-[75%] items-center gap-1 rounded bg-black/70 px-1.5 py-0.5 text-[9px] font-medium text-zinc-300 backdrop-blur-sm">
-                      {s.choice.remote && (
-                        <Server
-                          size={9}
-                          strokeWidth={2}
-                          className="shrink-0 text-[var(--gt-accent-2)]"
-                        />
+          {/* Shell state the tiles read but don't own. Two providers, not one:
+            a rail toggle must not invalidate the session roster, and a status
+            tick must not invalidate the layout. Contract in lib/layoutContext. */}
+          <LayoutProvider value={layoutValue}>
+            <SessionsProvider value={sessionsValue}>
+              <div
+                className={`absolute inset-0 ${multiTerminal ? 'grid gap-px bg-[var(--gt-border)] pt-[60px]' : ''}`}
+                style={
+                  multiTerminal
+                    ? {
+                        gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                        gridTemplateRows:
+                          terminalLayout === 'grid4'
+                            ? 'repeat(2, minmax(0, 1fr))'
+                            : 'minmax(0, 1fr)',
+                      }
+                    : undefined
+                }
+              >
+                {sessions.map((s) => {
+                  const visible = !showEntry && visibleSessionKeys.has(s.key)
+                  const status = statusByKey[s.key] || 'idle'
+                  const needsAttention = attentionByKey.has(s.key)
+                  return (
+                    <div
+                      key={s.key}
+                      onPointerDownCapture={() => {
+                        if (multiTerminal && s.key !== activeKey) activate(s.key)
+                      }}
+                      onFocusCapture={() => {
+                        if (multiTerminal && s.key !== activeKey) activate(s.key)
+                      }}
+                      className={
+                        visible
+                          ? multiTerminal
+                            ? `relative min-h-0 min-w-0 overflow-hidden border bg-[var(--gt-bg)] ${
+                                status === 'working'
+                                  ? 'border-[var(--gt-green)]/25'
+                                  : needsAttention
+                                    ? 'border-[var(--gt-yellow)]/70'
+                                    : 'border-[var(--gt-border)]'
+                              } ${s.key === activeKey ? 'outline outline-2 -outline-offset-2 outline-[var(--gt-accent)]/90' : ''}`
+                            : 'absolute inset-0'
+                          : 'absolute inset-0'
+                      }
+                      style={{
+                        visibility: visible ? 'visible' : 'hidden',
+                        order: multiTerminal ? visibleSessionRank.get(s.key) : undefined,
+                      }}
+                    >
+                      {visible && multiTerminal && (
+                        <div className="pointer-events-none absolute left-1 top-1 z-20 flex max-w-[75%] items-center gap-1 rounded bg-black/70 px-1.5 py-0.5 text-[9px] font-medium text-zinc-300 backdrop-blur-sm">
+                          {s.choice.remote && (
+                            <Server
+                              size={9}
+                              strokeWidth={2}
+                              className="shrink-0 text-[var(--gt-accent-2)]"
+                            />
+                          )}
+                          <span className="truncate">{repoLabelOf(cwdOf(s))}</span>
+                        </div>
                       )}
-                      <span className="truncate">{repoLabelOf(cwdOf(s))}</span>
+                      <SessionView
+                        sessionKey={s.key}
+                        choice={s.choice}
+                        active={!showEntry && s.key === activeKey}
+                        visible={visible}
+                        onStarted={(i) => setInfo(s.key, i)}
+                      />
                     </div>
-                  )}
-                  <SessionView
-                    sessionKey={s.key}
-                    choice={s.choice}
-                    active={!showEntry && s.key === activeKey}
-                    onStarted={(i) => setInfo(s.key, i)}
-                    peerSessions={peers}
-                    onSwitchSession={activate}
-                    onAddSession={() =>
-                      setAdding({ repoRoot: cwdOf(s) || '', remote: s.choice.remote })
-                    }
-                    onCloseSession={closeSession}
-                    onRenameSession={renameSession}
-                    onReorderSession={reorderSession}
-                    terminalTile={multiTerminal}
-                    visible={visible}
-                    terminalLayout={terminalLayout}
-                    tabLayout={appearance.tabLayout}
-                    onTerminalLayoutChange={switchLayout}
-                    sessionRail={sessionRail}
-                    onSessionRailChange={setSessionRail}
-                    canSplitTerminal={sessions.length >= 2}
-                    canGridTerminal={sessions.length >= 2}
-                    focusTerminal={s.key === activeKey}
-                    needsAttention={attentionByKey.has(s.key)}
-                    onClearAttention={() => clearAttention(s.key)}
-                  />
-                </div>
-              )
-            })}
-          </div>
+                  )
+                })}
+              </div>
+            </SessionsProvider>
+          </LayoutProvider>
           {fleet && !showEntry && (
             <div className="absolute inset-0 z-40 bg-[var(--gt-bg)]">
               <FleetView

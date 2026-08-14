@@ -32,7 +32,9 @@ import { useCustomTabs } from './components/CustomTabView'
 import { commandWidgetsToPlugins } from './lib/commandWidget'
 import { applyVisibleOrder, mergeWidgetOrder } from './lib/widgetOrder'
 import { createTickCoalescer } from './lib/tickCoalescer'
-import type { AppearanceTabLayout, LoopState, Plugin, SessionEngine, TabContext } from './lib/types'
+import type { LoopState, Plugin, TabContext } from './lib/types'
+import { useLayout } from './lib/layoutContext'
+import { useSessions, type PeerSession } from './lib/sessionsContext'
 import { navigateTo, onNavigate } from './lib/nav'
 import { loadHiddenTabs } from './lib/tabVisibility'
 import { readCollapsed, writeCollapsed } from './lib/panelCollapse'
@@ -459,70 +461,59 @@ export function SessionView({
   sessionKey,
   choice,
   active,
-  onStarted,
-  peerSessions = [
-    { key: sessionKey, label: 'S1', status: 'idle', mode: choice.mode, engine: choice.engine },
-  ],
-  onSwitchSession,
-  onAddSession,
-  onCloseSession,
-  onRenameSession,
-  onReorderSession,
-  terminalTile = false,
   visible = true,
-  terminalLayout = 'single',
-  tabLayout = 'horizontal',
-  onTerminalLayoutChange,
-  sessionRail = 'top',
-  onSessionRailChange,
-  canSplitTerminal = false,
-  canGridTerminal = false,
-  focusTerminal = false,
-  needsAttention = false,
-  onClearAttention,
+  onStarted,
 }: {
   sessionKey: string
   choice: Choice
   active: boolean
-  onStarted: (info: Info) => void
-  /** Split/grid layouts are terminal-focused; hide workspace chrome and the work column. */
-  terminalTile?: boolean
   /** Is this session's tile actually on screen? All sessions stay mounted so
    *  their ptys survive, so `active` alone can't gate polling in tiled layouts
    *  (every visible tile but one is inactive). */
   visible?: boolean
-  /** Every session in THIS workspace, in stable order. Rendered as a thin
-   *  sub-bar above the terminal pane so the user can swap pty instances
-   *  without leaving the Terminal tab. */
-  peerSessions?: {
-    key: string
-    label: string
-    status: string
-    mode: 'new' | 'resume'
-    engine: SessionEngine
-    needsAttention?: boolean
-    loopRole?: 'driver' | 'worker'
-  }[]
-  onSwitchSession?: (key: string) => void
-  onAddSession?: () => void
-  onCloseSession?: (key: string) => void
-  onRenameSession?: (key: string, name: string) => void
-  onReorderSession?: (fromKey: string, toKey: string) => void
-  terminalLayout?: TerminalLayout
-  tabLayout?: AppearanceTabLayout
-  onTerminalLayoutChange?: (layout: TerminalLayout) => void
-  /** Position of the peer-session sub-bar: a horizontal row on top, or a
-   *  vertical rail on the left of the terminal pane. */
-  sessionRail?: SessionRail
-  onSessionRailChange?: (rail: SessionRail) => void
-  /** Both split (2 tiles) and grid (4 tiles) tile sessions across repos, so each
-   *  is enabled whenever ≥2 sessions exist app-wide. */
-  canSplitTerminal?: boolean
-  canGridTerminal?: boolean
-  focusTerminal?: boolean
-  needsAttention?: boolean
-  onClearAttention?: () => void
+  onStarted: (info: Info) => void
 }) {
+  // Everything that describes the shell rather than THIS session comes from the
+  // two shell contexts, so a rail toggle doesn't have to travel through 20-odd
+  // props. See lib/layoutContext.tsx for the memoization contract.
+  const {
+    terminalTile,
+    terminalLayout,
+    tabLayout,
+    sessionRail,
+    canSplitTerminal,
+    canGridTerminal,
+    focusedSessionKey,
+    onTerminalLayoutChange,
+    onSessionRailChange,
+  } = useLayout()
+  const {
+    peersByKey,
+    attentionKeys,
+    onSwitchSession,
+    onAddSession,
+    onCloseSession,
+    onRenameSession,
+    onReorderSession,
+    onClearAttention,
+  } = useSessions()
+  const focusTerminal = focusedSessionKey === sessionKey
+  const needsAttention = attentionKeys.has(sessionKey)
+  // Every session in THIS workspace, in stable order. Rendered as a thin
+  // sub-bar above the terminal pane so the user can swap pty instances without
+  // leaving the Terminal tab. Outside a provider (or before the roster has this
+  // key) a session is its own only peer.
+  const peerSessions = useMemo<PeerSession[]>(
+    () =>
+      peersByKey.get(sessionKey) ?? [
+        { key: sessionKey, label: 'S1', status: 'idle', mode: choice.mode, engine: choice.engine },
+      ],
+    [peersByKey, sessionKey, choice.mode, choice.engine],
+  )
+  const clearAttention = useMemo(
+    () => (onClearAttention ? () => onClearAttention(sessionKey) : undefined),
+    [onClearAttention, sessionKey],
+  )
   const [info, setInfo] = useState<Info>({ sessionId: '', cwd: '' })
   // Inline rename in the session sub-bar — null when not editing, otherwise
   // the peer key being edited.
@@ -1092,7 +1083,7 @@ export function SessionView({
   const renderAddSessionButton = (variant: 'top' | 'side' = 'top') =>
     onAddSession ? (
       <button
-        onClick={onAddSession}
+        onClick={() => onAddSession(sessionKey)}
         title="New session in this workspace"
         className={`flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-zinc-500 hover:bg-white/5 hover:text-zinc-200 ${
           variant === 'side' ? 'w-full justify-start' : ''
@@ -1318,7 +1309,7 @@ export function SessionView({
                     onStarted={handleStarted}
                     active={focusTerminal}
                     needsAttention={needsAttention}
-                    onClearAttention={onClearAttention}
+                    onClearAttention={clearAttention}
                   />
                 </div>
               </div>
