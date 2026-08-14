@@ -23,6 +23,7 @@ import type {
   ProjectsDirValidation,
   RemoteHost,
   RemotePlatform,
+  SavedPrompt,
   Settings,
   SettingsPatch,
   SlackCfg,
@@ -43,6 +44,7 @@ export type {
   ProjectsDirValidation,
   RemoteHost,
   RemotePlatform,
+  SavedPrompt,
   Settings,
   SettingsPatch,
   SlackCfg,
@@ -158,6 +160,7 @@ export function defaultSettings(): Settings {
     runMemoryCap: 1000,
     templateRepo: daemon.templateRepo,
     pinnedPanels: [],
+    savedPrompts: [],
     openrouterApiKey: '',
     openaiCompatApiKey: '',
     allowRepoExtensions: false,
@@ -223,6 +226,30 @@ function remoteHosts(raw: unknown): RemoteHost[] {
         (h) => h.id && h.sshTarget && !h.sshTarget.startsWith('-') && !/[\0\r\n]/.test(h.sshTarget),
       )
   )
+}
+
+/**
+ * Coerce the spawn prompt library into shape. Entries arrive from a hand-edited
+ * settings.json or an agent's settings patch as readily as from the UI, so one
+ * junk entry must never take the library — or the New session screen — down.
+ * An entry with no text is dropped: a prompt that prefills nothing is not a
+ * prompt. Ids fall back to a POSITIONAL default so migrating the same file
+ * twice yields the same library instead of renumbering it.
+ */
+function savedPrompts(raw: unknown): SavedPrompt[] {
+  if (!Array.isArray(raw)) return []
+  const out: SavedPrompt[] = []
+  raw.forEach((entry, i) => {
+    if (!entry || typeof entry !== 'object') return
+    const p = entry as Record<string, unknown>
+    if (typeof p.text !== 'string' || !p.text.trim()) return
+    out.push({
+      id: typeof p.id === 'string' && p.id.trim() ? p.id.trim() : `prompt-${i}`,
+      name: typeof p.name === 'string' && p.name.trim() ? p.name.trim() : `Prompt ${i + 1}`,
+      text: p.text,
+    })
+  })
+  return out
 }
 
 /**
@@ -374,6 +401,7 @@ export function migrate(raw: unknown): Settings {
       .filter((p: unknown): p is PinnedPanel => !!p && isHttpUrl((p as PinnedPanel).url))
       .map((p: PinnedPanel) => ({ label: String(p.label ?? p.url), url: String(p.url) }))
   }
+  s.savedPrompts = savedPrompts(r.savedPrompts)
   if (typeof r.openrouterApiKey === 'string') s.openrouterApiKey = r.openrouterApiKey
   if (typeof r.openaiCompatApiKey === 'string') s.openaiCompatApiKey = r.openaiCompatApiKey
   if (typeof r.allowRepoExtensions === 'boolean') s.allowRepoExtensions = r.allowRepoExtensions
@@ -580,6 +608,13 @@ export function mergeSettingsPatch(cur: Settings, patch: SettingsPatch): Setting
     // Normalized on the way in: a patch can arrive from a shell-built CLI call,
     // and an unknown id persisted here would read as a flag nothing gates on.
     experiments: { ...cur.experiments, ...normalizeExperiments(experiments) },
+    // The library replaces wholesale (it is a list the UI owns end to end), but
+    // it is validated here too — same reason as pinnedPanels: an agent writes
+    // settings through this path, so "the user typed it" is not a trust argument.
+    savedPrompts:
+      scalarPatch.savedPrompts === undefined
+        ? cur.savedPrompts
+        : savedPrompts(scalarPatch.savedPrompts),
   }
 }
 

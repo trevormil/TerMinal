@@ -128,6 +128,12 @@ export type RemoteHost = {
 
 export type PinnedPanel = { label: string; url: string }
 
+/** One entry of the spawn prompt library — a named block of text the New
+ *  session screen prefills into a new session's input. It lives in settings so
+ *  it is exportable and shared across repos; the last-used *selection* is a
+ *  per-machine renderer pref instead. */
+export type SavedPrompt = { id: string; name: string; text: string }
+
 export type Settings = {
   onboarded: boolean
   projectsDir: string // '' → resolved to your home dir
@@ -153,6 +159,9 @@ export type Settings = {
   runMemoryCap: number
   templateRepo: string // scaffold source
   pinnedPanels: PinnedPanel[] // web dashboards pinned as the Panels tab; [] → tab hidden (personal)
+  /** Named prompts offered by the New session screen's spawn options; [] → the
+   *  built-in prompt and the saved agents are still offered, just no customs. */
+  savedPrompts: SavedPrompt[]
   openrouterApiKey: string // sealed; injected as OPENROUTER_API_KEY for OpenRouter (or-agent) runs. '' → fall back to process env
   openaiCompatApiKey: string // sealed; injected as OPENAI_API_KEY for openai-compat (or-agent) runs. '' → fall back to process env
   /** Allow repo-provided executable surfaces (.TerMinal/widgets.json +
