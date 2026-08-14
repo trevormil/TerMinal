@@ -90,6 +90,8 @@ import { registerCheckpointsIpc } from './ipc/checkpoints'
 import { registerMrsIpc } from './ipc/mrs'
 import { registerDocsIpc } from './ipc/docs'
 import { registerTicketsIpc } from './ipc/tickets'
+import { registerActivityIpc } from './ipc/activity'
+import { registerSettingsIpc } from './ipc/settings'
 import { createBridgeDeps } from './bridge-deps'
 import {
   bindSessionSender,
@@ -116,16 +118,8 @@ import { registerInboxIpc } from './ipc/inbox'
 import { registerRepoTrustDenialIpc } from './ipc/repo-trust-denials'
 import { registerSessionSearchIpc } from './ipc/session-search'
 import { registerStacksIpc } from './ipc/stacks'
-import { fixPath, detectEnv, installGtNotify } from './env'
-import {
-  emitActivity,
-  readActivity,
-  clearActivity,
-  onActivity,
-  startActivityTail,
-  testDesktopAlert,
-} from './events'
-import { testWebhook } from './notify-channels'
+import { fixPath } from './env'
+import { emitActivity, onActivity, startActivityTail } from './events'
 import { readUsage } from './usage'
 import { installStatuslineShim } from './statusline'
 import { listCommandWidgets, runCommand, repoRoot as widgetRepoRoot } from './widgets'
@@ -157,25 +151,16 @@ import {
   knowledgeRagSearch,
   knowledgeRagStatus,
 } from './knowledge-rag'
-import { BUILT_IN_SNIPPETS, listPromptSnippets, savePromptSnippet } from './snippets'
-import {
-  hiddenPresetIds,
-  hidePreset,
-  readPresetPrefs,
-  restorePreset,
-  type PresetKind,
-} from './presets'
+import { hiddenPresetIds } from './presets'
 import { listWorkflowFiles, readWorkflowFile, writeWorkflowFile } from './workflow-files'
 import { listDisabled } from './agents-disabled'
 import { scaffoldProject, type ScaffoldTicketProvider } from './scaffold'
 import {
   readSettings,
-  patchSettings,
   setSettingsSecretStorage,
   syncTelegramSidecar,
   syncSlackSidecar,
 } from './settings'
-import { testSlack } from './slack-mirror'
 import {
   telegramControlEnabled,
   resolvedProjectsDir,
@@ -185,12 +170,6 @@ import {
   resolvedTemplateRepo,
   enginePath,
   resolveEngineModel,
-  classifyProjectsDir,
-  countGitReposOneLevel,
-  pickDensestRoot,
-  CANDIDATE_ROOT_NAMES,
-  type Settings,
-  type SettingsPatch,
 } from './settings'
 import {
   listMonitorsWithStatus,
@@ -208,12 +187,7 @@ import {
   templateCandidates,
   type TemplateSource,
 } from './template'
-import {
-  configureTelegramControl,
-  markTelegramControlEnabled,
-  pollTelegramOnce,
-  testTelegram,
-} from './telegram'
+import { configureTelegramControl, markTelegramControlEnabled, pollTelegramOnce } from './telegram'
 import {
   DEFAULT_AGENTS,
   readAgentRunContexts,
@@ -261,7 +235,6 @@ import {
   sweepStaleCronRuns,
   sweepStaleSessionRuns,
 } from './cron-runs'
-import { clearTerminalScratch, sweepTerminalState } from './run-retention'
 import { bridgeStatus, startBridge, stopBridge } from './bridge/server'
 import { bridgeHosts, ensureIdentity, pairingPayload, rotateToken } from './bridge/identity'
 import { tailscaleSelf } from './bridge/tailscale'
@@ -279,7 +252,7 @@ const openExternalSafe = (url: unknown): void => {
   else console.error('[gt] refused openExternal for non-web URL:', String(url).slice(0, 80))
 }
 import { startAICollectionLoop } from './ai-collectors'
-import { readListenerStatus, setListenerEnabled, startListenerInboxWatcher } from './listeners'
+import { startListenerInboxWatcher } from './listeners'
 import {
   spawnBgTask,
   listBgTasks,
@@ -303,20 +276,11 @@ import {
 import { startLoopListener, noteLoopTurnComplete, noteSingleLoopTurn } from './loop-listener'
 import { readHitl, resolveHitl, removeHitl, markHitlRead, markAllHitlRead } from './hitl'
 import { composeSteps, pipelineLabel } from './pipelines'
-import {
-  remoteAgents,
-  remoteDirs,
-  remoteProbe,
-  remoteProject,
-  remoteRuns,
-  remoteHitl,
-  remoteSettings,
-} from './remote'
+import { remoteAgents, remoteDirs, remoteProject, remoteRuns, remoteHitl } from './remote'
 import { listCursorModels } from './cursor-models'
 import { readFileTail } from './fs-tail'
 import { createCheckpoint } from './checkpoints'
 import { resolveWithinAny } from './path-guard'
-import { maskSettingsSecrets, stripMaskedSecrets } from './settings-mask'
 import { configPath, terminalConfigDir } from './config-dir'
 // `handle` is `ipcMain.handle` bound to the generated channel map, so a handler
 // is checked against the preload key that calls it. Channels migrate one domain
@@ -839,176 +803,6 @@ handle('remote:scaffold', async (_e, hostId: string, name: string, parentDir?: s
   return r
 })
 handle('window:is-fullscreen', () => win?.isFullScreen() ?? false)
-handle('activity:list', () => readActivity())
-// Count-only badge endpoints — the tab badges poll ~1/s while a terminal
-// streams; shipping the full lists over IPC just to count them was ~1MB/s of
-// renderer-side JSON deserialization.
-handle('activity:unseen-count', (_e, since: number, kinds: string[]) => {
-  const hi = new Set(kinds)
-  return readActivity().filter((ev) => ev.ts > since && hi.has(ev.kind)).length
-})
-handle('activity:clear', () => clearActivity())
-handle('env:detect', () => detectEnv())
-handle('env:install-gt-notify', () => installGtNotify())
-handle('telegram:test', () => testTelegram())
-handle('slack:test', () => testSlack())
-// One "send test alert" entry point per outbound channel (Settings → Alerts).
-// `webhookId` picks one destination out of the list; the renderer only holds a
-// mask of the URL, so it names the entry instead of sending the value back.
-handle('alerts:test', (_e, channel: 'telegram' | 'desktop' | 'webhook', webhookId?: string) => {
-  if (channel === 'telegram') return testTelegram()
-  if (channel === 'desktop') return testDesktopAlert()
-  if (channel === 'webhook') {
-    const hook = readSettings().alerts.webhooks.find((w) => w.id === webhookId)
-    if (!hook) return { ok: false, error: 'Save the webhook before testing it.' }
-    return testWebhook(hook.url)
-  }
-  return { ok: false, error: `unknown alert channel: ${channel}` }
-})
-// Secrets are sealed on disk; handing the renderer the decrypted values on
-// every read undoes that. It gets masks plus a `secretsSet` map instead — see
-// settings-mask.ts. Writes still work: only an actual edit is saved.
-handle('settings:get', () => maskSettingsSecrets(readSettings()))
-handle('settings:storage-report', () => sweepTerminalState(undefined, { dryRun: true }))
-handle('settings:storage-reclaim', async () => {
-  const report = await sweepTerminalState(undefined, { dryRun: false })
-  emitActivity(
-    {
-      kind: 'info',
-      title: 'Storage reclaim completed',
-      detail: `${report.reclaimedBytes} bytes reclaimed`,
-    },
-    { notify: false },
-  )
-  return report
-})
-handle('settings:scratch-clear', () => clearTerminalScratch())
-handle('settings:patch', (_e, patch: SettingsPatch) => {
-  const before = readSettings()
-  // The renderer now holds masks where secrets used to be. If one is echoed back
-  // (a form that re-submits every field, say), persisting it would overwrite a
-  // real credential with '••••••••'. Strip those before patching.
-  //
-  // patchSettings THROWS on a corrupt settings.json (it quarantines the file
-  // rather than overwriting real config with defaults). Surface that in the
-  // Activity feed and hand back the unchanged settings — an uncaught throw here
-  // is an unhandled rejection in the renderer and the user sees nothing at all.
-  let next: Settings
-  try {
-    next = patchSettings(stripMaskedSecrets(patch))
-  } catch (e) {
-    emitActivity({
-      kind: 'blocked',
-      title: 'Settings not saved',
-      detail: e instanceof Error ? e.message : String(e),
-    })
-    // Masked for the same reason settings:get is — the renderer must never
-    // receive a real credential back, least of all on the failure path.
-    return maskSettingsSecrets(before)
-  }
-  // react when the AFK-control toggle actually flips
-  if (next.telegram.control !== before.telegram.control) {
-    markTelegramControlEnabled(next.telegram.control).catch((e: unknown) =>
-      console.error('[gt] telegram: applying control toggle failed:', e),
-    )
-    emitActivity({
-      kind: 'info',
-      title: `Telegram control ${next.telegram.control ? 'enabled' : 'disabled'}`,
-      detail: 'Settings updated',
-    })
-  }
-  if (next.telegram.notify !== before.telegram.notify) {
-    emitActivity({
-      kind: 'info',
-      title: `Activity notifications ${next.telegram.notify ? 'enabled' : 'disabled'}`,
-      detail: 'Settings updated',
-    })
-  }
-  // Bind/unbind the mobile bridge the moment the toggle or port changes, so the
-  // listening socket always matches what Settings claims.
-  if (next.bridge.enabled !== before.bridge.enabled || next.bridge.port !== before.bridge.port) {
-    void applyBridgeSetting()
-  }
-  // Mask on the way back out too. The renderer feeds this straight into its
-  // settings state, so returning raw `next` would both leak cleartext secrets
-  // and drop `secretsSet` — making all five secret fields render "not set".
-  return maskSettingsSecrets(next)
-})
-handle('settings:remote-probe', async (_e, hostId: string) => {
-  const host = readSettings().remoteHosts.find((h) => h.id === hostId)
-  if (!host) return { ok: false, error: 'remote host not found', engines: {}, tools: {} }
-  try {
-    const probe = await remoteProbe({
-      hostId: host.id,
-      label: host.label,
-      sshTarget: host.sshTarget,
-      cwd: host.defaultCwd || host.daemon.projectsDir || '~',
-      platform: host.platform,
-    })
-    return {
-      ok: true,
-      cwd: probe.cwd,
-      repoRoot: probe.repoRoot,
-      engines: probe.engines,
-      tools: probe.tools,
-    }
-  } catch (e) {
-    return { ok: false, error: (e as Error).message, engines: {}, tools: {} }
-  }
-})
-// Real-fs bindings for the pure projects-dir discovery helpers in settings.ts.
-function projectsDirFs() {
-  return {
-    hasGitDir: (d: string) => existsSync(join(d, '.git')),
-    listChildren: (d: string) => readdirSync(d),
-    resolveHome: () => homedir(),
-    candidateRoots: () => CANDIDATE_ROOT_NAMES.map((n) => (n ? join(homedir(), n) : homedir())),
-  }
-}
-handle('settings:validate-projects-dir', async (_e, input: { dir?: string; hostId?: string }) => {
-  const dir = input?.dir || ''
-  if (input?.hostId) {
-    const remote = remoteFromHostId(input.hostId, dir || undefined)
-    if (!remote) return { ok: false, reason: 'error', dir, message: 'remote host not found' }
-    return remoteSettings.validateProjectsDir(remote, dir).catch((e) => ({
-      ok: false,
-      reason: 'error',
-      dir,
-      message: (e as Error).message,
-    }))
-  }
-  return classifyProjectsDir(dir, projectsDirFs())
-})
-handle('settings:suggest-projects-dir', () => {
-  const fs = projectsDirFs()
-  const denser = pickDensestRoot(fs.candidateRoots(), (d) => countGitReposOneLevel(d, fs))
-  return denser ? { dir: denser.root, repoCount: denser.count } : null
-})
-handle('snippets:list', (_e, root?: string) => listPromptSnippets(repoRootOf(root || cur().cwd)))
-handle('snippets:save', (_e, input: Parameters<typeof savePromptSnippet>[0]) => {
-  const root = input.repoRoot ? repoRootOf(input.repoRoot) : repoRootOf(cur().cwd)
-  const r = savePromptSnippet({ ...input, repoRoot: root })
-  if ('ok' in r) {
-    emitActivity({
-      kind: 'info',
-      title: `Snippet saved · ${r.snippet.title}`,
-      detail: input.scope === 'global' ? 'Global' : repoLabelFor(root || cur().cwd),
-      repo: input.scope === 'repo' ? repoLabelFor(root || cur().cwd) : undefined,
-      repoRoot: input.scope === 'repo' ? root : undefined,
-      sessionId: cur().sessionId,
-    })
-  }
-  return r
-})
-handle('presets:get', () => ({
-  prefs: readPresetPrefs(),
-  catalog: {
-    snippets: BUILT_IN_SNIPPETS.map((s) => ({ id: s.id, title: s.title, group: s.group })),
-    agents: DEFAULT_AGENTS.map((a) => ({ id: a.id, title: a.title, group: 'Agents' })),
-  },
-}))
-handle('presets:hide', (_e, kind: PresetKind, id: string) => hidePreset(kind, id))
-handle('presets:restore', (_e, kind: PresetKind, id?: string) => restorePreset(kind, id))
 
 async function remoteAgentCatalog(
   remote: NonNullable<ReturnType<typeof curRemote>>,
@@ -1209,11 +1003,6 @@ handle('hosts:health', async (_e, hostId: string) => {
   const host = readSettings().remoteHosts.find((h) => h.id === hostId)
   if (!host) return { reachable: false, hint: `unknown host: ${hostId}` }
   return checkHostHealth(host.sshTarget)
-})
-handle('listeners:status', () => readListenerStatus())
-handle('listeners:toggle', (_e, enabled: boolean) => {
-  setListenerEnabled(enabled)
-  return readListenerStatus()
 })
 // Global HITL inbox (cross-repo). Filing fires a blocked notification (TG + macOS).
 handle('hitl:list', () => readHitl())
@@ -1966,6 +1755,11 @@ registerTicketsIpc({
   sessionId: () => cur().sessionId,
   remoteEngineModel,
 })
+// The Activity feed, env probe and the per-channel test-alert buttons.
+registerActivityIpc()
+// Settings, prompt snippets and presets. `applyBridgeSetting` stays owned here
+// because startup calls it too.
+registerSettingsIpc({ cur, remoteFromHostId, repoLabelFor, applyBridgeSetting })
 
 // ---- my workflow (local Claude/Codex configuration) ----
 handle('workflow:list', (_e, rel: string) => listWorkflowFiles(rel || ''))
