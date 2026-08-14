@@ -769,24 +769,24 @@ async function applyBridgeSetting(): Promise<void> {
   })
 }
 
-ipcMain.handle('bridge:status', () => {
+handle('bridge:status', () => {
   const cfg = readSettings().bridge
   const status = bridgeStatus()
   return { ...status, enabled: cfg.enabled, port: cfg.enabled ? status.port : cfg.port }
 })
 // The pairing payload carries the bearer token, so it is only ever produced on
 // demand for the Settings pane — never returned from a bridge HTTP route.
-ipcMain.handle('bridge:pairing', () => {
+handle('bridge:pairing', () => {
   const cfg = readSettings().bridge
   const identity = ensureIdentity()
   return pairingPayload({ port: cfg.port, identity })
 })
-ipcMain.handle('bridge:push-status', () => ({ ...pushStatus(), ...apnsPaths() }))
-ipcMain.handle('bridge:tailscale', async () => {
+handle('bridge:push-status', () => ({ ...pushStatus(), ...apnsPaths() }))
+handle('bridge:tailscale', async () => {
   const self = await tailscaleSelf()
   return self ? { available: true, dnsName: self.dnsName, login: self.login } : { available: false }
 })
-ipcMain.handle('bridge:rotate-token', () => {
+handle('bridge:rotate-token', () => {
   const cfg = readSettings().bridge
   const identity = rotateToken()
   emitActivity({
@@ -1681,17 +1681,17 @@ ipcMain.handle('git:working-file-patch', (_e, rel: string) => {
 ipcMain.handle('git:compare-files-patch', (_e, a: string, b: string) => {
   return activeDaemon().gitCompareFilesPatch(a, b)
 })
-ipcMain.handle('checkpoints:list', () => listCheckpoints(activeDaemon().repoRoot()))
-ipcMain.handle('checkpoints:create', (_e, label: string) =>
+handle('checkpoints:list', () => listCheckpoints(activeDaemon().repoRoot()))
+handle('checkpoints:create', (_e, label: string) =>
   createCheckpoint(activeDaemon().repoRoot(), label || 'manual checkpoint'),
 )
-ipcMain.handle('checkpoints:restore', (_e, sha: string) =>
+handle('checkpoints:restore', (_e, sha: string) =>
   restoreCheckpoint(activeDaemon().repoRoot(), sha),
 )
-ipcMain.handle('checkpoints:ranges', (_e, sha: string) =>
+handle('checkpoints:ranges', (_e, sha: string) =>
   checkpointChangedRanges(activeDaemon().repoRoot(), sha),
 )
-ipcMain.handle('checkpoints:review-base', (_e, rel: string, buffer: string) =>
+handle('checkpoints:review-base', (_e, rel: string, buffer: string) =>
   reviewBaseFor(activeDaemon().repoRoot(), rel, buffer),
 )
 ipcMain.handle('git:working-structural-diff', (_e, path: string, width?: number) => {
@@ -1704,7 +1704,7 @@ ipcMain.handle('difft:available', () => difftOnPath())
 // Cursor's live model catalog (incl. the `auto` entry point for Cursor
 // Router). Empty when the CLI is missing or not logged in — the renderer then
 // keeps the static catalog.
-ipcMain.handle('cursor:models', () => listCursorModels())
+handle('cursor:models', () => listCursorModels())
 ipcMain.handle('digest:get', (_e, iid: number, short?: string) => {
   return activeDaemon().digestGet(iid, short)
 })
@@ -2181,9 +2181,9 @@ ipcMain.handle('open:in-editor', (_e, path?: string) => {
   }
   openInApp(resolvedEditorApp(), target, () => shell.openPath(target))
 })
-ipcMain.handle('clipboard:write', (_e, text: string) => clipboard.writeText(text))
-ipcMain.handle('clipboard:read', () => clipboard.readText())
-ipcMain.handle('clipboard:imageToFile', () => {
+handle('clipboard:write', (_e, text: string) => clipboard.writeText(text))
+handle('clipboard:read', () => clipboard.readText())
+handle('clipboard:imageToFile', () => {
   const img = clipboard.readImage()
   if (img.isEmpty()) return null
   const dir = join(tmpdir(), 'terminal-pastes')
