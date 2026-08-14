@@ -796,7 +796,7 @@ handle('bridge:rotate-token', () => {
   })
   return pairingPayload({ port: cfg.port, identity })
 })
-ipcMain.handle('dialog:pickDir', async () => {
+handle('dialog:pickDir', async () => {
   const r = await dialog.showOpenDialog(win!, {
     properties: ['openDirectory', 'createDirectory'],
     defaultPath: homedir(),
@@ -1327,14 +1327,14 @@ ipcMain.on('pty:resize', (_e, key: string, size: { cols: number; rows: number })
 })
 
 // ---- data IPC (plugin pollers; all keyed to the attached session) ----
-ipcMain.handle('data:transcript', () => readTranscriptStats(cur().sessionId))
-ipcMain.handle('data:harness-tdd', () => readHarnessTdd(cur().cwd))
-ipcMain.handle('data:usage', () => readUsage(cur().sessionId))
-ipcMain.handle('data:git-status', () => {
+handle('data:transcript', () => readTranscriptStats(cur().sessionId))
+handle('data:harness-tdd', () => readHarnessTdd(cur().cwd))
+handle('data:usage', () => readUsage(cur().sessionId))
+handle('data:git-status', () => {
   return activeDaemon().gitStatus()
 })
-ipcMain.handle('data:session-tasks', () => readSessionTasks(cur().sessionId))
-ipcMain.handle('data:meta', () => ({ ...cur(), claude: enginePath('claude') }))
+handle('data:session-tasks', () => readSessionTasks(cur().sessionId))
+handle('data:meta', () => ({ ...cur(), claude: enginePath('claude') }))
 
 // ---- command widgets + custom tabs (declarative, per-repo extensible) ------
 //
@@ -1463,10 +1463,10 @@ ipcMain.handle('scratch:dir', () => {
 ipcMain.handle('tab:context', async () => {
   return activeDaemon().context(cur().sessionId)
 })
-ipcMain.handle('docs:list', () => {
+handle('docs:list', () => {
   return activeDaemon().docsList()
 })
-ipcMain.handle('docs:get', (_e, relPath: string) => {
+handle('docs:get', (_e, relPath: string) => {
   return activeDaemon().docsGet(relPath)
 })
 ipcMain.handle('sessions:project-list', () => {
@@ -1700,18 +1700,18 @@ ipcMain.handle('git:working-structural-diff', (_e, path: string, width?: number)
 handle('mrs:structural-diff', (_e, iid: number, path: string, width?: number) => {
   return activeDaemon().mrStructuralDiff(iid, path, width)
 })
-ipcMain.handle('difft:available', () => difftOnPath())
+handle('difft:available', () => difftOnPath())
 // Cursor's live model catalog (incl. the `auto` entry point for Cursor
 // Router). Empty when the CLI is missing or not logged in — the renderer then
 // keeps the static catalog.
 handle('cursor:models', () => listCursorModels())
-ipcMain.handle('digest:get', (_e, iid: number, short?: string) => {
+handle('digest:get', (_e, iid: number, short?: string) => {
   return activeDaemon().digestGet(iid, short)
 })
-ipcMain.handle('digest:run', (_e, iid: number) => {
+handle('digest:run', (_e, iid: number) => {
   return activeDaemon().digestRun(iid)
 })
-ipcMain.handle('digest:status', (_e, iid: number) => {
+handle('digest:status', (_e, iid: number) => {
   return activeDaemon().digestRunStatus(iid)
 })
 handle('mrs:ci', (_e, iid: number) => {
@@ -1780,7 +1780,7 @@ ipcMain.handle('mcp:install', () => {
 // truncated version of what the user actually asked Claude to do, instead of
 // the bare "S1"/"S2" ordinal. The firstUserText is already extracted +
 // capped to 140 chars by parseTranscriptFile.
-ipcMain.handle('data:first-prompt', (_e, sessionId: string) => {
+handle('data:first-prompt', (_e, sessionId: string) => {
   if (!sessionId) return ''
   return readTranscriptStats(sessionId).firstUserText || ''
 })
