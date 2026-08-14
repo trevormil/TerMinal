@@ -15,9 +15,12 @@ export default tseslint.config(
       // GENERATED, and deliberately byte-identical to the copies in bin/ —
       // which eslint DOES lint, so the block itself is still covered.
       'src/runner/repo-state-block.js',
-      // BUILT from src/runner (which is linted). Linting a bundle reports on
-      // the bundler.
+      // BUILT from typed sources (which are linted). Linting a bundle reports
+      // on the bundler.
       'bin/terminal-cron',
+      'bin/terminal-monitor',
+      'bin/terminal-cli',
+      'bin/terminal-mcp-server',
     ],
   },
   {
