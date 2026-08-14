@@ -8,7 +8,7 @@ import {
   Folder,
   FolderOpen,
 } from 'lucide-react'
-import { Badge } from '../../components/ui'
+import { Badge, Input } from '../../components/ui'
 import { Markdown } from '../../components/Markdown'
 import { onNavigate } from '../../lib/nav'
 import type { Tab, TabContext, DocsTree, DocEntry, DocCategory } from '../../lib/types'
@@ -175,11 +175,11 @@ function DocsTab({ ctx }: { ctx: TabContext }) {
         </div>
         <div className="shrink-0 border-b border-[var(--gt-border)] p-2">
           <div className="mb-2"></div>
-          <input
+          <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Filter…"
-            className="w-full rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[11.5px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
+            className="w-full"
           />
         </div>
         <nav className="min-h-0 flex-1 overflow-y-auto p-1.5">

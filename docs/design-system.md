@@ -184,6 +184,54 @@ a tab strip that had to be extracted into `DetailTabs` because two copies had
 already drifted, and a duplicate agent-entry shape that silently dropped six
 fields on save. If you need a variant, add a prop.
 
+### [7.1] Interactive primitives
+
+The table above is the *display* half. The interactive half lives in the same
+file and covers the controls the renderer was spelling by hand — a survey of it
+counted ~600 `<button>`, ~122 `<input>` and ~38 `<select>` elements, plus 17
+separate `fixed inset-0` overlays.
+
+| Component | Use |
+|---|---|
+| `Button` | `variant` × `size`, plus `busy` and `icon` |
+| `IconButton` | a button whose whole content is one icon; `label` is required |
+| `Input` / `Select` | a text field / a dropdown |
+| `Toolbar` | a row of controls, optionally with the rule under a header bar |
+| `Modal` | any dialog — see below |
+
+**The variants are a description, not a proposal.** `primary` / `subtle` /
+`ghost` / `danger` were read off the dominant className clusters that already
+existed (`hover:bg-white/5` — 125 uses → `ghost`; `bg-black/30` — 74 → the field
+fill; `bg-[var(--gt-accent)]/10` — 38 → `primary`), so migrating a call site
+converges it on the majority spelling rather than introducing a new one. The
+class vocabulary and the survey counts live in `src/renderer/src/lib/controls.ts`.
+
+**`busy` is not a spinner prop.** It disables the control *and* sets
+`aria-busy`, together. A pending action that still takes clicks fires the
+request twice; one that goes inert with no announcement tells a screen-reader
+user nothing happened.
+
+**`Modal` owns the whole dialog contract**, because the 17 hand-rolled overlays
+each got a different subset of it right: portal, backdrop click, Escape, focus
+move-in and restore-on-close, a Tab trap, `aria-modal` + `aria-labelledby`, and
+a nesting-safe body scroll lock. A dialog that never moves focus leaves a
+keyboard user tabbing through the page behind the backdrop — that is an
+accessibility defect, not a style preference. Never hand-roll `fixed inset-0`.
+
+**Overriding a primitive is safe.** `className` goes through `mergeClasses`,
+which *removes* the base class an override conflicts with. This matters because
+Tailwind resolves two utilities that set the same property by stylesheet order,
+not by class-list order — so plain concatenation makes `<Input
+className="text-[13px]" />` a coin flip. Overrides are scoped by property and by
+variant: a font size never evicts a text colour, and `hover:bg-*` never fights
+`bg-*`.
+
+**What is deliberately *not* a variant.** Segmented toggles (a selected pill in
+a bordered group), file-tree rows, and result rows are their own clusters. They
+are not one of the four button variants, and forcing them into `Button` would
+mean overriding more than it supplies. Leave them until they earn a primitive of
+their own.
+
 ---
 
 ## [8] Enforcement
