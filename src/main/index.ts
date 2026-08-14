@@ -1,28 +1,7 @@
-import {
-  app,
-  shell,
-  BrowserWindow,
-  ipcMain,
-  dialog,
-  clipboard,
-  Menu,
-  safeStorage,
-  session,
-} from 'electron'
+import { app, BrowserWindow, ipcMain, Menu, safeStorage, session } from 'electron'
 import { join, basename, dirname } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { homedir, tmpdir } from 'node:os'
-import { randomUUID } from 'node:crypto'
-import {
-  statSync,
-  existsSync,
-  readdirSync,
-  readFileSync,
-  writeFileSync,
-  openSync,
-  mkdirSync,
-} from 'node:fs'
-import { spawn as cpSpawn } from 'node:child_process'
+import { statSync, existsSync } from 'node:fs'
 
 // The main bundle is ESM (package.json "type": "module"), so __dirname doesn't
 // exist — derive the module dir the ESM-canonical way or the window never opens.
@@ -90,6 +69,12 @@ import { registerWidgetsIpc } from './ipc/widgets'
 import { registerBgTasksIpc } from './ipc/bg-tasks'
 import { registerLoopsIpc } from './ipc/loops'
 import { registerAgentViewIpc } from './ipc/agentview'
+import { registerSystemIpc } from './ipc/system'
+import { registerMaintenanceIpc } from './ipc/maintenance'
+import { registerWorkspaceIpc } from './ipc/workspace'
+import { registerKnowledgeIpc } from './ipc/knowledge'
+import { registerWorkflowIpc } from './ipc/workflow'
+import { openExternalSafe } from './open-external'
 import { createBridgeDeps } from './bridge-deps'
 import {
   bindSessionSender,
@@ -123,24 +108,7 @@ import { repoRootOf, repoForCwd } from './repo'
 import { orderFleetSnapshotEntries, restoreFleetSnapshotEntryOrder } from './fleet-snapshot'
 import { checkForUpdate } from './update-check'
 import { onDigestEvent } from './digest-run'
-import { type NotesScope } from './notes'
-import {
-  fetchKnowledgePreview,
-  readKnowledge,
-  writeKnowledge,
-  type KnowledgeScope,
-  type KnowledgeBase,
-} from './knowledge'
-import {
-  knowledgeRagAddDocument,
-  knowledgeRagAddUrl,
-  knowledgeRagReindex,
-  knowledgeRagSearch,
-  knowledgeRagStatus,
-} from './knowledge-rag'
 import { hiddenPresetIds } from './presets'
-import { listWorkflowFiles, readWorkflowFile, writeWorkflowFile } from './workflow-files'
-import { listDisabled } from './agents-disabled'
 import { scaffoldProject, type ScaffoldTicketProvider } from './scaffold'
 import {
   readSettings,
@@ -148,18 +116,8 @@ import {
   syncTelegramSidecar,
   syncSlackSidecar,
 } from './settings'
-import {
-  telegramControlEnabled,
-  resolvedProjectsDir,
-  resolvedWorktreesDir,
-  resolvedEditorApp,
-  resolvedBrowserApp,
-  resolvedTemplateRepo,
-  resolveEngineModel,
-} from './settings'
+import { telegramControlEnabled, resolvedTemplateRepo, resolveEngineModel } from './settings'
 import { startMonitorLivenessWatch } from './monitor-liveness-runtime'
-import { classifyBootstrapStatus } from './bootstrap'
-import { bakedTemplateSha, resolveTemplateSha, writeBootstrapStamp } from './bootstrap-stamp'
 import {
   cloneTemplateToTmp,
   pickTemplateSource,
@@ -170,7 +128,6 @@ import { configureTelegramControl, markTelegramControlEnabled, pollTelegramOnce 
 import {
   DEFAULT_AGENTS,
   readAgentRunContexts,
-  listRuns,
   onAgentEvent,
   loadPersistedRuns,
   type Agent,
@@ -178,14 +135,7 @@ import {
   killAllAgentRuns,
 } from './agents'
 import { readSchedules } from './schedules'
-import { installTmPlugin, tmPluginStatus } from './plugin-install'
-import { migrateRepoState, pendingMigration, sidecarGitStatus } from './repo-state-migrate'
-import {
-  legacyPluginCopies,
-  legacySeedCandidates,
-  sweepLegacyPluginCopies,
-  sweepLegacySeeds,
-} from './legacy-sweep'
+import { installTmPlugin } from './plugin-install'
 import {
   installRunner,
   installCli,
@@ -198,12 +148,7 @@ import {
 } from './launchd'
 import { reconcileHosts } from './schedule-router'
 import { registerMcpEverywhere } from './mcp-register'
-import {
-  flushAllSessionRunLogs,
-  readCronRuns,
-  sweepStaleCronRuns,
-  sweepStaleSessionRuns,
-} from './cron-runs'
+import { flushAllSessionRunLogs, sweepStaleCronRuns, sweepStaleSessionRuns } from './cron-runs'
 import { bridgeStatus, startBridge, stopBridge } from './bridge/server'
 import { bridgeHosts, ensureIdentity, pairingPayload, rotateToken } from './bridge/identity'
 import { tailscaleSelf } from './bridge/tailscale'
@@ -211,13 +156,6 @@ import { apnsPaths, pushStatus } from './bridge/push'
 import { isExternallyOpenableUrl } from '../shared/url-safety'
 import { appCsp, isAppUrl, navigationDecision } from './window-guard'
 
-// Only forward web/mail URLs to the OS. Non-http(s) schemes (file://, custom
-// protocols) reaching shell.openExternal from rendered content is a known
-// Electron footgun — see url-safety.ts.
-const openExternalSafe = (url: unknown): void => {
-  if (isExternallyOpenableUrl(url)) void shell.openExternal(url)
-  else console.error('[gt] refused openExternal for non-web URL:', String(url).slice(0, 80))
-}
 import { startAICollectionLoop } from './ai-collectors'
 import { startListenerInboxWatcher } from './listeners'
 import { startBgWatcher } from './bg-tasks'
@@ -225,10 +163,7 @@ import { startLoopWatcher } from './loops'
 import { startLoopListener, noteLoopTurnComplete, noteSingleLoopTurn } from './loop-listener'
 import { composeSteps, pipelineLabel } from './pipelines'
 import { remoteAgents, remoteDirs, remoteProject } from './remote'
-import { listCursorModels } from './cursor-models'
 import { createCheckpoint } from './checkpoints'
-import { resolveWithinAny } from './path-guard'
-import { configPath, terminalConfigDir } from './config-dir'
 // `handle` is `ipcMain.handle` bound to the generated channel map, so a handler
 // is checked against the preload key that calls it. Channels migrate one domain
 // at a time; the rest still use `ipcMain.handle` directly.
@@ -691,13 +626,6 @@ handle('bridge:rotate-token', () => {
   })
   return pairingPayload({ port: cfg.port, identity })
 })
-handle('dialog:pickDir', async () => {
-  const r = await dialog.showOpenDialog(win!, {
-    properties: ['openDirectory', 'createDirectory'],
-    defaultPath: homedir(),
-  })
-  return r.canceled ? null : r.filePaths[0]
-})
 handle(
   'project:scaffold',
   (_e, name: string, parentDir?: string, ticketProvider?: ScaffoldTicketProvider) => {
@@ -749,7 +677,6 @@ handle('remote:scaffold', async (_e, hostId: string, name: string, parentDir?: s
   )
   return r
 })
-handle('window:is-fullscreen', () => win?.isFullScreen() ?? false)
 
 async function remoteAgentCatalog(
   remote: NonNullable<ReturnType<typeof curRemote>>,
@@ -835,140 +762,11 @@ ipcMain.on('pty:resize', (_e, key: string, size: { cols: number; rows: number })
   }
 })
 
-// ---- scratch workspace (throwaway, repo-less sessions) ----
-// One app-owned dir under the existing TerMinal config root — persistent
-// (unlike /tmp), out of the way (unlike ~), and not a git repo so repo-scoped
-// tabs/widgets stay off. All scratch sessions share it → one "scratch"
-// workspace grouping.
-handle('scratch:dir', () => {
-  const dir = configPath('scratch')
-  try {
-    mkdirSync(dir, { recursive: true })
-  } catch {
-    /* already exists / race */
-  }
-  return dir
-})
-
 // ---- tabs: repo context + tickets/MRs (scoped to the session's repo) ----
 handle('sessions:project-list', () => {
   return activeDaemon().sessionsList()
 })
 handle('sessions:project-get', (_e, slug: string) => activeDaemon().sessionGet(slug))
-// Cursor's live model catalog (incl. the `auto` entry point for Cursor
-// Router). Empty when the CLI is missing or not logged in — the renderer then
-// keeps the static catalog.
-handle('cursor:models', () => listCursorModels())
-handle('open:external', (_e, url: string) => openExternalSafe(url))
-// Reveal ~/.config/TerMinal/ in Finder. Power-user QoL for editing
-// schedules.json, settings.json, or per-(repo, agent) state sidecars by hand.
-handle('open:config-dir', () => shell.openPath(terminalConfigDir()))
-
-// Install the MCP server entry into ~/.claude/mcp.json (and ~/.codex's
-// equivalent if it exists). Read-only, stdio transport. Idempotent —
-// re-running just updates the binary path.
-handle('mcp:install', () => {
-  const binPath = configPath('bin', 'terminal-mcp-server')
-  if (!existsSync(binPath)) {
-    return { error: `terminal-mcp-server not installed at ${binPath}` }
-  }
-  const installed: string[] = []
-  // Claude Code: ~/.claude/mcp.json (per Anthropic CLI docs)
-  try {
-    const claudeMcp = join(homedir(), '.claude', 'mcp.json')
-    let cfg: any = {}
-    if (existsSync(claudeMcp)) {
-      try {
-        cfg = JSON.parse(readFileSync(claudeMcp, 'utf8'))
-      } catch (e) {
-        // Was `cfg = {}`, which then overwrote the file — DESTROYING every other
-        // tool's MCP registration — and still reported {ok: true}. A registry we
-        // cannot parse is a registry we must not rewrite.
-        return {
-          error:
-            `${claudeMcp} is not valid JSON (${(e as Error).message}). ` +
-            `Refusing to overwrite it — fix or move the file, then install again.`,
-        }
-      }
-      if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) {
-        return {
-          error: `${claudeMcp} is not a JSON object. Refusing to overwrite it.`,
-        }
-      }
-    }
-    cfg.mcpServers ??= {}
-    cfg.mcpServers['terminal-harness'] = {
-      command: binPath,
-      args: [],
-    }
-    mkdirSync(dirname(claudeMcp), { recursive: true })
-    writeFileSync(claudeMcp, JSON.stringify(cfg, null, 2))
-    installed.push('Claude Code (~/.claude/mcp.json)')
-  } catch (e) {
-    return { error: `failed to write Claude config: ${(e as Error).message}` }
-  }
-  return { ok: true, installed }
-})
-
-// Workspace bootstrap helpers.
-// "Bootstrapped" === the project-template repo data + Codex mirror are present
-// (BOOTSTRAP_MARKERS in bootstrap.ts; Claude skills come from the global tm
-// plugin, not the repo). Used by the in-session banner.
-
-handle('workspace:is-bootstrapped', (_e, repoRoot: string) => {
-  const remote = curRemote()
-  if (remote)
-    return remoteProject.bootstrapStatus(remote).catch((e) => ({
-      state: 'none',
-      bootstrapped: false,
-      missing: [],
-      message: (e as Error).message,
-    }))
-  if (!repoRoot) return { bootstrapped: true, state: 'full', missing: [], message: '' }
-  return classifyBootstrapStatus(repoRoot, (rel) => existsSync(join(repoRoot, rel)))
-})
-// Run project-template/bootstrap.sh against a repo. The script is idempotent:
-// keeps repo data, writes `<name>.workflow` sidecars on conflict, and moves
-// legacy per-repo Claude machinery to .claude/pre-tm-backup/ (the tm plugin
-// serves it now). Streams nothing — we just wait and return ok/error.
-handle('workspace:bootstrap', async (_e, repoRoot: string) => {
-  const remote = curRemote()
-  if (remote) {
-    const templateRepo = remote.daemon?.templateRepo || resolvedTemplateRepo()
-    return remoteProject
-      .bootstrap(remote, templateRepo)
-      .catch((e) => ({ error: (e as Error).message }))
-  }
-  if (!repoRoot) return { error: 'no repoRoot' }
-  const src = projectTemplateSource('bootstrap.sh')
-  if ('error' in src) return { error: src.error }
-  const script = join(src.dir, 'bootstrap.sh')
-  // Template provenance (ticket 0045) — resolved BEFORE the spawn because
-  // src.cleanup?.() may delete a tmp clone on exit.
-  const templateSha = resolveTemplateSha(src.dir, bakedTemplateSha())
-  return new Promise<{ ok: true; templateSha?: string } | { error: string }>((resolve) => {
-    const p = cpSpawn('bash', [script, repoRoot], { stdio: 'pipe' })
-    let stderr = ''
-    p.stderr.on('data', (d) => (stderr += d.toString()))
-    p.on('exit', (code) => {
-      src.cleanup?.()
-      if (code === 0) {
-        // Best-effort: a stamp failure shouldn't fail a completed bootstrap.
-        try {
-          writeBootstrapStamp(repoRoot, { sha: templateSha, stampedAt: new Date().toISOString() })
-        } catch {
-          /* repo stays unstamped */
-        }
-        resolve({ ok: true, templateSha })
-      } else
-        resolve({ error: `bootstrap exited ${code}${stderr ? `: ${stderr.slice(0, 200)}` : ''}` })
-    })
-    p.on('error', (e) => {
-      src.cleanup?.()
-      resolve({ error: e.message })
-    })
-  })
-})
 
 // Installed-build update check (update-check.ts): compares the baked build sha
 // against origin/main via the local source checkout (exact, fork-aware), else
@@ -990,120 +788,6 @@ function runUpdateCheck() {
     repoSlug: __BUILD_REPO_SLUG__ || undefined,
   })
 }
-handle('update:check', () => runUpdateCheck())
-
-// Global tm plugin status/sync for the Settings panel. Sync re-copies the
-// bundled plugin and repairs the ~/.claude/skills/tm symlink.
-handle('plugin:status', () => tmPluginStatus())
-
-// Per-project sidecar: where this repo's tickets/reviews/sessions live, how
-// many files are still sitting in the repo, and the one-time move.
-handle('repoState:status', (_e, repoRoot?: string) => {
-  const root = repoRoot || cur().cwd
-  const pluginDir = join(terminalConfigDir(), 'plugin')
-  return {
-    ...sidecarGitStatus(root),
-    pending: pendingMigration(root),
-    legacyCopies:
-      legacyPluginCopies(root, pluginDir).length + legacySeedCandidates(root, pluginDir).length,
-  }
-})
-// One-time cleanup: state files → sidecar, plus everything older bootstraps
-// seeded per-repo that is global now — plugin-served skill/bin/hook copies,
-// the Codex stop hook, seed artifacts, the layout marker, the forge selector
-// (preserved into the sidecar), and unmodified default script agents. All
-// banked in .claude/pre-tm-backup, never deleted.
-handle('repoState:migrate', (_e, repoRoot?: string) => {
-  const root = repoRoot || cur().cwd
-  const pluginDir = join(terminalConfigDir(), 'plugin')
-  const r = migrateRepoState(root)
-  const swept = r.error
-    ? 0
-    : sweepLegacyPluginCopies(root, pluginDir).moved + sweepLegacySeeds(root, pluginDir).moved
-  return { ...r, sweptCopies: swept }
-})
-handle('plugin:sync', () => installTmPlugin(tmPluginSrcDir()))
-
-// In-app rebuild. Spawns bin/release fully detached and routes its output to
-// a log file the renderer can tail. The release script kills the running
-// TerMinal mid-flow (so it can replace /Applications/TerMinal.app); the
-// detached child outlives the parent and finishes the install + relaunch.
-//
-// Why detached + own process group: bin/release does `pkill -f
-// "/Applications/TerMinal.app/Contents/MacOS"` which would otherwise kill the
-// build itself. Putting the child in its own group + ignoring stdio + unref()
-// makes it a true daemon — the harness exits cleanly and the script lands a
-// fresh app in /Applications a minute or so later.
-const RELEASE_LOG = (): string => configPath('release.log')
-let releasePid: number | null = null
-handle('release:start', () => {
-  if (releasePid) {
-    try {
-      process.kill(releasePid, 0) // throws if process is gone
-      return { error: 'release already running' }
-    } catch {
-      releasePid = null
-    }
-  }
-  // Resolve the repo root from this app's bundle. In dev this is the source
-  // tree; in the packaged build there's no bin/release (packaged users would
-  // need the source checkout). Refuse cleanly if it's missing.
-  // We probe a few candidates: GT_REPO env var (dev override) → process.cwd()
-  // → __dirname climb-up. This is enough for the dev / source-installed
-  // workflow TerMinal actually runs in.
-  const repoRoot = sourceCheckoutRoot(join('bin', 'release'))
-  if (!repoRoot) {
-    return {
-      error:
-        'bin/release not found — set GT_TERMINAL_REPO to your source checkout, or run from the repo directory',
-    }
-  }
-  // Truncate the log so each rebuild starts fresh.
-  try {
-    writeFileSync(
-      RELEASE_LOG(),
-      `▸ rebuild started ${new Date().toISOString()}\n▸ repo: ${repoRoot}\n`,
-    )
-  } catch {
-    /* best-effort */
-  }
-  const out = openSync(RELEASE_LOG(), 'a')
-  const child = cpSpawn('bin/release', [], {
-    cwd: repoRoot,
-    detached: true,
-    stdio: ['ignore', out, out],
-    // TERMINAL_SELF_UPDATE arms bin/release's provenance gate (F-14). This is
-    // the ONE path where the operator clicks a button and trusts whatever comes
-    // out, so the build must come from a commit that is actually published —
-    // not from a dirty tree or a local-only commit that something else wrote.
-    // Signing raises the stakes rather than lowering them: an ad-hoc build
-    // announced itself with a Gatekeeper warning, a Developer ID build will not.
-    env: { ...process.env, TERMINAL_SELF_UPDATE: '1' },
-  })
-  child.unref()
-  releasePid = child.pid || null
-  emitActivity(
-    {
-      kind: 'check',
-      title: 'Release started',
-      detail: repoRoot,
-      repo: repoLabelFor(repoRoot),
-      repoRoot,
-    },
-    { notify: false },
-  )
-  return { ok: true, pid: releasePid, log: RELEASE_LOG(), repoRoot }
-})
-handle('release:tail', () => {
-  try {
-    return readFileSync(RELEASE_LOG(), 'utf8')
-  } catch {
-    return ''
-  }
-})
-// Harness self-status. Meta-observability snapshot so the operator can see
-// how the harness itself is doing without ls-ing config dirs. Cheap: one
-// directory listing + the in-memory run map.
 
 // AI fleet observability IPCs. Pull from the per-run AI ledger.
 registerObservabilityIpc({ isRemote: () => !!curRemote() })
@@ -1125,147 +809,6 @@ registerRepoTrustDenialIpc(ipcMain)
 // whichever repo is currently active, the same accessor the rest of the
 // repo-scoped handlers use.
 registerSessionSearchIpc({ cwd: () => activeDaemon().repoRoot() })
-handle('harness:status', () => {
-  const cfgDir = terminalConfigDir()
-  const cronRunsDir = join(cfgDir, 'cron-runs')
-  let cronRunFiles = 0
-  let cronWorktrees = 0
-  if (existsSync(cronRunsDir)) {
-    try {
-      cronRunFiles = readdirSync(cronRunsDir).filter((f) => f.endsWith('.json')).length
-    } catch {
-      /* ignore */
-    }
-  }
-  const wtDir = join(cfgDir, 'cron-worktrees')
-  if (existsSync(wtDir)) {
-    try {
-      cronWorktrees = readdirSync(wtDir).length
-    } catch {
-      /* ignore */
-    }
-  }
-  const cronRuns = readCronRuns(undefined, 1000)
-  const running = cronRuns.filter((r) => r.status === 'running').length
-  const failed24h = cronRuns.filter(
-    (r) => r.status === 'failed' && r.startedAt >= Date.now() - 86_400_000,
-  ).length
-  const paused = listDisabled().length
-  const inProcessRunning = listRuns().filter((r) => r.status === 'running').length
-  return {
-    cronRunFiles,
-    cronWorktrees,
-    cronRunsRunning: running,
-    cronFailed24h: failed24h,
-    inProcessRunning,
-    schedulesPaused: paused,
-    configDir: cfgDir,
-  }
-})
-handle('release:status', () => {
-  if (!releasePid) return { running: false }
-  try {
-    process.kill(releasePid, 0)
-    return { running: true, pid: releasePid }
-  } catch {
-    return { running: false, pid: releasePid }
-  }
-})
-// Hand a target to a configured external app via `open -a <App>` (robust, no
-// PATH/CLI dependency), falling back to the OS default if the app isn't there.
-function openInApp(appName: string, target: string, fallback: () => void) {
-  try {
-    const p = cpSpawn('open', ['-a', appName, target], { stdio: 'ignore' })
-    p.on('error', fallback)
-    p.on('exit', (code) => {
-      if (code !== 0) fallback()
-    })
-  } catch {
-    fallback()
-  }
-}
-// "Open in browser" — the configured browser (default Brave) with its extensions/wallet.
-// `open -a <App> <target>` hands the OS an arbitrary string, so this sink needs
-// the same scheme gate as shell.openExternal (url-safety.ts) — otherwise it is
-// simply a second, unguarded way to reach an OS protocol handler.
-handle('open:in-browser', (_e, url: string) => {
-  if (!isExternallyOpenableUrl(url)) return openExternalSafe(url)
-  openInApp(resolvedBrowserApp(), url, () => openExternalSafe(url))
-})
-// "Open in editor" — the configured editor (default Cursor). Opens a path; defaults
-// to the active session's repo root. Renderer-supplied paths are constrained to
-// the roots the UI legitimately surfaces (workspace, worktrees, the active repo,
-// TerMinal's config dir) so this can't be turned into an arbitrary "open any
-// file on disk in an app" primitive.
-function editorOpenRoots(): (string | undefined)[] {
-  return [
-    resolvedProjectsDir(),
-    resolvedWorktreesDir(),
-    repoRootOf(cur().cwd) || cur().cwd,
-    activeDaemon().filesRoot(),
-    terminalConfigDir(),
-  ]
-}
-handle('open:in-editor', (_e, path?: string) => {
-  const fallbackTarget = repoRootOf(cur().cwd) || cur().cwd || homedir()
-  const target = path ? resolveWithinAny(editorOpenRoots(), path) : fallbackTarget
-  if (!target) {
-    console.error('[gt] refused open:in-editor outside allowed roots:', String(path).slice(0, 120))
-    return
-  }
-  openInApp(resolvedEditorApp(), target, () => shell.openPath(target))
-})
-handle('clipboard:write', (_e, text: string) => clipboard.writeText(text))
-handle('clipboard:read', () => clipboard.readText())
-handle('clipboard:imageToFile', () => {
-  const img = clipboard.readImage()
-  if (img.isEmpty()) return null
-  const dir = join(tmpdir(), 'terminal-pastes')
-  mkdirSync(dir, { recursive: true })
-  const file = join(dir, `paste-${randomUUID().slice(0, 8)}.png`)
-  writeFileSync(file, img.toPNG())
-  return file
-})
-
-// ---- notes (repo-bound + global, persisted) ----
-handle('notes:read', (_e, scope: NotesScope) => {
-  return activeDaemon().notesRead(scope)
-})
-handle('notes:write', (_e, scope: NotesScope, content: string) =>
-  activeDaemon().notesWrite(scope, content),
-)
-handle('knowledge:read', (_e, scope: KnowledgeScope) => {
-  return readKnowledge(scope, activeDaemon().repoRoot())
-})
-handle('knowledge:write', (_e, scope: KnowledgeScope, kb: KnowledgeBase) => {
-  return writeKnowledge(scope, activeDaemon().repoRoot(), kb)
-})
-handle('knowledge:preview', (_e, url: string) => fetchKnowledgePreview(url))
-handle('knowledge:rag-status', (_e, scope: KnowledgeScope, item: any) =>
-  knowledgeRagStatus({ scope, repoRoot: activeDaemon().repoRoot(), item }),
-)
-handle('knowledge:rag-reindex', (_e, scope: KnowledgeScope, item: any, fullRebuild?: boolean) =>
-  knowledgeRagReindex({ scope, repoRoot: activeDaemon().repoRoot(), item }, !!fullRebuild),
-)
-handle(
-  'knowledge:rag-add-document',
-  (_e, scope: KnowledgeScope, item: any, content: string, filepath?: string) =>
-    knowledgeRagAddDocument({
-      scope,
-      repoRoot: activeDaemon().repoRoot(),
-      item,
-      content,
-      filepath,
-    }),
-)
-handle(
-  'knowledge:rag-add-url',
-  (_e, scope: KnowledgeScope, item: any, url: string, title?: string) =>
-    knowledgeRagAddUrl({ scope, repoRoot: activeDaemon().repoRoot(), item, url, title }),
-)
-handle('knowledge:rag-search', (_e, scope: KnowledgeScope, item: any, query: string) =>
-  knowledgeRagSearch({ scope, repoRoot: activeDaemon().repoRoot(), item, query }),
-)
 
 registerFilesIpc({ activeDaemon })
 // Repo-scoped read surfaces, all fed by the same active-workspace daemon: the
@@ -1306,11 +849,20 @@ registerWidgetsIpc({
 registerBgTasksIpc({ curRemote, localOnlyToRemote, remoteEngineModel })
 registerLoopsIpc({ cur, curRemote })
 registerAgentViewIpc({ curRemote })
-
-// ---- my workflow (local Claude/Codex configuration) ----
-handle('workflow:list', (_e, rel: string) => listWorkflowFiles(rel || ''))
-handle('workflow:read', (_e, rel: string) => readWorkflowFile(rel))
-handle('workflow:write', (_e, rel: string, content: string) => writeWorkflowFile(rel, content))
+// OS integration (picker, scratch dir, MCP install, open-in-app, clipboard),
+// the workspace bootstrap flow, notes/knowledge, my-workflow files, and the
+// self-service maintenance surface.
+registerSystemIpc({ window: () => win, cur, activeDaemon })
+registerWorkspaceIpc({ curRemote, projectTemplateSource })
+registerKnowledgeIpc({ activeDaemon })
+registerWorkflowIpc()
+registerMaintenanceIpc({
+  cur,
+  runUpdateCheck,
+  tmPluginSrcDir,
+  sourceCheckoutRoot,
+  repoLabelFor,
+})
 
 // Safety net: never let a stray async error (e.g. a late PTY write) take down
 // the whole app.

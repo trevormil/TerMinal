@@ -156,8 +156,8 @@ describe('the self-update provenance gate (ticket 93 / F-14)', () => {
   })
 
   test('the app actually arms it — an unreachable gate is not a gate', () => {
-    const main = read('src/main/index.ts')
-    expect(main).toContain("TERMINAL_SELF_UPDATE: '1'")
+    const releaseIpc = read('src/main/ipc/maintenance.ts')
+    expect(releaseIpc).toContain("TERMINAL_SELF_UPDATE: '1'")
   })
 
   test('it does not claim signature verification it cannot do', () => {
