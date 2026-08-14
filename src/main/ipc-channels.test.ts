@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { generateChannelMapSource, parseBindings } from './ipc-channels.gen'
 
@@ -52,6 +52,41 @@ describe('generated channel map', () => {
     )
     const mapped = new Set(parseBindings(PRELOAD_SRC).map((b) => b.channel))
     expect([...invoked].filter((c) => !mapped.has(c)).sort()).toEqual([])
+  })
+
+  test('only the documented exclusions still register a channel untyped', () => {
+    // The map is only worth having if handlers actually go through it. A new
+    // `ipcMain.handle` typechecks (electron types its callback `any[]`) and is
+    // exactly the drift this branch removed, so the raw spelling is a closed
+    // list rather than a discouraged one. To add to it, say why here.
+    const EXCLUDED = new Set([
+      // Their payload is a config type forked between main and the renderer;
+      // see the comment at the registration in index.ts.
+      'tickets:provider-get',
+      'tickets:provider-save',
+      // registerRepoTrustDenialIpc takes `ipcMain` as a parameter so the test
+      // can pass a double. The typed `handle` closes over the real one.
+      'repoTrust:denied',
+      'repoTrust:deny',
+      'repoTrust:undeny',
+    ])
+    const raw: string[] = []
+    const walk = (dir: string): void => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        const p = join(dir, e.name)
+        if (e.isDirectory()) walk(p)
+        else if (e.name.endsWith('.ts') && !e.name.endsWith('.test.ts'))
+          raw.push(
+            ...[...readFileSync(p, 'utf8').matchAll(/ipcMain\.handle\(\s*'([^']+)'/g)].map(
+              (m) => m[1],
+            ),
+          )
+      }
+    }
+    walk(DIR)
+    expect(raw.filter((c) => !EXCLUDED.has(c)).sort()).toEqual([])
+    // …and the exclusions are still real, so a migrated one leaves the list.
+    expect(raw.filter((c) => EXCLUDED.has(c)).sort()).toEqual([...EXCLUDED].sort())
   })
 
   test('the checked-in map is what the generator produces today', () => {
