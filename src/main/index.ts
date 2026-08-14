@@ -85,6 +85,10 @@ import { registerObservabilityIpc } from './ipc/observability'
 import { registerSchedulesIpc } from './ipc/schedules'
 import { registerAgentsIpc } from './ipc/agents'
 import { registerFilesIpc } from './ipc/files'
+import { registerGitIpc } from './ipc/git'
+import { registerCheckpointsIpc } from './ipc/checkpoints'
+import { registerMrsIpc } from './ipc/mrs'
+import { registerDocsIpc } from './ipc/docs'
 import { createBridgeDeps } from './bridge-deps'
 import {
   bindSessionSender,
@@ -149,7 +153,6 @@ import {
   testRepoTicketProvider,
   type RepoTicketsConfig,
 } from './ticket-provider'
-import { difftOnPath } from './forge'
 import { onDigestEvent } from './digest-run'
 import { type NotesScope } from './notes'
 import {
@@ -324,13 +327,7 @@ import {
 } from './remote'
 import { listCursorModels } from './cursor-models'
 import { readFileTail } from './fs-tail'
-import {
-  checkpointChangedRanges,
-  createCheckpoint,
-  listCheckpoints,
-  restoreCheckpoint,
-  reviewBaseFor,
-} from './checkpoints'
+import { createCheckpoint } from './checkpoints'
 import { resolveWithinAny } from './path-guard'
 import { maskSettingsSecrets, stripMaskedSecrets } from './settings-mask'
 import { configPath, terminalConfigDir } from './config-dir'
@@ -871,19 +868,16 @@ handle('slack:test', () => testSlack())
 // One "send test alert" entry point per outbound channel (Settings → Alerts).
 // `webhookId` picks one destination out of the list; the renderer only holds a
 // mask of the URL, so it names the entry instead of sending the value back.
-handle(
-  'alerts:test',
-  (_e, channel: 'telegram' | 'desktop' | 'webhook', webhookId?: string) => {
-    if (channel === 'telegram') return testTelegram()
-    if (channel === 'desktop') return testDesktopAlert()
-    if (channel === 'webhook') {
-      const hook = readSettings().alerts.webhooks.find((w) => w.id === webhookId)
-      if (!hook) return { ok: false, error: 'Save the webhook before testing it.' }
-      return testWebhook(hook.url)
-    }
-    return { ok: false, error: `unknown alert channel: ${channel}` }
-  },
-)
+handle('alerts:test', (_e, channel: 'telegram' | 'desktop' | 'webhook', webhookId?: string) => {
+  if (channel === 'telegram') return testTelegram()
+  if (channel === 'desktop') return testDesktopAlert()
+  if (channel === 'webhook') {
+    const hook = readSettings().alerts.webhooks.find((w) => w.id === webhookId)
+    if (!hook) return { ok: false, error: 'Save the webhook before testing it.' }
+    return testWebhook(hook.url)
+  }
+  return { ok: false, error: `unknown alert channel: ${channel}` }
+})
 // Secrets are sealed on disk; handing the renderer the decrypted values on
 // every read undoes that. It gets masks plus a `secretsSet` map instead — see
 // settings-mask.ts. Writes still work: only an actual edit is saved.
@@ -984,31 +978,26 @@ function projectsDirFs() {
     candidateRoots: () => CANDIDATE_ROOT_NAMES.map((n) => (n ? join(homedir(), n) : homedir())),
   }
 }
-handle(
-  'settings:validate-projects-dir',
-  async (_e, input: { dir?: string; hostId?: string }) => {
-    const dir = input?.dir || ''
-    if (input?.hostId) {
-      const remote = remoteFromHostId(input.hostId, dir || undefined)
-      if (!remote) return { ok: false, reason: 'error', dir, message: 'remote host not found' }
-      return remoteSettings.validateProjectsDir(remote, dir).catch((e) => ({
-        ok: false,
-        reason: 'error',
-        dir,
-        message: (e as Error).message,
-      }))
-    }
-    return classifyProjectsDir(dir, projectsDirFs())
-  },
-)
+handle('settings:validate-projects-dir', async (_e, input: { dir?: string; hostId?: string }) => {
+  const dir = input?.dir || ''
+  if (input?.hostId) {
+    const remote = remoteFromHostId(input.hostId, dir || undefined)
+    if (!remote) return { ok: false, reason: 'error', dir, message: 'remote host not found' }
+    return remoteSettings.validateProjectsDir(remote, dir).catch((e) => ({
+      ok: false,
+      reason: 'error',
+      dir,
+      message: (e as Error).message,
+    }))
+  }
+  return classifyProjectsDir(dir, projectsDirFs())
+})
 handle('settings:suggest-projects-dir', () => {
   const fs = projectsDirFs()
   const denser = pickDensestRoot(fs.candidateRoots(), (d) => countGitReposOneLevel(d, fs))
   return denser ? { dir: denser.root, repoCount: denser.count } : null
 })
-handle('snippets:list', (_e, root?: string) =>
-  listPromptSnippets(repoRootOf(root || cur().cwd)),
-)
+handle('snippets:list', (_e, root?: string) => listPromptSnippets(repoRootOf(root || cur().cwd)))
 handle('snippets:save', (_e, input: Parameters<typeof savePromptSnippet>[0]) => {
   const root = input.repoRoot ? repoRootOf(input.repoRoot) : repoRootOf(cur().cwd)
   const r = savePromptSnippet({ ...input, repoRoot: root })
@@ -1263,9 +1252,7 @@ handle('monitors:save', (_e, list: unknown) => {
 // Native CI: forge-agnostic run/job/log views for the repo (gh run / glab api).
 // repoRoot comes from the tab's context. The webview view is the default; this
 // backs the "Runs" toggle.
-handle('ci:list', (_e, repoRoot: string, limit?: number) =>
-  listCiRuns(repoRoot, limit ?? 40),
-)
+handle('ci:list', (_e, repoRoot: string, limit?: number) => listCiRuns(repoRoot, limit ?? 40))
 handle('ci:jobs', (_e, repoRoot: string, runId: string) => listCiJobs(repoRoot, runId))
 handle('ci:log', (_e, repoRoot: string, jobId: string) => fetchCiLog(repoRoot, jobId))
 // Async execFile, NOT execFileSync: this ran a 40-second-timeout probe inside an
@@ -1460,15 +1447,6 @@ handle('scratch:dir', () => {
 })
 
 // ---- tabs: repo context + tickets/MRs (scoped to the session's repo) ----
-handle('tab:context', async () => {
-  return activeDaemon().context(cur().sessionId)
-})
-handle('docs:list', () => {
-  return activeDaemon().docsList()
-})
-handle('docs:get', (_e, relPath: string) => {
-  return activeDaemon().docsGet(relPath)
-})
 handle('sessions:project-list', () => {
   return activeDaemon().sessionsList()
 })
@@ -1550,24 +1528,21 @@ handle('tickets:create', async (_e, input: NewTicket) => {
 handle('tickets:recommend-agent', (_e, input: TicketAgentRecommendationInput) =>
   recommendTicketAgent(input),
 )
-handle(
-  'tickets:spawn',
-  (_e, text: string, engine: Engine, model?: string, requested?: unknown) => {
-    const daemon = daemonForRequest(requested)
-    if (!daemon.remote) return runTicketSpawn(daemon.repoRoot(), text, engine, model)
-    const t = text.trim()
-    if (!t) return { error: 'empty request' }
-    const prompt = `File exactly ONE new backlog ticket for the request below, using this project's ticket conventions: allocate the next id, write $TERMINAL_BACKLOG_DIR/NNNN-slug.md with valid YAML frontmatter matching the repo's examples (legacy v1 repos may use backlog/), put detail in the body after the closing ---, and commit it. Do NOT implement anything or open a PR — just file the ticket. Request: ${t}`
-    return remoteRuns.start(daemon.remote, {
-      agentId: 'ticket-spawn',
-      agentTitle: `File ticket · ${t.slice(0, 48)}`,
-      engine,
-      model: remoteEngineModel(daemon.remote, engine, model),
-      steps: [{ label: 'file ticket', prompt }],
-      inPlace: true,
-    })
-  },
-)
+handle('tickets:spawn', (_e, text: string, engine: Engine, model?: string, requested?: unknown) => {
+  const daemon = daemonForRequest(requested)
+  if (!daemon.remote) return runTicketSpawn(daemon.repoRoot(), text, engine, model)
+  const t = text.trim()
+  if (!t) return { error: 'empty request' }
+  const prompt = `File exactly ONE new backlog ticket for the request below, using this project's ticket conventions: allocate the next id, write $TERMINAL_BACKLOG_DIR/NNNN-slug.md with valid YAML frontmatter matching the repo's examples (legacy v1 repos may use backlog/), put detail in the body after the closing ---, and commit it. Do NOT implement anything or open a PR — just file the ticket. Request: ${t}`
+  return remoteRuns.start(daemon.remote, {
+    agentId: 'ticket-spawn',
+    agentTitle: `File ticket · ${t.slice(0, 48)}`,
+    engine,
+    model: remoteEngineModel(daemon.remote, engine, model),
+    steps: [{ label: 'file ticket', prompt }],
+    inPlace: true,
+  })
+})
 handle('tickets:update', async (_e, slug: string, patch: TicketPatch) => {
   const daemon = activeDaemon()
   const before = await daemon.ticketGet(slug)
@@ -1631,95 +1606,10 @@ handle(
     return true
   },
 )
-handle('skills:list', () => activeDaemon().skillsList())
-handle('mrs:list', () => {
-  return activeDaemon().mrsList()
-})
-handle('mrs:get', (_e, iid: number) => {
-  return activeDaemon().mrGet(iid)
-})
-handle('mrs:diff', (_e, iid: number) => {
-  return activeDaemon().mrDiff(iid)
-})
-handle('git:working-diff', () => {
-  return activeDaemon().workingDiff()
-})
-handle('git:file-at-head', (_e, rel: string) => {
-  return activeDaemon().fileAtHead(rel)
-})
-handle('git:file-at-head-binary', (_e, rel: string) => {
-  return activeDaemon().fileAtHeadBinary(rel)
-})
-handle('git:status-porcelain', () => {
-  return activeDaemon().statusPorcelain()
-})
-// Git views for the Files tab (history / branches / stashes / tags).
-handle('git:log', (_e, opts?: { limit?: number; skip?: number; ref?: string }) => {
-  return activeDaemon().gitLog(opts)
-})
-handle('git:show', (_e, ref: string) => {
-  return activeDaemon().gitShow(ref)
-})
-handle('git:branches', () => {
-  return activeDaemon().gitBranches()
-})
-handle('git:checkout', (_e, branch: string) => {
-  return activeDaemon().gitCheckout(branch)
-})
-handle('git:create-branch', (_e, name: string, from?: string) => {
-  return activeDaemon().gitCreateBranch(name, from)
-})
-handle('git:stashes', () => {
-  return activeDaemon().gitStashes()
-})
-handle('git:tags', () => {
-  return activeDaemon().gitTags()
-})
-handle('git:working-file-patch', (_e, rel: string) => {
-  return activeDaemon().gitWorkingFilePatch(rel)
-})
-handle('git:compare-files-patch', (_e, a: string, b: string) => {
-  return activeDaemon().gitCompareFilesPatch(a, b)
-})
-handle('checkpoints:list', () => listCheckpoints(activeDaemon().repoRoot()))
-handle('checkpoints:create', (_e, label: string) =>
-  createCheckpoint(activeDaemon().repoRoot(), label || 'manual checkpoint'),
-)
-handle('checkpoints:restore', (_e, sha: string) =>
-  restoreCheckpoint(activeDaemon().repoRoot(), sha),
-)
-handle('checkpoints:ranges', (_e, sha: string) =>
-  checkpointChangedRanges(activeDaemon().repoRoot(), sha),
-)
-handle('checkpoints:review-base', (_e, rel: string, buffer: string) =>
-  reviewBaseFor(activeDaemon().repoRoot(), rel, buffer),
-)
-handle('git:working-structural-diff', (_e, path: string, width?: number) => {
-  return activeDaemon().workingStructuralDiff(path, width)
-})
-handle('mrs:structural-diff', (_e, iid: number, path: string, width?: number) => {
-  return activeDaemon().mrStructuralDiff(iid, path, width)
-})
-handle('difft:available', () => difftOnPath())
 // Cursor's live model catalog (incl. the `auto` entry point for Cursor
 // Router). Empty when the CLI is missing or not logged in — the renderer then
 // keeps the static catalog.
 handle('cursor:models', () => listCursorModels())
-handle('digest:get', (_e, iid: number, short?: string) => {
-  return activeDaemon().digestGet(iid, short)
-})
-handle('digest:run', (_e, iid: number) => {
-  return activeDaemon().digestRun(iid)
-})
-handle('digest:status', (_e, iid: number) => {
-  return activeDaemon().digestRunStatus(iid)
-})
-handle('mrs:ci', (_e, iid: number) => {
-  return activeDaemon().mrCi(iid)
-})
-handle('mrs:merge', (_e, iid: number) => {
-  return activeDaemon().mrMerge(iid)
-})
 handle('open:external', (_e, url: string) => openExternalSafe(url))
 // Reveal ~/.config/TerMinal/ in Finder. Power-user QoL for editing
 // schedules.json, settings.json, or per-(repo, agent) state sidecars by hand.
@@ -2007,9 +1897,7 @@ handle('bg:cancel', (_e, id: string) =>
 // Loops — long-running planner/generator/evaluator loops (LOOPS.md pattern).
 handle('loops:list', () => (curRemote() ? [] : listLoops()))
 handle('loops:get', (_e, id: string) => (curRemote() ? null : getLoop(id) || null))
-handle('loops:state', (_e, id: string) =>
-  curRemote() ? { error: 'remote' } : readLoopState(id),
-)
+handle('loops:state', (_e, id: string) => (curRemote() ? { error: 'remote' } : readLoopState(id)))
 handle('loops:create', (_e, input: CreateLoopInput) => {
   if (curRemote()) return { error: 'remote' }
   let repoRoot = input.repoRoot
@@ -2028,19 +1916,14 @@ handle('loops:create', (_e, input: CreateLoopInput) => {
   return createLoop({ ...input, repoRoot })
 })
 handle('loops:step', (_e, id: string) => (curRemote() ? { error: 'remote' } : stepLoop(id)))
-handle('loops:restart', (_e, id: string) =>
-  curRemote() ? { error: 'remote' } : restartLoop(id),
-)
+handle('loops:restart', (_e, id: string) => (curRemote() ? { error: 'remote' } : restartLoop(id)))
 handle('loops:stop', (_e, id: string) => (curRemote() ? { error: 'remote' } : stopLoop(id)))
 
 // Cheap one-shot LLM call — routes through local coding-agent subscriptions.
-handle(
-  'llm:cheap',
-  async (_e, opts: Parameters<typeof import('./cheap-llm').cheapCall>[0]) => {
-    const { cheapCall } = await import('./cheap-llm')
-    return cheapCall(opts)
-  },
-)
+handle('llm:cheap', async (_e, opts: Parameters<typeof import('./cheap-llm').cheapCall>[0]) => {
+  const { cheapCall } = await import('./cheap-llm')
+  return cheapCall(opts)
+})
 
 // AI fleet observability IPCs. Pull from the per-run AI ledger.
 registerObservabilityIpc({ isRemote: () => !!curRemote() })
@@ -2212,10 +2095,8 @@ handle('knowledge:preview', (_e, url: string) => fetchKnowledgePreview(url))
 handle('knowledge:rag-status', (_e, scope: KnowledgeScope, item: any) =>
   knowledgeRagStatus({ scope, repoRoot: activeDaemon().repoRoot(), item }),
 )
-handle(
-  'knowledge:rag-reindex',
-  (_e, scope: KnowledgeScope, item: any, fullRebuild?: boolean) =>
-    knowledgeRagReindex({ scope, repoRoot: activeDaemon().repoRoot(), item }, !!fullRebuild),
+handle('knowledge:rag-reindex', (_e, scope: KnowledgeScope, item: any, fullRebuild?: boolean) =>
+  knowledgeRagReindex({ scope, repoRoot: activeDaemon().repoRoot(), item }, !!fullRebuild),
 )
 handle(
   'knowledge:rag-add-document',
@@ -2238,13 +2119,18 @@ handle('knowledge:rag-search', (_e, scope: KnowledgeScope, item: any, query: str
 )
 
 registerFilesIpc({ activeDaemon })
+// Repo-scoped read surfaces, all fed by the same active-workspace daemon: the
+// Files tab's git views, the per-turn checkpoints, the MRs tab (+ its digest),
+// and the Docs/context/skills reads.
+registerGitIpc({ activeDaemon })
+registerCheckpointsIpc({ activeDaemon })
+registerMrsIpc({ activeDaemon })
+registerDocsIpc({ activeDaemon, sessionId: () => cur().sessionId })
 
 // ---- my workflow (local Claude/Codex configuration) ----
 handle('workflow:list', (_e, rel: string) => listWorkflowFiles(rel || ''))
 handle('workflow:read', (_e, rel: string) => readWorkflowFile(rel))
-handle('workflow:write', (_e, rel: string, content: string) =>
-  writeWorkflowFile(rel, content),
-)
+handle('workflow:write', (_e, rel: string, content: string) => writeWorkflowFile(rel, content))
 
 // Safety net: never let a stray async error (e.g. a late PTY write) take down
 // the whole app.
