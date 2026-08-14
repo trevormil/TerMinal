@@ -189,3 +189,65 @@ export type DigestRunState = {
 }
 
 export type DigestRunStatus = 'running' | 'done' | 'failed'
+
+// ── PR review overview ───────────────────────────────────────────────────────
+// The pre-diff read: what shape is this change, and which part of it is worth a
+// human's attention. Computed from the unified diff alone (src/shared/pr-overview.ts)
+// — no forge call, no LLM.
+
+/** What a changed file IS. `test` and `docs` are sub-classes of source; the
+ *  other four are noise — real bytes a reviewer should not read line by line. */
+export type PrFileClass =
+  'source' | 'test' | 'docs' | 'lockfile' | 'generated' | 'vendored' | 'snapshot'
+
+export type PrFileStatus = 'add' | 'mod' | 'del' | 'rename'
+
+export type PrFileChange = {
+  /** Post-change path (the old one for a deletion). */
+  path: string
+  /** Pre-change path, present only on a rename. */
+  oldPath?: string
+  adds: number
+  dels: number
+  status: PrFileStatus
+  binary: boolean
+  cls: PrFileClass
+  /** Which classifier rule matched — so a surprising class is debuggable. */
+  rule: string
+  noise: boolean
+}
+
+export type PrClassTotals = { files: number; adds: number; dels: number }
+
+export type PrTypeTotal = PrClassTotals & { id: string }
+
+export type PrDirTotal = PrClassTotals & { path: string; depth: 1 | 2 }
+
+export type PrAggregates = {
+  files: number
+  adds: number
+  dels: number
+  renames: number
+  binaries: number
+  byClass: Record<PrFileClass, PrClassTotals>
+  /** Extension groups (ts / md / data / css / sh / other), churn-sorted. */
+  byFileType: PrTypeTotal[]
+  /** Top-level and second-level directory rollup, churn-sorted within a depth. */
+  byDirectory: PrDirTotal[]
+  /** test churn / (test + source churn); null when neither changed. */
+  testRatio: number | null
+  /** The five biggest files by churn. */
+  largest: (PrClassTotals & { path: string; cls: PrFileClass })[]
+}
+
+export type PrOverview = {
+  files: PrFileChange[]
+  /** Everything in the diff. */
+  raw: PrAggregates
+  /** Noise classes excluded — the numbers a reviewer should act on. */
+  filtered: PrAggregates
+  /** What `filtered` left out, itemised so nothing hides silently. */
+  noise: PrClassTotals & { byClass: Record<PrFileClass, PrClassTotals> }
+  /** Cheap, path- and diff-derived attention cues. Never a verdict. */
+  hints: string[]
+}
