@@ -855,15 +855,15 @@ ipcMain.handle('remote:scaffold', async (_e, hostId: string, name: string, paren
   return r
 })
 ipcMain.handle('window:is-fullscreen', () => win?.isFullScreen() ?? false)
-ipcMain.handle('activity:list', () => readActivity())
+handle('activity:list', () => readActivity())
 // Count-only badge endpoints — the tab badges poll ~1/s while a terminal
 // streams; shipping the full lists over IPC just to count them was ~1MB/s of
 // renderer-side JSON deserialization.
-ipcMain.handle('activity:unseen-count', (_e, since: number, kinds: string[]) => {
+handle('activity:unseen-count', (_e, since: number, kinds: string[]) => {
   const hi = new Set(kinds)
   return readActivity().filter((ev) => ev.ts > since && hi.has(ev.kind)).length
 })
-ipcMain.handle('activity:clear', () => clearActivity())
+handle('activity:clear', () => clearActivity())
 ipcMain.handle('env:detect', () => detectEnv())
 ipcMain.handle('env:install-gt-notify', () => installGtNotify())
 ipcMain.handle('telegram:test', () => testTelegram())
@@ -1974,9 +1974,9 @@ ipcMain.handle('release:tail', () => {
 // how the harness itself is doing without ls-ing config dirs. Cheap: one
 // directory listing + the in-memory run map.
 // Background tasks IPCs. /bg <prompt> fires a detached run.
-ipcMain.handle('bg:list', () => (curRemote() ? [] : listBgTasks()))
-ipcMain.handle('bg:get', (_e, id: string) => (curRemote() ? null : getBgTask(id)))
-ipcMain.handle('bg:log', (_e, id: string) => (curRemote() ? '' : readBgTaskLog(id)))
+handle('bg:list', () => (curRemote() ? [] : listBgTasks()))
+handle('bg:get', (_e, id: string) => (curRemote() ? null : getBgTask(id)))
+handle('bg:log', (_e, id: string) => (curRemote() ? '' : readBgTaskLog(id)))
 ipcMain.handle(
   'bg:spawn',
   (_e, input: { repoRoot: string; prompt: string; engine?: Engine; model?: string }) => {
@@ -2000,7 +2000,9 @@ ipcMain.handle(
     })
   },
 )
-ipcMain.handle('bg:cancel', (_e, id: string) => (curRemote() ? false : cancelBgTask(id)))
+handle('bg:cancel', (_e, id: string) =>
+  curRemote() ? { ok: false, error: 'remote' } : cancelBgTask(id),
+)
 
 // Loops — long-running planner/generator/evaluator loops (LOOPS.md pattern).
 ipcMain.handle('loops:list', () => (curRemote() ? [] : listLoops()))
@@ -2058,7 +2060,7 @@ registerRepoTrustDenialIpc(ipcMain)
 // whichever repo is currently active, the same accessor the rest of the
 // repo-scoped handlers use.
 registerSessionSearchIpc({ cwd: () => activeDaemon().repoRoot() })
-ipcMain.handle('agentview:snapshot', (_e, limit: number = 120) =>
+handle('agentview:snapshot', (_e, limit: number = 120) =>
   curRemote()
     ? {
         ts: Date.now(),
@@ -2078,10 +2080,10 @@ ipcMain.handle('agentview:snapshot', (_e, limit: number = 120) =>
       }
     : readObservabilitySnapshot(limit),
 )
-ipcMain.handle('agentview:session', (_e, sessionId: string) =>
+handle('agentview:session', (_e, sessionId: string) =>
   curRemote() ? null : readObservabilitySessionDetail(sessionId),
 )
-ipcMain.handle('agentview:tool-call', (_e, sessionId: string, callId: string) =>
+handle('agentview:tool-call', (_e, sessionId: string, callId: string) =>
   curRemote() ? null : readObservabilityToolCallPayload(sessionId, callId),
 )
 ipcMain.handle(
