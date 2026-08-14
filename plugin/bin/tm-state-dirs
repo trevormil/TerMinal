@@ -44,6 +44,14 @@ fi
 root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 [ -n "$root" ] || exit 0
 
+# The in-repo half of this merge is the migration's compatibility layer, and it
+# has an END DATE — see ADR-0020's Sunset note. A skill reading through this
+# helper has to stop seeing in-repo state on exactly the day the app does, or
+# the two disagree about where a repo's tickets are. The epoch below is pinned
+# against MIGRATION_SUNSET (src/shared/migration-sunset.ts) by a test.
+migration_sunset_epoch=1791849600 # 2026-10-13T00:00:00Z
+[ "$(date -u +%s)" -lt "$migration_sunset_epoch" ] || exit 0
+
 # Pre-sidecar in-repo locations, v2 before v1. state-path-ok: this script IS
 # the legacy reader — naming the old paths is its entire job.
 emit "$root/.TerMinal/$area"

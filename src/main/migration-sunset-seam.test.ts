@@ -3,6 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   INSIDE_MIGRATION_WINDOW,
+  MIGRATION_SUNSET,
   MIGRATION_SUNSET_AT,
   migrationWindowOpen,
   setMigrationClock,
@@ -45,6 +46,17 @@ describe('the migration clock seam is test-only', () => {
     expect(migrationWindowOpen()).toBe(true)
     setMigrationClock(null)
     expect(migrationWindowOpen()).toBe(Date.now() < MIGRATION_SUNSET_AT.getTime())
+  })
+
+  test('the shell reader carries the same date, as an epoch AND as prose', () => {
+    // plugin/bin/tm-state-dirs is a fourth copy of the legacy read, in bash,
+    // and it cannot import the constant. It hardcodes the epoch (portable
+    // across BSD/GNU date) with the ISO date beside it — both are pinned here,
+    // because a skill still merging in-repo tickets after the app stopped is
+    // exactly the app/CLI split this migration exists to avoid.
+    const src = readFileSync(join(ROOT, '..', 'plugin', 'bin', 'tm-state-dirs'), 'utf8')
+    expect(src).toContain(`migration_sunset_epoch=${MIGRATION_SUNSET_AT.getTime() / 1000}`)
+    expect(src).toContain(`${MIGRATION_SUNSET}T00:00:00Z`)
   })
 
   test('an explicit argument still beats the pinned clock', () => {
