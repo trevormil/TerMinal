@@ -60,9 +60,7 @@ export type MonitorConnectivity = { offline: boolean; since?: number }
  * a machine that has never been offline has no reason to render a warning, and
  * defaulting to "offline" would grey out the whole tab on first run.
  */
-export function readMonitorConnectivity(
-  file = MONITOR_CONNECTIVITY_FILE(),
-): MonitorConnectivity {
+export function readMonitorConnectivity(file = MONITOR_CONNECTIVITY_FILE()): MonitorConnectivity {
   try {
     const raw = JSON.parse(readFileSync(file, 'utf8'))
     if (raw && typeof raw === 'object' && typeof raw.offline === 'boolean')

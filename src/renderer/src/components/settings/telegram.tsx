@@ -115,8 +115,8 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
             <div className="mt-1.5 text-[10px] text-zinc-600">
               <span className="text-zinc-500">/feature</span> drafts a ticket from plain text, then
               offers a "Start work" button that builds it and links the PR back. Plain English works
-              too — it's translated to a command. Inbox pings include inline "Resolve" and "Tail run"
-              buttons.
+              too — it's translated to a command. Inbox pings include inline "Resolve" and "Tail
+              run" buttons.
             </div>
           </details>
         )}

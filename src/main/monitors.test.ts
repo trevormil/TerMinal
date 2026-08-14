@@ -216,16 +216,13 @@ describe('validateMonitors', () => {
   test('fills in the consecutive-failure threshold and clamps it', () => {
     expect(validateMonitors([ok]).monitors[0].minConsecutiveFailures).toBe(2)
     expect(
-      validateMonitors([{ ...ok, minConsecutiveFailures: 4 }]).monitors[0]
-        .minConsecutiveFailures,
+      validateMonitors([{ ...ok, minConsecutiveFailures: 4 }]).monitors[0].minConsecutiveFailures,
     ).toBe(4)
     expect(
-      validateMonitors([{ ...ok, minConsecutiveFailures: 0 }]).monitors[0]
-        .minConsecutiveFailures,
+      validateMonitors([{ ...ok, minConsecutiveFailures: 0 }]).monitors[0].minConsecutiveFailures,
     ).toBe(1)
     expect(
-      validateMonitors([{ ...ok, minConsecutiveFailures: 999 }]).monitors[0]
-        .minConsecutiveFailures,
+      validateMonitors([{ ...ok, minConsecutiveFailures: 999 }]).monitors[0].minConsecutiveFailures,
     ).toBe(10)
   })
 
