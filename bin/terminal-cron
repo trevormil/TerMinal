@@ -412,7 +412,7 @@ function fileHitl(item) {
   if (!hitlIsLoud(rec.severity) || slackQuietsTelegram())
     return rec;
   try {
-    const text = `\u26D4 HITL \xB7 ${rec.title}${rec.action ? ` \u2014 ${rec.action}` : ""}`;
+    const text = `\u26D4 Inbox \xB7 ${rec.title}${rec.action ? ` \u2014 ${rec.action}` : ""}`;
     const t = tgCreds();
     if (t) {
       const row = [{ text: "\u2705 Resolve", callback_data: `hitl:resolve:${rec.id}` }];
@@ -748,7 +748,7 @@ function makeRepoState(CFG2) {
     const existing = areaPathsFor(root, area, candidates);
     if (existing.length)
       return existing[0];
-    return join5(root, isV2 ? candidates[0] : candidates[candidates.length - 1]);
+    return join5(root, isV2 ? candidates[0] : candidates[1] || candidates[0]);
   }
   function maxAreaId(dirs) {
     let max = 0;
