@@ -165,4 +165,14 @@ describe('ModalFrame aria contract', () => {
   test('the footer renders only when supplied', () => {
     expect(frame({ footer: <span>ft</span> })).toContain('ft')
   })
+
+  test('the body scrolls by default and yields when the content owns scrolling', () => {
+    // FileModal embeds CodeMirror, which scrolls itself. Two nested scrollers
+    // means the outer one steals the wheel and the editor can never be scrolled
+    // to its own last line.
+    expect(frame({ title: 'X' })).toContain('overflow-y-auto')
+    const owned = frame({ title: 'X', scrollBody: false })
+    expect(owned).not.toContain('overflow-y-auto')
+    expect(owned).toContain('min-h-0 flex-1 overflow-hidden')
+  })
 })

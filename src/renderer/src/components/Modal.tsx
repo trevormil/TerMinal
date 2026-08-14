@@ -51,6 +51,12 @@ export type ModalProps = {
   className?: string
   /** Set false for a dialog that must be dismissed with an explicit control. */
   closeOnBackdrop?: boolean
+  /**
+   * Set false when the body owns its own scrolling — an embedded CodeMirror or
+   * file viewer already scrolls, and a second scroller around it produces two
+   * nested scrollbars and a body that can never reach its own bottom.
+   */
+  scrollBody?: boolean
 }
 
 /**
@@ -67,10 +73,14 @@ export function ModalFrame({
   titleId,
   width = 'w-[640px] max-w-[94vw]',
   className = '',
+  scrollBody = true,
   onClose,
   dialogRef,
   onKeyDown,
-}: Pick<ModalProps, 'title' | 'label' | 'actions' | 'children' | 'footer' | 'width' | 'className'> & {
+}: Pick<
+  ModalProps,
+  'title' | 'label' | 'actions' | 'children' | 'footer' | 'width' | 'className' | 'scrollBody'
+> & {
   titleId: string
   onClose: () => void
   dialogRef?: React.RefObject<HTMLDivElement | null>
@@ -97,7 +107,10 @@ export function ModalFrame({
       {(title || actions) && (
         <div className="flex shrink-0 items-center gap-2 border-b border-[var(--gt-border)] px-3 py-2">
           {title && (
-            <span id={titleId} className="min-w-0 flex-1 truncate text-[12px] font-semibold text-zinc-100">
+            <span
+              id={titleId}
+              className="min-w-0 flex-1 truncate text-[12px] font-semibold text-zinc-100"
+            >
               {title}
             </span>
           )}
@@ -115,7 +128,9 @@ export function ModalFrame({
           </button>
         </div>
       )}
-      <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
+      <div className={join('min-h-0 flex-1', scrollBody ? 'overflow-y-auto' : 'overflow-hidden')}>
+        {children}
+      </div>
       {footer && (
         <div className="flex shrink-0 items-center justify-end gap-1.5 border-t border-[var(--gt-border)] px-3 py-2">
           {footer}
@@ -183,7 +198,13 @@ export function Modal({
       )}
       onClick={closeOnBackdrop ? onClose : undefined}
     >
-      <ModalFrame {...frame} titleId={titleId} onClose={onClose} dialogRef={dialog} onKeyDown={onKeyDown} />
+      <ModalFrame
+        {...frame}
+        titleId={titleId}
+        onClose={onClose}
+        dialogRef={dialog}
+        onKeyDown={onKeyDown}
+      />
     </div>,
     document.body,
   )
