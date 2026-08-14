@@ -1209,7 +1209,7 @@ ipcMain.handle('runs:cancel-cron', async (_e, id: string, hostId?: string) => {
 declare const __BUILD_REPO_SLUG__: string
 // Prepare a Linux host to run scheduled agents via systemd: install Bun, enable
 // linger (headless firing), install the runner, report readiness (ADR-0002 #12).
-ipcMain.handle('hosts:provision', async (_e, hostId: string) => {
+handle('hosts:provision', async (_e, hostId: string) => {
   const host = readSettings().remoteHosts.find((h) => h.id === hostId)
   if (!host) return { ok: false, error: `unknown host: ${hostId}` }
   const engines = Object.keys(host.daemon?.engines || {})
@@ -1229,13 +1229,13 @@ ipcMain.handle('hosts:provision', async (_e, hostId: string) => {
 })
 // Reachability probe for a host (tailscale reauth / asleep / VPN down) → classified
 // reason + actionable hint, so the UI degrades gracefully instead of hanging (#20).
-ipcMain.handle('hosts:health', async (_e, hostId: string) => {
+handle('hosts:health', async (_e, hostId: string) => {
   const host = readSettings().remoteHosts.find((h) => h.id === hostId)
   if (!host) return { reachable: false, hint: `unknown host: ${hostId}` }
   return checkHostHealth(host.sshTarget)
 })
-ipcMain.handle('listeners:status', () => readListenerStatus())
-ipcMain.handle('listeners:toggle', (_e, enabled: boolean) => {
+handle('listeners:status', () => readListenerStatus())
+handle('listeners:toggle', (_e, enabled: boolean) => {
   setListenerEnabled(enabled)
   return readListenerStatus()
 })
@@ -2005,10 +2005,12 @@ handle('bg:cancel', (_e, id: string) =>
 )
 
 // Loops — long-running planner/generator/evaluator loops (LOOPS.md pattern).
-ipcMain.handle('loops:list', () => (curRemote() ? [] : listLoops()))
-ipcMain.handle('loops:get', (_e, id: string) => (curRemote() ? null : getLoop(id) || null))
-ipcMain.handle('loops:state', (_e, id: string) => (curRemote() ? null : readLoopState(id)))
-ipcMain.handle('loops:create', (_e, input: CreateLoopInput) => {
+handle('loops:list', () => (curRemote() ? [] : listLoops()))
+handle('loops:get', (_e, id: string) => (curRemote() ? null : getLoop(id) || null))
+handle('loops:state', (_e, id: string) =>
+  curRemote() ? { error: 'remote' } : readLoopState(id),
+)
+handle('loops:create', (_e, input: CreateLoopInput) => {
   if (curRemote()) return { error: 'remote' }
   let repoRoot = input.repoRoot
   if (!repoRoot) {
@@ -2025,11 +2027,11 @@ ipcMain.handle('loops:create', (_e, input: CreateLoopInput) => {
   }
   return createLoop({ ...input, repoRoot })
 })
-ipcMain.handle('loops:step', (_e, id: string) => (curRemote() ? { error: 'remote' } : stepLoop(id)))
-ipcMain.handle('loops:restart', (_e, id: string) =>
+handle('loops:step', (_e, id: string) => (curRemote() ? { error: 'remote' } : stepLoop(id)))
+handle('loops:restart', (_e, id: string) =>
   curRemote() ? { error: 'remote' } : restartLoop(id),
 )
-ipcMain.handle('loops:stop', (_e, id: string) => (curRemote() ? { error: 'remote' } : stopLoop(id)))
+handle('loops:stop', (_e, id: string) => (curRemote() ? { error: 'remote' } : stopLoop(id)))
 
 // Cheap one-shot LLM call — routes through local coding-agent subscriptions.
 ipcMain.handle(
@@ -2091,7 +2093,7 @@ ipcMain.handle(
   (_e, sessionId: string, centerLine: number = 0, radius: number = 24) =>
     curRemote() ? null : readObservabilityTranscriptWindow(sessionId, centerLine, radius),
 )
-ipcMain.handle('harness:status', () => {
+handle('harness:status', () => {
   const cfgDir = terminalConfigDir()
   const cronRunsDir = join(cfgDir, 'cron-runs')
   let cronRunFiles = 0
@@ -2200,14 +2202,14 @@ ipcMain.handle('notes:read', (_e, scope: NotesScope) => {
 ipcMain.handle('notes:write', (_e, scope: NotesScope, content: string) =>
   activeDaemon().notesWrite(scope, content),
 )
-ipcMain.handle('knowledge:read', (_e, scope: KnowledgeScope) => {
+handle('knowledge:read', (_e, scope: KnowledgeScope) => {
   return readKnowledge(scope, activeDaemon().repoRoot())
 })
-ipcMain.handle('knowledge:write', (_e, scope: KnowledgeScope, kb: KnowledgeBase) => {
+handle('knowledge:write', (_e, scope: KnowledgeScope, kb: KnowledgeBase) => {
   return writeKnowledge(scope, activeDaemon().repoRoot(), kb)
 })
-ipcMain.handle('knowledge:preview', (_e, url: string) => fetchKnowledgePreview(url))
-ipcMain.handle('knowledge:rag-status', (_e, scope: KnowledgeScope, item: any) =>
+handle('knowledge:preview', (_e, url: string) => fetchKnowledgePreview(url))
+handle('knowledge:rag-status', (_e, scope: KnowledgeScope, item: any) =>
   knowledgeRagStatus({ scope, repoRoot: activeDaemon().repoRoot(), item }),
 )
 ipcMain.handle(
@@ -2231,7 +2233,7 @@ ipcMain.handle(
   (_e, scope: KnowledgeScope, item: any, url: string, title?: string) =>
     knowledgeRagAddUrl({ scope, repoRoot: activeDaemon().repoRoot(), item, url, title }),
 )
-ipcMain.handle('knowledge:rag-search', (_e, scope: KnowledgeScope, item: any, query: string) =>
+handle('knowledge:rag-search', (_e, scope: KnowledgeScope, item: any, query: string) =>
   knowledgeRagSearch({ scope, repoRoot: activeDaemon().repoRoot(), item, query }),
 )
 

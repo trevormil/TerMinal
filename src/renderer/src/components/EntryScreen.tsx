@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import type {
   Engine,
+  LoopEngine,
   RemoteDirList,
   RemoteHost,
   RemoteSession,
@@ -58,7 +59,7 @@ export type Choice = {
 
 // Loop roles run interactive skill-driven agents (openrouter is a harness
 // dimension, not a role engine; local is not an agent).
-export type LoopEngine = 'claude' | 'codex' | 'cursor' | 'pi' | 'hermes'
+export type { LoopEngine }
 export const LOOP_ENGINES: LoopEngine[] = ['claude', 'codex', 'cursor', 'pi', 'hermes']
 export type PairedLoopConfig = {
   goal: string

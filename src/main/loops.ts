@@ -313,7 +313,13 @@ const ROLE_DIRECTIVE: Record<LoopRole, string> = {
     'Adversarially grade: run the app, mark each touched assertion pass/fail with evidence, and (for taste work) write scores/NNNN.md. Prove it is broken.',
 }
 
-function buildTurnCommand(
+/**
+ * The binary + argv for one headless role turn. Exported for the test that
+ * pins one branch per engine the loop picker offers: the tail of this function
+ * is a codex fallthrough, so a missing branch runs codex under another
+ * engine's name rather than failing.
+ */
+export function buildTurnCommand(
   rec: LoopRecord,
   role: LoopRole,
   prompt: string,
@@ -347,6 +353,17 @@ function buildTurnCommand(
         ...(model ? ['--model', model] : []),
         prompt,
       ],
+    }
+  if (rec.engine === 'pi')
+    return {
+      // Pi has no workspace flag — it runs on the process cwd, which
+      // spawnRoleTurn sets to `dir`. Plain text (NOT the `--mode json` the
+      // agent runtime uses) because a role turn is read back by looking for a
+      // literal `LOOP-DONE:` line in the log. `--no-session` keeps one-shot
+      // role turns out of the interactive store the Sessions tab lists; `-a`
+      // trusts project-local extensions, per the registry's baseArgs.
+      bin: enginePath('pi'),
+      args: ['-p', '--no-session', '-a', ...(model ? ['--model', model] : []), prompt],
     }
   if (rec.engine === 'hermes')
     return {

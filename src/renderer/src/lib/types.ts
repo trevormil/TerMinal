@@ -99,6 +99,7 @@ import type {
   KnowledgeRagStatus,
   KnowledgeScope,
   ListenerStatus,
+  LoopEngine,
   LoopRecord,
   LoopState,
   ModelTier,
@@ -916,7 +917,7 @@ export type GtApi = {
       repoRoot?: string
       goal: string
       mode?: 'headless' | 'paired' | 'single'
-      engine?: Engine
+      engine?: LoopEngine
       model?: string
       maxIterations?: number
     }) => Promise<LoopRecord | { error: string }>

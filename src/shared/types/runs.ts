@@ -195,7 +195,7 @@ export type CheckpointGcEntry = StorageEntry & {
 
 export type BgTaskStatus = 'queued' | 'running' | 'done' | 'failed' | 'canceled'
 
-export type LoopEngine = 'claude' | 'codex' | 'cursor' | 'hermes'
+export type LoopEngine = 'claude' | 'codex' | 'cursor' | 'pi' | 'hermes'
 
 export type LoopRole = 'planner' | 'generator' | 'evaluator'
 
