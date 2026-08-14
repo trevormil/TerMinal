@@ -22,7 +22,7 @@ import {
   openSync,
   mkdirSync,
 } from 'node:fs'
-import { spawn as cpSpawn, execFileSync } from 'node:child_process'
+import { spawn as cpSpawn } from 'node:child_process'
 
 // The main bundle is ESM (package.json "type": "module"), so __dirname doesn't
 // exist — derive the module dir the ESM-canonical way or the window never opens.
@@ -68,16 +68,7 @@ function projectTemplateSource(marker: string): TemplateSource | { error: string
   })
 }
 
-import {
-  readTranscriptStats,
-  listSessions,
-  findSessionFile,
-  lastAssistantTurn,
-  readObservabilitySnapshot,
-  readObservabilitySessionDetail,
-  readObservabilityToolCallPayload,
-  readObservabilityTranscriptWindow,
-} from './data'
+import { readTranscriptStats, listSessions, findSessionFile, lastAssistantTurn } from './data'
 import { registerAgentInsightsIpc } from './ipc/agent-insights'
 import { registerObservabilityIpc } from './ipc/observability'
 import { registerSchedulesIpc } from './ipc/schedules'
@@ -96,6 +87,9 @@ import { registerHitlIpc } from './ipc/hitl'
 import { registerMonitorsIpc } from './ipc/monitors'
 import { registerDataIpc } from './ipc/data'
 import { registerWidgetsIpc } from './ipc/widgets'
+import { registerBgTasksIpc } from './ipc/bg-tasks'
+import { registerLoopsIpc } from './ipc/loops'
+import { registerAgentViewIpc } from './ipc/agentview'
 import { createBridgeDeps } from './bridge-deps'
 import {
   bindSessionSender,
@@ -226,28 +220,11 @@ const openExternalSafe = (url: unknown): void => {
 }
 import { startAICollectionLoop } from './ai-collectors'
 import { startListenerInboxWatcher } from './listeners'
-import {
-  spawnBgTask,
-  listBgTasks,
-  getBgTask,
-  cancelBgTask,
-  readBgTaskLog,
-  startBgWatcher,
-} from './bg-tasks'
-import {
-  listLoops,
-  getLoop,
-  readLoopState,
-  createLoop,
-  stepLoop,
-  restartLoop,
-  stopLoop,
-  startLoopWatcher,
-  type CreateLoopInput,
-} from './loops'
+import { startBgWatcher } from './bg-tasks'
+import { startLoopWatcher } from './loops'
 import { startLoopListener, noteLoopTurnComplete, noteSingleLoopTurn } from './loop-listener'
 import { composeSteps, pipelineLabel } from './pipelines'
-import { remoteAgents, remoteDirs, remoteProject, remoteRuns } from './remote'
+import { remoteAgents, remoteDirs, remoteProject } from './remote'
 import { listCursorModels } from './cursor-models'
 import { createCheckpoint } from './checkpoints'
 import { resolveWithinAny } from './path-guard'
@@ -1127,67 +1104,6 @@ handle('release:tail', () => {
 // Harness self-status. Meta-observability snapshot so the operator can see
 // how the harness itself is doing without ls-ing config dirs. Cheap: one
 // directory listing + the in-memory run map.
-// Background tasks IPCs. /bg <prompt> fires a detached run.
-handle('bg:list', () => (curRemote() ? [] : listBgTasks()))
-handle('bg:get', (_e, id: string) => (curRemote() ? null : getBgTask(id)))
-handle('bg:log', (_e, id: string) => (curRemote() ? '' : readBgTaskLog(id)))
-handle(
-  'bg:spawn',
-  (_e, input: { repoRoot: string; prompt: string; engine?: Engine; model?: string }) => {
-    const remote = curRemote()
-    if (!remote) return spawnBgTask(input)
-    const prompt = input.prompt?.trim()
-    if (!prompt) return { error: 'empty prompt' }
-    const engine = localOnlyToRemote(input.engine || remote.daemon?.defaultEngine || 'claude')
-    const enrichedPrompt =
-      prompt +
-      `\n\n---\n` +
-      `When you're done, if you opened a PR/MR include its URL on a line by itself in the format:\nMR: <url>\n` +
-      `If you completed the task without opening a PR/MR, say so on a line starting with:\nDONE: <one-line summary>\n` +
-      `If you couldn't complete the task, say so on a line starting with:\nFAILED: <one-line reason>`
-    return remoteRuns.start(remote, {
-      agentId: 'background-task',
-      agentTitle: 'Background task',
-      engine,
-      model: remoteEngineModel(remote, engine, input.model),
-      steps: [{ label: 'background task', prompt: enrichedPrompt }],
-    })
-  },
-)
-handle('bg:cancel', (_e, id: string) =>
-  curRemote() ? { ok: false, error: 'remote' } : cancelBgTask(id),
-)
-
-// Loops — long-running planner/generator/evaluator loops (LOOPS.md pattern).
-handle('loops:list', () => (curRemote() ? [] : listLoops()))
-handle('loops:get', (_e, id: string) => (curRemote() ? null : getLoop(id) || null))
-handle('loops:state', (_e, id: string) => (curRemote() ? { error: 'remote' } : readLoopState(id)))
-handle('loops:create', (_e, input: CreateLoopInput) => {
-  if (curRemote()) return { error: 'remote' }
-  let repoRoot = input.repoRoot
-  if (!repoRoot) {
-    // default to the git top-level of the focused session's cwd
-    const cwd = cur().cwd
-    if (!cwd) return { error: 'no active session — open a repo first' }
-    try {
-      repoRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd, stdio: 'pipe' })
-        .toString()
-        .trim()
-    } catch {
-      return { error: `not a git repo: ${cwd}` }
-    }
-  }
-  return createLoop({ ...input, repoRoot })
-})
-handle('loops:step', (_e, id: string) => (curRemote() ? { error: 'remote' } : stepLoop(id)))
-handle('loops:restart', (_e, id: string) => (curRemote() ? { error: 'remote' } : restartLoop(id)))
-handle('loops:stop', (_e, id: string) => (curRemote() ? { error: 'remote' } : stopLoop(id)))
-
-// Cheap one-shot LLM call — routes through local coding-agent subscriptions.
-handle('llm:cheap', async (_e, opts: Parameters<typeof import('./cheap-llm').cheapCall>[0]) => {
-  const { cheapCall } = await import('./cheap-llm')
-  return cheapCall(opts)
-})
 
 // AI fleet observability IPCs. Pull from the per-run AI ledger.
 registerObservabilityIpc({ isRemote: () => !!curRemote() })
@@ -1209,37 +1125,6 @@ registerRepoTrustDenialIpc(ipcMain)
 // whichever repo is currently active, the same accessor the rest of the
 // repo-scoped handlers use.
 registerSessionSearchIpc({ cwd: () => activeDaemon().repoRoot() })
-handle('agentview:snapshot', (_e, limit: number = 120) =>
-  curRemote()
-    ? {
-        ts: Date.now(),
-        sessions: [],
-        totals: {
-          sessions: 0,
-          readySessions: 0,
-          tokens: 0,
-          inputTokens: 0,
-          outputTokens: 0,
-          costUsd: 0,
-          toolCalls: 0,
-        },
-        byEngine: {},
-        byRepo: {},
-        topTools: [],
-      }
-    : readObservabilitySnapshot(limit),
-)
-handle('agentview:session', (_e, sessionId: string) =>
-  curRemote() ? null : readObservabilitySessionDetail(sessionId),
-)
-handle('agentview:tool-call', (_e, sessionId: string, callId: string) =>
-  curRemote() ? null : readObservabilityToolCallPayload(sessionId, callId),
-)
-handle(
-  'agentview:transcript-window',
-  (_e, sessionId: string, centerLine: number = 0, radius: number = 24) =>
-    curRemote() ? null : readObservabilityTranscriptWindow(sessionId, centerLine, radius),
-)
 handle('harness:status', () => {
   const cfgDir = terminalConfigDir()
   const cronRunsDir = join(cfgDir, 'cron-runs')
@@ -1416,6 +1301,11 @@ registerWidgetsIpc({
   cur,
   openCwds: () => [...sessions.values()].map((s) => s.pinned.cwd),
 })
+// Detached background tasks, the planner/generator/evaluator loops, and the
+// AgentView observability reads.
+registerBgTasksIpc({ curRemote, localOnlyToRemote, remoteEngineModel })
+registerLoopsIpc({ cur, curRemote })
+registerAgentViewIpc({ curRemote })
 
 // ---- my workflow (local Claude/Codex configuration) ----
 handle('workflow:list', (_e, rel: string) => listWorkflowFiles(rel || ''))
