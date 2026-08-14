@@ -10,8 +10,10 @@ integrated terminal plus task runner.
 
 Please do not open a public issue for a vulnerability.
 
-Use GitHub private vulnerability reporting if it is available on this repo. If
-not, contact the maintainer directly and include:
+Report it through **[GitHub private security
+advisories](https://github.com/trevormil/TerMinal/security/advisories/new)** —
+that is the only reporting channel, and it is already linked from the issue
+chooser. Include:
 
 - Affected version or commit
 - macOS version and architecture
@@ -87,4 +89,5 @@ These are expected properties, not vulnerabilities by themselves:
 - A trusted repo widget or agent can run arbitrary shell commands.
 - A scheduled job runs while TerMinal is closed.
 - Agents can spend tokens or call configured local/remote AI providers.
-- The unsigned local DMG requires normal macOS Gatekeeper handling.
+- A locally built, ad-hoc-signed app requires normal macOS Gatekeeper handling
+  (published releases are Developer ID-signed and notarized).

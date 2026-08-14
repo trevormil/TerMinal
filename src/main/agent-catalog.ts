@@ -210,7 +210,7 @@ export const DEFAULT_AGENTS: Agent[] = [
     prompt:
       'Act as a dead-code cleanup agent for this repository. Find unused exports, unreachable branches, orphaned files, and stale feature flags. Remove only what is provably unused (verify with a references/usage search and the type checker/build), keeping changes surgical and reversible. Run the test suite and build to confirm nothing breaks, then open a PR. For anything you suspect is dead but cannot prove safely, file a backlog ticket instead of deleting. End with a summary of what you removed and the PR URL.',
   },
-  // ━━ Generic daily-loop presets (modeled on Trevor's old BitBadges daily) ━━
+  // ━━ Generic daily-loop presets ━━
   // Each preset is repo-agnostic and ticket/PR-driven. Skipping presets that
   // overlap existing defaults (auto-docs → docs, auto-test → test-coverage,
   // security-audit → security-sweep, perf-infra → perf-pass, dependabot →

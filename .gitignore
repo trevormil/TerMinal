@@ -31,3 +31,8 @@ dist
 # and it must not show as untracked, or bin/release treats the checkout as
 # dirty and refuses to fast-forward to origin/main.
 .claude/pre-tm-backup/
+
+# Agent worktrees, when one is created inside the checkout instead of the shared
+# worktrees root. Same rationale as the backup dir above: local-only, and an
+# untracked dir here makes bin/release treat the checkout as dirty.
+/.claude/worktrees/

@@ -278,7 +278,7 @@ describe('linear-native meta', () => {
       description: 'body',
       priority: 1,
       state: { name: 'In Review', type: 'started', color: '#f2c94c' },
-      assignee: { name: 'Trevor Miller' },
+      assignee: { name: 'Ada Lovelace' },
       labels: { nodes: [{ name: 'Bug', color: '#eb5757' }, { name: 'iOS' }] },
       project: { name: 'Mobile' },
       cycle: { name: 'Cycle 12' },
@@ -294,7 +294,7 @@ describe('linear-native meta', () => {
       stateColor: '#f2c94c',
       priority: 1,
       priorityLabel: 'Urgent',
-      assignee: 'Trevor Miller',
+      assignee: 'Ada Lovelace',
       project: 'Mobile',
       cycle: 'Cycle 12',
       team: 'Engineering',
@@ -518,11 +518,11 @@ describe('provider comment mapping', () => {
       id: 'TRE-5',
       title: 'x',
       comments: [
-        { user: { name: 'Trevor' }, body: 'linear note', createdAt: '2026-06-07T20:41:17.329Z' },
+        { user: { name: 'Ada' }, body: 'linear note', createdAt: '2026-06-07T20:41:17.329Z' },
       ],
     })
     expect(t.comments).toEqual([
-      { at: '2026-06-07T20:41:17.329Z', author: 'Trevor', kind: 'human', body: 'linear note' },
+      { at: '2026-06-07T20:41:17.329Z', author: 'Ada', kind: 'human', body: 'linear note' },
     ])
   })
 })

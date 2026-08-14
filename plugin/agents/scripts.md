@@ -339,21 +339,23 @@ stream output to the run log.
 
 ## Compatibility & migration
 
-Phase 1 (now):
-- The current `.agents/agents.json` + `prompt` model continues to work.
-- New: the runner checks for `.agents/<id>.sh` first; if found, executes it
-  with the env above; if not, falls back to building the configured engine prompt command.
+Both models are live and neither is deprecated:
 
-Phase 2:
-- A `/migrate-agents` skill converts every entry in `.agents/agents.json`
-  into a matching `.agents/<id>.sh` + `.agents/<id>.json` sidecar.
-- The body of each `.sh` is just the single `claude -p` / `codex exec` / `cursor-agent -p`
-  line built from the prompt + engine + model. After migration the json
-  blob is just metadata.
+- `.agents/agents.json` + `prompt` works, and is still where `saveAgent` writes
+  a repo's agent overrides. `readAgents` layers it in as the `repo` layer
+  (defaults → global → repo) and emits **no** deprecation warning.
+- Script agents work alongside it: the runner checks for `.agents/<id>.sh`
+  first; if found it executes it with the env above, otherwise it builds the
+  configured engine prompt command from the JSON entry.
+- `/migrate-agents` converts JSON entries into `.agents/<id>.sh` +
+  `.agents/<id>.json` sidecars for anyone who wants scripts. The `.sh` body is
+  the single `claude -p` / `codex exec` / `cursor-agent -p` line built from the
+  prompt + engine + model; after migration the JSON blob is just metadata.
+  It is an option, not a required migration.
 
-Phase 3:
-- `.agents/agents.json` deprecated; readAgents emits a warning when it sees
-  one and suggests `/migrate-agents`.
+An earlier draft of this doc planned a third phase that deprecated
+`agents.json` and warned on sight. That was never implemented and is not
+planned — the two models coexist.
 
 ## Designer UX
 

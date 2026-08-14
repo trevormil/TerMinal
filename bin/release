@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # release — full rebuild of the macOS app + reinstall to /Applications.
 #
-# Packages (electron-vite build + electron-builder), deep ad-hoc signs (so it
-# launches on Apple Silicon), quits the running copy, installs to /Applications,
-# and relaunches. This is the "full re-build" flow — run it after changes so the
-# installed app is current. (True self-update via electron-updater needs an Apple
-# Developer ID signature + notarization; see docs/runbooks/build-and-release.md.)
+# Packages (electron-vite build + electron-builder), signs — Developer ID +
+# notarization when the credentials are present, ad-hoc otherwise (see the
+# signing block below) — quits the running copy, installs to /Applications, and
+# relaunches. This is the "full re-build" flow, and it is also how the in-app
+# one-click update works (ADR-0016): we deliberately rebuild from source rather
+# than run electron-updater. See docs/runbooks/build-and-release.md.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -135,7 +136,7 @@ if [[ -z "$APP" ]]; then
 fi
 
 # Emit SHA-256 checksums for the distributable(s) so a download can be verified
-# before the Gatekeeper bypass (the build is unsigned). See docs/setup.md.
+# before it is opened, whether or not this build ends up signed. See docs/setup.md.
 echo "▸ checksums…"
 if compgen -G "dist/*.dmg" >/dev/null; then
   ( cd dist && shasum -a 256 *.dmg > SHA256SUMS.txt )

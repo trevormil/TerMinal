@@ -280,7 +280,7 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
               <input
                 value={remoteDraft.sshTarget}
                 onChange={(e) => setRemoteDraft((d) => ({ ...d, sshTarget: e.target.value }))}
-                placeholder="tm or user@example.com"
+                placeholder="myhost or user@example.com"
                 spellCheck={false}
                 className={`${inp} font-mono`}
               />

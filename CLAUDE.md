@@ -8,7 +8,7 @@ sessions with a software-factory layer on top: tabs for tickets, MRs, scheduled
 agents, runs, HITL, docs, and per-session plugin widgets. See
 [`README.md`](./README.md) and [`docs/architecture.md`](./docs/architecture.md).
 
-**Status:** Shipped, actively iterating. Daily-driver tool — Trevor uses it as
+**Status:** Shipped, actively iterating. It is the maintainer's daily driver —
 the primary terminal across every other local project.
 
 ## TerMinal follows the full PR + human-merge flow (global §8)

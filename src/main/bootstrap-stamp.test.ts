@@ -9,7 +9,7 @@ import { clearRepoStateCache, repoStateRoot } from './repo-state'
 const STAMP = { sha: 'abc1234def5678', stampedAt: '2026-07-17T12:00:00.000Z' }
 
 // The stamp is machine-local bookkeeping, so it lives in the repo's SIDECAR —
-// never in the repo (a collaborator must not receive "when Trevor last
+// never in the repo (a collaborator must not receive "when the maintainer last
 // bootstrapped"). Legacy in-repo .TerMinal/meta.json stays readable so
 // unrelated keys survive the move.
 
