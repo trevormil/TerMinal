@@ -49,7 +49,9 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
           label="AI suggestion model"
           engine={s.suggestions.aiEngine}
           model={s.suggestions.aiModel}
-          onPick={(aiEngine, aiModel) => save({ suggestions: { aiEngine, aiModel: aiModel || '' } })}
+          onPick={(aiEngine, aiModel) =>
+            save({ suggestions: { aiEngine, aiModel: aiModel || '' } })
+          }
           hint="Used when a terminal is set to AI mode and shows 1-5 suggested next replies."
         />
         <SuggestionModelSetting

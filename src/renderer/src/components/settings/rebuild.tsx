@@ -58,7 +58,9 @@ function RebuildPanel() {
         ) : (
           <RotateCcw size={14} strokeWidth={2} />
         )}
-        {running ? 'Rebuilding… (app will quit + relaunch automatically)' : 'Rebuild + reinstall now'}
+        {running
+          ? 'Rebuilding… (app will quit + relaunch automatically)'
+          : 'Rebuild + reinstall now'}
         <span className="ml-auto text-[10.5px] text-zinc-600">bun run release</span>
       </button>
       {error && <div className="text-[11px] text-amber-400">{error}</div>}

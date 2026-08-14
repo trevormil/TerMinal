@@ -19,9 +19,7 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
         />
         <Toggle
           on={s.inbox.agentContextPreamble}
-          onToggle={() =>
-            save({ inbox: { agentContextPreamble: !s.inbox.agentContextPreamble } })
-          }
+          onToggle={() => save({ inbox: { agentContextPreamble: !s.inbox.agentContextPreamble } })}
           label="Add repo context to prompt agents"
           hint="Prompt-style agent runs get a small capped preamble from docs/learnings, docs/decisions, and docs/runbooks. Script agents are unchanged."
         />

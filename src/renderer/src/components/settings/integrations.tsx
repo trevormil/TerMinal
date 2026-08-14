@@ -1,5 +1,12 @@
 import { useState } from 'react'
-import { CircleCheck, ClipboardCopy, Loader2, PlugZap, RotateCcw, TerminalSquare } from 'lucide-react'
+import {
+  CircleCheck,
+  ClipboardCopy,
+  Loader2,
+  PlugZap,
+  RotateCcw,
+  TerminalSquare,
+} from 'lucide-react'
 import { Section, tilde, type SettingsCtx, type SettingsSectionSpec } from './shared'
 
 function Component({ ctx }: { ctx: SettingsCtx }) {
@@ -22,9 +29,12 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
     setTimeout(() => setCopied(false), 2500)
   }
 
-  const [notify, setNotify] = useState<{ busy?: boolean; ok?: boolean; path?: string; error?: string } | null>(
-    null,
-  )
+  const [notify, setNotify] = useState<{
+    busy?: boolean
+    ok?: boolean
+    path?: string
+    error?: string
+  } | null>(null)
   const installNotify = async () => {
     setNotify({ busy: true })
     setNotify(await window.gt.installGtNotify())
@@ -97,7 +107,9 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
           <span className="ml-auto text-[10.5px] text-zinc-600">Cross-session views</span>
         </button>
         {mcpState && !mcpState.busy && (
-          <div className={`text-[11px] ${mcpState.ok ? 'text-[var(--gt-green)]' : 'text-amber-400'}`}>
+          <div
+            className={`text-[11px] ${mcpState.ok ? 'text-[var(--gt-green)]' : 'text-amber-400'}`}
+          >
             {mcpState.ok
               ? `✓ Installed to ${mcpState.installed?.join(', ') || ''}. Restart any open Claude session to pick it up.`
               : mcpState.error}

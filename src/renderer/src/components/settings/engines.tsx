@@ -11,8 +11,7 @@ import { EditDetails, Readiness, SecretInput, Section, inp, tilde } from './shar
 import type { SettingsCtx, SettingsSectionSpec } from './shared'
 
 function Component({ ctx }: { ctx: SettingsCtx }) {
-  const { s, save, env, selectedDaemon, selectedProbe, selectedIsRemote, saveDaemon, profile } =
-    ctx
+  const { s, save, env, selectedDaemon, selectedProbe, selectedIsRemote, saveDaemon, profile } = ctx
 
   // Which engines the local machine actually has (for readiness indicators).
   // OpenRouter and openai-compat (or-agent) ride on Codex being present.
@@ -85,7 +84,9 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
             ) : (
               <select
                 value={defModel}
-                onChange={(ev) => saveDaemon({ engines: { [e]: { defaultModel: ev.target.value } } })}
+                onChange={(ev) =>
+                  saveDaemon({ engines: { [e]: { defaultModel: ev.target.value } } })
+                }
                 className="rounded-md border border-[var(--gt-border)] bg-black/30 px-1.5 py-0.5 text-[11px] text-zinc-200 outline-none"
               >
                 <option value="">(engine default)</option>
@@ -172,12 +173,10 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
       </div>
       {!selectedIsRemote && (
         <div className="mt-2 rounded-lg border border-[var(--gt-border)] bg-black/20 p-2.5">
-          <label className="block text-[11px] font-medium text-zinc-300">
-            OpenRouter API key
-          </label>
+          <label className="block text-[11px] font-medium text-zinc-300">OpenRouter API key</label>
           <div className="mt-0.5 text-[10.5px] text-zinc-600">
-            Stored in your OS keychain. Used only for OpenRouter (or-agent) runs. Empty → falls
-            back to the shell&apos;s OPENROUTER_API_KEY.
+            Stored in your OS keychain. Used only for OpenRouter (or-agent) runs. Empty → falls back
+            to the shell&apos;s OPENROUTER_API_KEY.
           </div>
           <div className="mt-1.5">
             <SecretInput
@@ -190,13 +189,10 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
       )}
       {!selectedIsRemote && (
         <div className="mt-2 rounded-lg border border-[var(--gt-border)] bg-black/20 p-2.5">
-          <label className="block text-[11px] font-medium text-zinc-300">
-            Self-hosted API key
-          </label>
+          <label className="block text-[11px] font-medium text-zinc-300">Self-hosted API key</label>
           <div className="mt-0.5 text-[10.5px] text-zinc-600">
             Stored in your OS keychain. Sent to the self-hosted (openai-compat) endpoint. Empty →
-            falls back to the shell&apos;s OPENAI_API_KEY; keyless local servers need no real
-            value.
+            falls back to the shell&apos;s OPENAI_API_KEY; keyless local servers need no real value.
           </div>
           <div className="mt-1.5">
             <SecretInput

@@ -62,9 +62,7 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
             >
               <Server size={16} strokeWidth={2} className="shrink-0 text-[var(--gt-accent-2)]" />
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[12px] font-semibold">
-                  {h.label || h.id}
-                </span>
+                <span className="block truncate text-[12px] font-semibold">{h.label || h.id}</span>
                 <span className="block truncate font-mono text-[10.5px] text-zinc-600">
                   {h.sshTarget}
                 </span>

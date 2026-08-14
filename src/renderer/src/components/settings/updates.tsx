@@ -1,11 +1,5 @@
 import { useEffect, useState } from 'react'
-import {
-  ArrowUpCircle,
-  CircleCheck,
-  ClipboardCopy,
-  Loader2,
-  RotateCcw,
-} from 'lucide-react'
+import { ArrowUpCircle, CircleCheck, ClipboardCopy, Loader2, RotateCcw } from 'lucide-react'
 import type { RepoStateStatus, TmPluginStatus, UpdateCheckResult } from '../../lib/types'
 import { Section, type SettingsSectionSpec } from './shared'
 
@@ -199,7 +193,9 @@ function TmPluginPanel() {
       <div className="flex items-center gap-2">
         <div className="min-w-0 flex-1">
           <div className="text-[11.5px] text-zinc-300">tm plugin (global skills)</div>
-          <div className={`text-[10.5px] ${status ? stateColor : 'text-zinc-500'}`}>{stateText}</div>
+          <div className={`text-[10.5px] ${status ? stateColor : 'text-zinc-500'}`}>
+            {stateText}
+          </div>
         </div>
         <button
           onClick={sync}
@@ -275,7 +271,9 @@ function RepoStatePanel() {
               : status.pending || status.legacyCopies
                 ? [
                     status.pending ? `${status.pending} state file(s) still in the repo` : '',
-                    status.legacyCopies ? `${status.legacyCopies} plugin-served skill/hook copies` : '',
+                    status.legacyCopies
+                      ? `${status.legacyCopies} plugin-served skill/hook copies`
+                      : '',
                   ]
                     .filter(Boolean)
                     .join(' + ') + ' — move them out so collaborators don’t get them'

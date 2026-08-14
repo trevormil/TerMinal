@@ -16,7 +16,7 @@ import type {
   TicketProviderKind,
   TicketProviderTestResult,
 } from '../../lib/types'
-import { Section, inp, type SettingsCtx, type SettingsSectionSpec } from './shared'
+import { Section, inp, type SettingsSectionSpec } from './shared'
 
 const defaultLinearConfig = (team = ''): NonNullable<TicketProviderConfig['linear']> => ({
   mcp: {
@@ -554,7 +554,9 @@ function TicketProviderPanel() {
           disabled={busy === 'test' || providerChanged}
           className={action}
           title={
-            providerChanged ? 'Save before testing this provider.' : 'Non-mutating connection check.'
+            providerChanged
+              ? 'Save before testing this provider.'
+              : 'Non-mutating connection check.'
           }
         >
           {busy === 'test' ? (
@@ -570,7 +572,9 @@ function TicketProviderPanel() {
             disabled={busy === 'smoke' || providerChanged}
             className={action}
             title={
-              providerChanged ? 'Save before running smoke.' : 'Creates, updates, and closes a real smoke ticket.'
+              providerChanged
+                ? 'Save before running smoke.'
+                : 'Creates, updates, and closes a real smoke ticket.'
             }
           >
             {busy === 'smoke' ? (

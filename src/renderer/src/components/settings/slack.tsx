@@ -1,7 +1,15 @@
 import { useState } from 'react'
 import { Hash, Loader2, Send } from 'lucide-react'
 import { slackChannelName } from '../../../../shared/slack'
-import { SecretInput, Section, Toggle, actionButton, inp, type SettingsCtx, type SettingsSectionSpec } from './shared'
+import {
+  SecretInput,
+  Section,
+  Toggle,
+  actionButton,
+  inp,
+  type SettingsCtx,
+  type SettingsSectionSpec,
+} from './shared'
 
 function Component({ ctx }: { ctx: SettingsCtx }) {
   const { s, save } = ctx

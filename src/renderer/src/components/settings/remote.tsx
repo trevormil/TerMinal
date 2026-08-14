@@ -1,7 +1,14 @@
 import { useState } from 'react'
 import { Server } from 'lucide-react'
 import type { RemoteHost, RemotePlatform } from '../../lib/types'
-import { Section, actionButton, emptyDaemon, inp, type SettingsCtx, type SettingsSectionSpec } from './shared'
+import {
+  Section,
+  actionButton,
+  emptyDaemon,
+  inp,
+  type SettingsCtx,
+  type SettingsSectionSpec,
+} from './shared'
 
 // The structured readiness report from `hosts:provision` (src/main/host-provision.ts).
 type ProvisionState = Awaited<ReturnType<Window['gt']['provisionHost']>>

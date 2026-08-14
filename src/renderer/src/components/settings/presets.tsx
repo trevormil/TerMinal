@@ -40,7 +40,10 @@ function PresetVisibilityPanel() {
             {hidden.map((id) => {
               const preset = byId.get(id)
               return (
-                <div key={id} className="flex items-center gap-2 rounded-md bg-black/25 px-2 py-1.5">
+                <div
+                  key={id}
+                  className="flex items-center gap-2 rounded-md bg-black/25 px-2 py-1.5"
+                >
                   <span className="min-w-0 flex-1 truncate text-[11.5px] text-zinc-300">
                     {preset?.title || id}
                   </span>

@@ -80,7 +80,12 @@ function PanelsSection({
 }
 
 function Component({ ctx }: { ctx: SettingsCtx }) {
-  return <PanelsSection panels={ctx.s.pinnedPanels} onSave={(pinnedPanels) => ctx.save({ pinnedPanels })} />
+  return (
+    <PanelsSection
+      panels={ctx.s.pinnedPanels}
+      onSave={(pinnedPanels) => ctx.save({ pinnedPanels })}
+    />
+  )
 }
 
 const section: SettingsSectionSpec = {

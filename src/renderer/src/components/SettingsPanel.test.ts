@@ -22,7 +22,9 @@ const src = readdirSync(settingsDir)
 // Each section file exports `const section: SettingsSectionSpec = { id: '…',
 // title: '…', icon: …, order: …, ... }`.
 const navIds = [
-  ...src.matchAll(/id:\s*'([\w-]+)',\s*\n\s*title:\s*'[^']*',\s*\n\s*icon:\s*\w+,\s*\n\s*order:\s*\d+,/g),
+  ...src.matchAll(
+    /id:\s*'([\w-]+)',\s*\n\s*title:\s*'[^']*',\s*\n\s*icon:\s*\w+,\s*\n\s*order:\s*\d+,/g,
+  ),
 ].map((m) => m[1])
 const sectionIds = [...src.matchAll(/<Section\s+id="([\w-]+)"/g)].map((m) => m[1])
 

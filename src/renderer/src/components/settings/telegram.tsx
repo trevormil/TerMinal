@@ -1,6 +1,13 @@
 import { useState } from 'react'
 import { Loader2, MessageCircle, Send } from 'lucide-react'
-import { SecretInput, Section, Toggle, actionButton, type SettingsCtx, type SettingsSectionSpec } from './shared'
+import {
+  SecretInput,
+  Section,
+  Toggle,
+  actionButton,
+  type SettingsCtx,
+  type SettingsSectionSpec,
+} from './shared'
 
 function Component({ ctx }: { ctx: SettingsCtx }) {
   const { s, save } = ctx
@@ -107,9 +114,9 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
             </div>
             <div className="mt-1.5 text-[10px] text-zinc-600">
               <span className="text-zinc-500">/feature</span> drafts a ticket from plain text, then
-              offers a "Start work" button that builds it and links the PR back. Plain English
-              works too — it's translated to a command. HITL pings include inline "Resolve" and
-              "Tail run" buttons.
+              offers a "Start work" button that builds it and links the PR back. Plain English works
+              too — it's translated to a command. HITL pings include inline "Resolve" and "Tail run"
+              buttons.
             </div>
           </details>
         )}

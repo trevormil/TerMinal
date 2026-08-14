@@ -1,7 +1,14 @@
 import { useEffect, useState } from 'react'
 import { BellRing, Loader2, Send } from 'lucide-react'
 import type { AlertChannelId, DeliveryRecord } from '../../lib/types'
-import { Section, Toggle, WebhookList, actionButton, type SettingsCtx, type SettingsSectionSpec } from './shared'
+import {
+  Section,
+  Toggle,
+  WebhookList,
+  actionButton,
+  type SettingsCtx,
+  type SettingsSectionSpec,
+} from './shared'
 
 // Last-N alert deliveries with failure reasons. dispatchAlert isolates channel
 // failures so one dead webhook can't block the others — which also meant a
@@ -43,7 +50,9 @@ function DeliveryLog() {
       {log === null ? (
         <div className="text-[11px] text-zinc-600">Loading…</div>
       ) : log.length === 0 ? (
-        <div className="text-[11px] text-zinc-600">No alerts dispatched yet — nothing to report.</div>
+        <div className="text-[11px] text-zinc-600">
+          No alerts dispatched yet — nothing to report.
+        </div>
       ) : (
         <div className="space-y-1">
           {log.map((r, i) => (
