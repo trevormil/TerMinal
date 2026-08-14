@@ -2,6 +2,8 @@ import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { deriveCategories, normalizeCategory } from '../shared/inbox-categories'
+import { normalizeCategoryShared } from '../cli/hitl'
+import { normalizeCategoryShared as mcpNormalizeCategoryShared } from '../mcp/writes'
 import type { HitlItem as MainHitlItem } from './hitl'
 import type { HitlItem as RendererHitlItem } from '../renderer/src/lib/types'
 
@@ -48,8 +50,9 @@ describe('category survives every writer (ticket 120)', () => {
     expect(rendererMirrorsMain).toBe(true)
   })
 
-  test('bin/terminal-cli accepts --category and puts it on the item', () => {
-    const cli = read('bin/terminal-cli')
+  test('terminal-cli accepts --category and puts it on the item', () => {
+    // Read from the typed source: bin/terminal-cli is a build artifact of it.
+    const cli = read('src/cli/hitl.ts') + read('src/cli/index.ts')
     expect(cli).toContain('normalizeCategoryShared(opts.category)')
     // Computing it and forgetting to spread it is exactly the half-wiring that
     // lint caught here once already.
@@ -65,7 +68,7 @@ describe('category survives every writer (ticket 120)', () => {
   test('the documented flags are the flags that are parsed', () => {
     // A flag in --help that the parser ignores is worse than an undocumented
     // one: it fails silently and looks like the feature is broken.
-    const cli = read('bin/terminal-cli')
+    const cli = read('src/cli/index.ts')
     const help = cli.slice(0, cli.indexOf('import '))
     const dispatch = cli.slice(cli.indexOf("case 'hitl':"), cli.indexOf("case 'monitor':"))
     for (const m of help.matchAll(/\[--(\w+)=/g)) {
@@ -73,31 +76,26 @@ describe('category survives every writer (ticket 120)', () => {
     }
   })
 
-  test('bin/terminal-mcp-server accepts it too', () => {
-    const mcp = read('bin/terminal-mcp-server')
-    expect(mcp).toMatch(/severity,\s*category\s*\}/)
+  test('terminal-mcp-server accepts it too', () => {
+    const mcp = read('src/mcp/writes.ts')
+    expect(mcp).toMatch(/severity,\s*category,?\s*\}/)
     expect(mcp).toContain('normalizeCategoryShared(category)')
   })
 
-  test('both bin scripts inline the normalizer, since they cannot import it', () => {
-    // Same constraint as the file-lock helper: standalone scripts copied to
-    // remote hosts with no sibling modules.
-    for (const f of ['bin/terminal-cli', 'bin/terminal-mcp-server']) {
-      expect(read(f), `${f} should inline it`).toContain('function normalizeCategoryShared')
-    }
+  test('both filing paths define their own normalizer, as real modules', () => {
+    // They used to be inlined blocks in two standalone scripts. Both scripts are
+    // bundles of typed sources now, so the copies are modules — still two of
+    // them, because the two verbs write subtly different shapes and collapsing
+    // them is a behaviour change, not a port.
+    expect(read('src/cli/hitl.ts')).toContain('export function normalizeCategoryShared')
+    expect(read('src/mcp/writes.ts')).toContain('export function normalizeCategoryShared')
   })
 
-  test('the inlined copies agree with the canonical one', () => {
-    // Extracted and RUN, not eyeballed — a copy that has drifted is the whole
-    // risk of inlining.
-    const cli = read('bin/terminal-cli')
-    const start = cli.indexOf('function normalizeCategoryShared')
-    const body = cli.slice(start, cli.indexOf('\n}\n', start) + 3)
-    const mirrored = new Function(`${body}; return normalizeCategoryShared`)() as (
-      v: unknown,
-    ) => string | undefined
+  test('the copies agree with the canonical one', () => {
+    // RUN, not eyeballed — a copy that has drifted is the whole risk of copying.
     for (const input of ['Monitoring', '  spaced  ', '', 'x'.repeat(80), 'a\nb', 42, null]) {
-      expect(mirrored(input)).toEqual(normalizeCategory(input))
+      expect(normalizeCategoryShared(input)).toEqual(normalizeCategory(input))
+      expect(mcpNormalizeCategoryShared(input)).toEqual(normalizeCategory(input))
     }
   })
 })

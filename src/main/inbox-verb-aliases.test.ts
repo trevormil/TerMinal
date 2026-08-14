@@ -6,10 +6,11 @@ import { join, resolve } from 'node:path'
 // Ticket 0123. The agent-facing verbs speak Inbox now; the HITL spellings stay
 // forever as aliases.
 //
-// Both files are self-contained scripts (copied to remote hosts, no sibling
-// modules), so they cannot be imported here — the CLI dispatches on
-// `process.argv` at load and the MCP server opens stdio. Source analysis is the
-// same technique src/main/inbox-category-wiring.test.ts already uses on them.
+// Neither entrypoint can be imported here — the CLI dispatches on `process.argv`
+// at load and the MCP server opens stdio. Source analysis is the same technique
+// src/main/inbox-category-wiring.test.ts already uses on them. Both are read
+// from their TYPED SOURCES now that bin/terminal-cli and bin/terminal-mcp-server
+// are build artifacts of src/cli and src/mcp.
 //
 // What matters is not that the new names EXIST but that they reach the same
 // implementation: a generic verb wired to a second, subtly different code path
@@ -17,8 +18,8 @@ import { join, resolve } from 'node:path'
 
 const ROOT = resolve(import.meta.dir, '../..')
 const read = (rel: string): string => readFileSync(join(ROOT, rel), 'utf8')
-const CLI = read('bin/terminal-cli')
-const MCP = read('bin/terminal-mcp-server')
+const CLI = read('src/cli/index.ts')
+const MCP = read('src/mcp/index.ts') + read('src/mcp/tools.ts')
 
 describe('terminal-cli: inbox-item is the documented verb (ticket 0123)', () => {
   // The dispatch arm both verbs share. `hitl` must stay the LAST case label of
