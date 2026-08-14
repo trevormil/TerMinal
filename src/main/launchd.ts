@@ -419,15 +419,6 @@ export function reconcileSchedules(): {
   return { loaded, removed, failed }
 }
 
-export function removeAllJobs(): number {
-  let n = 0
-  for (const f of listCronPlists()) {
-    unscheduleJob(idFromPlist(f))
-    n++
-  }
-  return n
-}
-
 // Fire a schedule immediately, out of band (detached so it outlives this call).
 export function runScheduleNow(id: string): void {
   try {

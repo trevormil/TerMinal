@@ -2,6 +2,8 @@ import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { deriveCategories, normalizeCategory } from '../shared/inbox-categories'
+import type { HitlItem as MainHitlItem } from './hitl'
+import type { HitlItem as RendererHitlItem } from '../renderer/src/lib/types'
 
 // Ticket 120. The derivation logic is unit-tested next to itself; this file
 // checks the thing that actually makes the feature real — that `category`
@@ -14,9 +16,20 @@ import { deriveCategories, normalizeCategory } from '../shared/inbox-categories'
 const ROOT = resolve(import.meta.dir, '../..')
 const read = (rel: string): string => readFileSync(join(ROOT, rel), 'utf8')
 
+// Type-level, not text-level: `true` only assigns if the name main exports and
+// the name the renderer exports are mutually assignable. Re-forking `HitlItem`
+// on either side makes this line a tsc error.
+type Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false
+const rendererMirrorsMain: Exact<MainHitlItem, RendererHitlItem> = true
+
 describe('category survives every writer (ticket 120)', () => {
-  test('the main-process type declares it', () => {
-    expect(read('src/main/hitl.ts')).toMatch(/category\?: string/)
+  test('the type declares it, once', () => {
+    // `HitlItem` used to be written out twice — in src/main/hitl.ts and again in
+    // the renderer's lib/types.ts — and this file had to assert the field on
+    // both. It now has ONE declaration in src/shared/types, which is why the
+    // "renderer mirrors it" test below is an identity check rather than a grep.
+    expect(read('src/shared/types/activity.ts')).toMatch(/category\?: string/)
+    expect(read('src/main/hitl.ts')).toContain("from '../shared/types/activity'")
   })
 
   test('fileHitl normalizes at the write boundary, not at read time', () => {
@@ -28,8 +41,11 @@ describe('category survives every writer (ticket 120)', () => {
 
   test('the renderer type mirrors it', () => {
     // main → preload → renderer must agree, or the field is invisible in the UI
-    // while being present on disk.
-    expect(read('src/renderer/src/lib/types.ts')).toMatch(/category\?: string/)
+    // while being present on disk. This is now enforced by the compile-time
+    // identity assertion at the top of this file, which `bunx tsc --noEmit`
+    // fails on if the two names ever stop resolving to the same declaration.
+    // A grep for the field would pass again the day someone re-forks the type.
+    expect(rendererMirrorsMain).toBe(true)
   })
 
   test('bin/terminal-cli accepts --category and puts it on the item', () => {
@@ -146,7 +162,7 @@ describe('bulk actions mean what the visible list says (ticket 120)', () => {
     const fn = tab.slice(tab.indexOf('const markAllRead'), tab.indexOf('const remove ='))
     expect(fn).toContain('scopedUnread')
     // The whole-inbox IPC is only correct when nothing is filtered.
-    expect(fn).toMatch(/activeCategory === ALL\s*\?\s*window\.gt\.hitl\.markAllRead\(\)/)
+    expect(fn).toMatch(/activeCategory === ALL\s*\?\s*window\.gt\.inbox\.markAllRead\(\)/)
   })
 
   test('the scoped set is derived from `shown`, which is the rendered list', () => {
@@ -165,5 +181,40 @@ describe('bulk actions mean what the visible list says (ticket 120)', () => {
     // left?", which a filter must not change; the button answers "what will
     // this do?", which a filter must.
     expect(tab).toContain('const unread = unsnoozed.filter(isUnread)')
+  })
+})
+
+describe('a row says which category it is in, when that is not obvious (ticket 0123)', () => {
+  const tab = read('src/renderer/src/tabs/hitl/index.tsx')
+  const row = tab.slice(tab.indexOf('{shown.map((h) => {'), tab.indexOf('{snoozedItems.length > 0'))
+
+  test('the chip is rendered from the item, not from a lookup table', () => {
+    // Same derived-not-declared rule as the sidebar: a brand-new category must
+    // render without anyone adding it to a map of labels or colours.
+    expect(row).toContain('<CategoryChip')
+    const chip = tab.slice(
+      tab.indexOf('function CategoryChip'),
+      tab.indexOf('export type InboxTerminalRef'),
+    )
+    expect(chip).toContain('categoryLeaf(')
+    expect(chip).not.toMatch(/(CATEGORY_LIST|KNOWN_CATEGORIES|Record<string, )/)
+  })
+
+  test('it is suppressed when the active filter already says it', () => {
+    // Under "Monitoring", stamping "Monitoring" on all twelve rows is noise —
+    // the chip only earns its width where the row's folder is not implied.
+    expect(row).toContain('activeCategory')
+    expect(row).toMatch(/chipCategory\(h,\s*activeCategory\)/)
+  })
+
+  test('the rule itself lives in the shared module, where it is unit-tested', () => {
+    // Deciding what to stamp is pure logic about categories, so it sits beside
+    // filterByCategory rather than inside a 900-line component — that is what
+    // lets inbox-categories.test.ts exercise the parent/child case for real
+    // instead of grepping a JSX file for it.
+    expect(tab).toMatch(
+      /chipCategory,[\s\S]{0,400}from '\.\.\/\.\.\/\.\.\/\.\.\/shared\/inbox-categories'/,
+    )
+    expect(read('src/shared/inbox-categories.ts')).toContain('export function chipCategory')
   })
 })

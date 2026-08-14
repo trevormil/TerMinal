@@ -1,10 +1,6 @@
-export type BootstrapState = 'full' | 'partial' | 'none'
-export type BootstrapStatus = {
-  state: BootstrapState
-  bootstrapped: boolean
-  missing: string[]
-  message: string
-}
+import type { BootstrapStatus } from '../shared/types/app'
+export type { BootstrapStatus } from '../shared/types/app'
+export type { BootstrapState } from '../shared/types/app'
 
 // What bootstrap actually leaves in a repo, and nothing else.
 //

@@ -644,7 +644,7 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                 <Chip active={view.hitl} onClick={() => patchView({ hitl: !view.hitl })}>
                   <span className="inline-flex items-center gap-1">
                     <Hand size={11} strokeWidth={2} />
-                    HITL
+                    Needs human
                   </span>
                 </Chip>
               </div>

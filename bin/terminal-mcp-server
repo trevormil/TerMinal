@@ -1286,7 +1286,7 @@ function fileHitlTool(args) {
   mirrorHitlToSlack(item, hitlFile)
   emitActivityRaw({
     kind: 'blocked',
-    title: `HITL · ${title}`,
+    title: `Inbox · ${title}`,
     detail: action || detail || '',
     repo,
     hitlId: item.id,
@@ -1296,7 +1296,7 @@ function fileHitlTool(args) {
   const row = [{ text: '✅ Resolve', callback_data: `hitl:resolve:${item.id}` }]
   if (runId) row.push({ text: '🪵 Tail run', callback_data: `run:tail:${runId}` })
   if (!slackQuietsTelegram())
-    pingTelegram(`⛔ HITL · ${title}${action ? ` — ${action}` : ''}`, [row])
+    pingTelegram(`⛔ Inbox · ${title}${action ? ` — ${action}` : ''}`, [row])
   return { id: item.id }
 }
 
@@ -2337,9 +2337,9 @@ const TOOLS = [
     },
   },
   {
-    name: 'file_hitl',
+    name: 'file_inbox_item',
     description:
-      'Append a human-in-the-loop item into the TerMinal inbox. This is append-only from the agent side: agents file blockers and may later query list_hitl/status, but only the human should resolve them. Emits a blocked activity event and pings Telegram with [Resolve] / [Tail run] buttons. Use when an agent hits a genuine blocker that needs the human.',
+      'Append an item to the TerMinal Inbox — the one cross-repo queue of things a human should see. `category` files it under a folder in the Inbox sidebar and is free-form ("Monitoring", "Monitoring/Certs", "Code review"); human-in-the-loop blockers are simply the default, uncategorised kind. Append-only from the agent side: agents file and may later query list_inbox, but only the human should resolve. Emits a blocked activity event and pings Telegram with [Resolve] / [Tail run] buttons.',
     inputSchema: {
       type: 'object',
       required: ['title'],
@@ -2348,6 +2348,11 @@ const TOOLS = [
         action: { type: 'string', description: 'What the human needs to do' },
         detail: { type: 'string' },
         repo: { type: 'string' },
+        category: {
+          type: 'string',
+          description:
+            'Free-form Inbox folder, nested with "/". Any name works — nothing needs registering.',
+        },
         source: {
           type: 'string',
           enum: ['manual', 'agent', 'skill', 'factory', 'cron-fail'],
@@ -2364,9 +2369,41 @@ const TOOLS = [
     },
   },
   {
-    name: 'resolve_hitl',
+    name: 'file_hitl',
     description:
-      'Mark a HITL item resolved (or re-open it). Human/operator tool only; agents should generally not call this for their own blockers. Agents should query list_hitl status or periodically re-check the original blocker.',
+      'Alias of file_inbox_item, kept for existing agent scripts. Prefer file_inbox_item — a human-in-the-loop request is one category of Inbox item, not a separate queue. Same arguments, same behaviour.',
+    inputSchema: {
+      type: 'object',
+      required: ['title'],
+      properties: {
+        title: { type: 'string' },
+        action: { type: 'string', description: 'What the human needs to do' },
+        detail: { type: 'string' },
+        repo: { type: 'string' },
+        category: { type: 'string' },
+        source: {
+          type: 'string',
+          enum: ['manual', 'agent', 'skill', 'factory', 'cron-fail'],
+        },
+        severity: { type: 'string', enum: ['urgent', 'normal', 'low'] },
+        runId: { type: 'string' },
+        ticketPath: { type: 'string' },
+      },
+    },
+  },
+  {
+    name: 'resolve_inbox_item',
+    description:
+      'Mark an Inbox item resolved (or re-open it). Human/operator tool only; agents should generally not call this for their own blockers. Agents should query list_inbox status or periodically re-check the original blocker.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: { id: { type: 'string' }, resolved: { type: 'boolean' } },
+    },
+  },
+  {
+    name: 'resolve_hitl',
+    description: 'Alias of resolve_inbox_item, kept for existing agent scripts.',
     inputSchema: {
       type: 'object',
       required: ['id'],
@@ -2436,9 +2473,21 @@ const TOOLS = [
     },
   },
   {
-    name: 'list_hitl',
+    name: 'list_inbox',
     description:
-      'List human-in-the-loop items. Default = open only. Use at the start of an agent run to check "is anything blocking me right now?" and self-route around blockers.',
+      'List TerMinal Inbox items (any category, including human-in-the-loop blockers). Default = open only. Use at the start of an agent run to check "is anything blocking me right now?" and self-route around blockers.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', enum: ['open', 'resolved', 'all'] },
+        repo: { type: 'string' },
+        limit: { type: 'number' },
+      },
+    },
+  },
+  {
+    name: 'list_hitl',
+    description: 'Alias of list_inbox, kept for existing agent scripts.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -2576,12 +2625,17 @@ const HANDLERS = {
   update_ticket: updateTicket,
   update_ticket_agent: updateTicketAgent,
   update_ticket_run: updateTicketRun,
+  // Inbox filing. The `*_hitl` spellings are permanent aliases (ticket 0123) —
+  // same function object, so they cannot drift.
+  file_inbox_item: fileHitlTool,
   file_hitl: fileHitlTool,
+  resolve_inbox_item: resolveHitlTool,
   resolve_hitl: resolveHitlTool,
   emit_activity: emitActivityTool,
   set_agent_state: setAgentStateTool,
   get_agent_state: getAgentStateTool,
   list_activity: listActivityTool,
+  list_inbox: listHitlTool,
   list_hitl: listHitlTool,
   list_bg_tasks: listBgTasksTool,
   harness_status: harnessStatusTool,
@@ -2608,8 +2662,8 @@ const TOOL_PRESETS = {
   'update_ticket',
     'update_ticket_agent',
     'update_ticket_run',
-    'file_hitl',
-    'resolve_hitl',
+    'file_inbox_item',
+    'resolve_inbox_item',
     'emit_activity',
     'set_agent_state',
     'get_agent_state',
@@ -2625,7 +2679,7 @@ const TOOL_PRESETS = {
     'recent_agent_runs',
     'ai_spend_today',
     'list_activity',
-    'list_hitl',
+    'list_inbox',
     'list_bg_tasks',
     'harness_status',
     'list_agents',
@@ -2638,7 +2692,7 @@ const TOOL_PRESETS = {
 }
 // core = the deterministic-filing tools (the server's reason to exist) plus the
 // few most-used reads. ~11 tools vs 25 — roughly half the schema tokens.
-TOOL_PRESETS.core = [...TOOL_PRESETS.write, 'list_tickets', 'list_hitl', 'harness_status']
+TOOL_PRESETS.core = [...TOOL_PRESETS.write, 'list_tickets', 'list_inbox', 'harness_status']
 
 function exposedTools() {
   let raw = process.env.GT_MCP_TOOLS

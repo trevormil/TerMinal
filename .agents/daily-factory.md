@@ -112,7 +112,7 @@ Write `.TerMinal/factory/journal/YYYY-MM-DD.md`:
 
 Then emit one Activity summary
 (`terminal-cli activity factory "Daily factory · <n> MRs, <m> tickets" "<one-line>"`)
-and file a HITL item ONLY if something needs a human decision beyond merging.
+and file an Inbox item ONLY if something needs a human decision beyond merging.
 
 ## Engine & execution model
 

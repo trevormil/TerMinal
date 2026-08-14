@@ -14,7 +14,7 @@ When the `terminal-harness` MCP server is registered:
 - **`update_ticket({slug, status: 'closed'})`** for shipped tickets.
 - **`update_ticket({slug, removePrUrl: '<merged URL>'})`** when scrubbing
   merged PR URLs from open tickets.
-- **`file_hitl({title, action, source: 'agent'})`** for open questions /
+- **`file_inbox_item({title, action, source: 'agent'})`** for open questions /
   blockers that surfaced.
 - **`emit_activity({kind: 'session-end', title: '<outcome>', repo})`** at exit.
 

@@ -11,6 +11,7 @@ import {
   ClipboardCopy,
   Cpu,
   Eye,
+  FlaskConical,
   FolderOpen,
   FolderTree,
   GitPullRequest,
@@ -41,6 +42,8 @@ import {
   X,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import { EXPERIMENT_IDS, EXPERIMENT_META, type ExperimentId } from '../../../shared/experiments'
+import { useExperiment } from '../lib/useExperiment'
 import type {
   DeliveryRecord,
   Settings,
@@ -99,6 +102,17 @@ import { slackChannelName } from '../../../shared/slack'
 
 const inp =
   'w-full rounded-md border border-[var(--gt-border)] bg-black/35 px-2.5 py-1.5 text-[12px] text-zinc-200 outline-none transition-colors placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60 focus:bg-black/45'
+
+// The structured readiness report from `hosts:provision` (src/main/host-provision.ts).
+type ProvisionState = Awaited<ReturnType<Window['gt']['provisionHost']>>
+// Bun/linger/runner are what a fired timer needs to COMPLETE a run; cli is
+// needed by agents that call terminal-cli. Order matches the probe's output.
+const PROVISION_COMPONENTS = [
+  { key: 'bun', label: 'bun', hint: 'runner interpreter' },
+  { key: 'linger', label: 'linger', hint: 'fires --user timers with nobody logged in' },
+  { key: 'runner', label: 'runner', hint: '~/.config/TerMinal/bin/terminal-cron' },
+  { key: 'cli', label: 'cli', hint: '~/.config/TerMinal/bin/terminal-cli' },
+] as const
 
 // Write-only input for a credential. `settings:get` returns masks, not values
 // (src/main/settings-mask.ts), so binding one to `defaultValue` would put
@@ -744,6 +758,51 @@ function PanelsSection({
   )
 }
 
+/**
+ * One experimental flag. Reads its state through `useExperiment` — the same gate
+ * a flagged feature uses elsewhere — rather than off the panel's settings copy,
+ * so this row is also the working example of the helper: `save` dispatches
+ * `gt.settings.changed`, the hook picks it up, and every gated surface in the
+ * window flips at once.
+ */
+function ExperimentRow({ id, save }: { id: ExperimentId; save: (patch: SettingsPatch) => void }) {
+  const on = useExperiment(id)
+  const meta = EXPERIMENT_META[id]
+  return (
+    <div data-experiment-id={id} className="flex flex-col gap-1">
+      <Toggle
+        on={on}
+        onToggle={() => save({ experiments: { [id]: !on } })}
+        label={meta.label}
+        hint={meta.desc}
+      />
+      <div className="flex items-start gap-2 pl-2.5 text-[10.5px] leading-relaxed text-zinc-600">
+        <span className="mt-px shrink-0 rounded border border-[var(--gt-yellow)]/40 bg-[var(--gt-yellow)]/10 px-1 py-px font-medium tracking-wide text-[var(--gt-yellow)] uppercase">
+          Experimental
+        </span>
+        <span className="min-w-0">{meta.reveals}</span>
+      </div>
+    </div>
+  )
+}
+
+function ExperimentsSection({ save }: { save: (patch: SettingsPatch) => void }) {
+  return (
+    <Section
+      id="experiments"
+      icon={FlaskConical}
+      title="Experimental"
+      desc="Features that work but are not finished. They are off by default; turning one on reveals its surfaces in the app. Expect rough edges, and expect the behaviour, layout, and stored shape to change — including in ways that discard what an experiment produced."
+    >
+      <div className="flex flex-col gap-3">
+        {EXPERIMENT_IDS.map((id) => (
+          <ExperimentRow key={id} id={id} save={save} />
+        ))}
+      </div>
+    </Section>
+  )
+}
+
 // Last-N alert deliveries with failure reasons. dispatchAlert isolates channel
 // failures so one dead webhook can't block the others — which also meant a
 // revoked token failed silently forever. This is where that becomes visible.
@@ -832,6 +891,7 @@ const SETTING_NAV: { id: string; title: string; icon: LucideIcon }[] = [
   { id: 'tabs', title: 'Tabs', icon: Rows3 },
   { id: 'security', title: 'Security', icon: ShieldCheck },
   { id: 'presets', title: 'Presets', icon: Eye },
+  { id: 'experiments', title: 'Experimental', icon: FlaskConical },
   { id: 'status', title: 'Status', icon: Activity },
   { id: 'updates', title: 'Updates', icon: ArrowUpCircle },
   { id: 'rebuild', title: 'Rebuild', icon: PackageOpen },
@@ -2140,6 +2200,22 @@ export function SettingsPanel({
     defaultCwd: '',
     platform: 'linux' as RemotePlatform,
   })
+  // Host provisioning (ADR-0002 #12): install bun, enable linger, install the
+  // runner + cli, then report readiness. This used to be reachable ONLY as
+  // `await window.gt.provisionHost(id)` in the devtools console.
+  const [provision, setProvision] = useState<
+    Record<string, ProvisionState | { running: true } | undefined>
+  >({})
+  const provisionHost = async (hostId: string) => {
+    setProvision((p) => ({ ...p, [hostId]: { running: true } }))
+    try {
+      const r = await window.gt.provisionHost(hostId)
+      setProvision((p) => ({ ...p, [hostId]: r }))
+    } catch (e) {
+      // Never swallow: a rejected IPC has to read as a failure, not as "idle".
+      setProvision((p) => ({ ...p, [hostId]: { ok: false, error: (e as Error).message } }))
+    }
+  }
 
   const refreshStorage = async () => {
     setStorageBusy('scan')
@@ -3324,6 +3400,96 @@ export function SettingsPanel({
                               <span className="text-zinc-600">id</span>
                               <span className="truncate font-mono text-zinc-500">{h.id}</span>
                             </div>
+                            {/* Provision — install bun + linger + runner + cli and
+                                report readiness. Linux only: the systemd timer
+                                layer is Linux-specific (ADR-0002). */}
+                            {h.platform !== 'macos' &&
+                              (() => {
+                                const p = provision[h.id]
+                                const running = !!p && 'running' in p
+                                const r = p && !('running' in p) ? p : null
+                                return (
+                                  <div className="mt-2 space-y-1.5">
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        onClick={() => void provisionHost(h.id)}
+                                        disabled={running}
+                                        className="rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-300 hover:border-[var(--gt-accent)]/50 hover:text-zinc-100 disabled:opacity-50"
+                                        title="Install Bun, enable systemd linger, install the cron runner + terminal-cli, then probe readiness"
+                                      >
+                                        {running ? 'Provisioning…' : 'Provision'}
+                                      </button>
+                                      {running && (
+                                        <span className="text-[10.5px] text-zinc-500">
+                                          installing over SSH — can take a couple of minutes
+                                        </span>
+                                      )}
+                                      {r && (
+                                        <span
+                                          className={`text-[10.5px] font-semibold ${
+                                            r.ready ? 'text-[var(--gt-green)]' : 'text-amber-400'
+                                          }`}
+                                        >
+                                          {r.ready
+                                            ? 'ready to run scheduled agents'
+                                            : `not ready — missing ${(r.missing || []).join(', ') || 'unknown'}`}
+                                        </span>
+                                      )}
+                                    </div>
+                                    {r?.error && (
+                                      <div className="rounded-md border border-[var(--gt-red)]/50 bg-[var(--gt-red)]/10 px-2 py-1 text-[10.5px] text-[var(--gt-red)]">
+                                        {r.error}
+                                      </div>
+                                    )}
+                                    {r && !r.error && (
+                                      <div className="space-y-1 rounded-md bg-black/20 px-2 py-1.5">
+                                        <div className="flex flex-wrap gap-1.5">
+                                          {PROVISION_COMPONENTS.map((c) => {
+                                            const ok = c.key === 'bun' ? !!r.bun : !!r[c.key]
+                                            return (
+                                              <span
+                                                key={c.key}
+                                                title={c.hint}
+                                                className={`rounded border px-1.5 py-0.5 text-[9.5px] uppercase tracking-wide ${
+                                                  ok
+                                                    ? 'border-[var(--gt-green)]/40 bg-[var(--gt-green)]/10 text-[var(--gt-green)]'
+                                                    : 'border-[var(--gt-red)]/40 bg-[var(--gt-red)]/10 text-[var(--gt-red)]'
+                                                }`}
+                                              >
+                                                {c.label} {ok ? 'ok' : 'missing'}
+                                                {c.key === 'bun' && r.bun ? ` ${r.bun}` : ''}
+                                              </span>
+                                            )
+                                          })}
+                                          {Object.entries(r.engines || {}).map(([e, ok]) => (
+                                            <span
+                                              key={e}
+                                              title="Engine binary on the host PATH (login shell). Not a login/auth check."
+                                              className={`rounded border px-1.5 py-0.5 text-[9.5px] uppercase tracking-wide ${
+                                                ok
+                                                  ? 'border-[var(--gt-border)] text-zinc-400'
+                                                  : 'border-[var(--gt-border)] text-zinc-600'
+                                              }`}
+                                            >
+                                              {e} {ok ? 'found' : 'absent'}
+                                            </span>
+                                          ))}
+                                        </div>
+                                        {r.log && (
+                                          <details>
+                                            <summary className="cursor-pointer text-[10px] text-zinc-600 hover:text-zinc-400">
+                                              provision log
+                                            </summary>
+                                            <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap font-mono text-[10px] text-zinc-500">
+                                              {r.log}
+                                            </pre>
+                                          </details>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                )
+                              })()}
                             <div className="mt-2 flex items-center gap-1">
                               <button
                                 onClick={() => setProfile(h.id)}
@@ -3871,7 +4037,7 @@ export function SettingsPanel({
                           <span>/close &lt;slug|n&gt;</span>
                           <span>/schedules</span>
                           <span>/pause · /resume · /runnow</span>
-                          <span>/hitl · /resolve &lt;n|all&gt; · /reopen</span>
+                          <span>/inbox (/hitl) · /resolve &lt;n|all&gt; · /reopen</span>
                           <span>/mrs [@repo] · /mr &lt;iid&gt;</span>
                           <span>/state &lt;agent&gt;</span>
                           <span>/reset-state &lt;agent&gt;</span>
@@ -3885,7 +4051,7 @@ export function SettingsPanel({
                         <div className="mt-1.5 text-[10px] text-zinc-600">
                           <span className="text-zinc-500">/feature</span> drafts a ticket from plain
                           text, then offers a "Start work" button that builds it and links the PR
-                          back. Plain English works too — it's translated to a command. HITL pings
+                          back. Plain English works too — it's translated to a command. Inbox pings
                           include inline "Resolve" and "Tail run" buttons.
                         </div>
                       </details>
@@ -4167,6 +4333,8 @@ export function SettingsPanel({
                 >
                   <PresetVisibilityPanel />
                 </Section>
+
+                <ExperimentsSection save={save} />
 
                 {/* Harness self-status — meta-observability snapshot. */}
                 <Section

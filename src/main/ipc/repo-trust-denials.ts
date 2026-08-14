@@ -79,6 +79,10 @@ export function undenyRepo(store: DenialStore, repoRoot: string): DenialStore {
  * an arbitrary path is silencing a prompt for a repo whose widgets then stay
  * off — it cannot grant execution anywhere. Approval keeps its no-argument
  * form precisely because that direction does grant it.
+ *
+ * These three keep the raw `ipcMain.handle` spelling rather than the map-bound
+ * `handle` in src/main/typed-ipc.ts: that one closes over the real `ipcMain`,
+ * and the injected parameter here is what lets the test drive a double.
  */
 export function registerRepoTrustDenialIpc(ipcMain: IpcMain, file: string = DENIAL_FILE()): void {
   ipcMain.handle('repoTrust:denied', (_e, repoRoot: string, hash: string) =>

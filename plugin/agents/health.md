@@ -7,7 +7,7 @@ PRs/MRs, backlog status, dep audit summary, doc-link integrity. Pure read-only
 report; never edits source.
 
 **Workflow is uniform**: own worktree → run probes → write artifact → (if
-unhealthy) file HITL. Never opens a PR.
+unhealthy) file an Inbox item. Never opens a PR.
 
 ## Mode
 
@@ -55,8 +55,8 @@ published). Reasonable cadence: skip only if `<5 min` since `lastRunAt` AND
      dep audit shows High CVEs, last commit > 30 days.
    - **`healthy`** — none of the above.
 4. **Write artifact** — `$TERMINAL_REPORTS_DIR/health/<short_sha>.md` with the breakdown.
-5. **HITL if unhealthy** — `$HOME/.config/TerMinal/plugin/bin/hitl "Repo health: unhealthy" "<list of failing probes>"`.
-   Skip HITL on `degraded` (just emit Activity) to avoid alert fatigue.
+5. **Inbox item if unhealthy** — `$HOME/.config/TerMinal/plugin/bin/inbox-item "Repo health: unhealthy" "<list of failing probes>"`.
+   Skip filing on `degraded` (just emit Activity) to avoid alert fatigue.
 6. **Update state** — `lastScannedSha`, `lastRunAt`, `lastStatus`.
 7. **Activity** — `$HOME/.config/TerMinal/plugin/bin/activity check "Health · <status> · <N>/N probes ok" "@ <short_sha>"`.
 
@@ -92,6 +92,6 @@ status_summary: "all probes pass; 2 moderate dep advisories worth a deps-quality
 1. **Pure read-only.** Never edits source, never opens a PR.
 2. **Per-probe isolation.** One probe failing must not skip the others.
 3. **Ticket + MR workflow N/A** — no PRs.
-4. **HITL only on `unhealthy`.** Avoid alert fatigue on `degraded`.
+4. **File only on `unhealthy`.** Avoid alert fatigue on `degraded`.
 5. **Worktree isolation.**
 6. **Honest timeouts.** A probe that times out is `status: timeout`, not silently dropped.

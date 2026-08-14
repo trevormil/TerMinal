@@ -6,10 +6,8 @@ import { writeFileSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { runDifft } from './forge'
-
-export type StructuralDiffResult =
-  | { ok: true; output: string }
-  | { ok: false; reason: 'difft-missing' | 'binary' | 'fetch-failed' | 'error'; message?: string }
+import type { StructuralDiffResult } from '../shared/types/git'
+export type { StructuralDiffResult } from '../shared/types/git'
 
 const NUL = String.fromCharCode(0)
 

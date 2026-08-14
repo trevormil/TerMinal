@@ -2,57 +2,24 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { configPath } from './config-dir'
 import { repoStatePathForRead, repoStatePathForWrite } from './repo-state'
-
-export type KnowledgeScope = 'repo' | 'global'
-export type KnowledgeItemKind = 'markdown' | 'link' | 'image' | 'video' | 'file' | 'rag'
-export type KnowledgeCategory = {
-  id: string
-  title: string
-  description?: string
-  order: number
-  createdAt: number
-  updatedAt: number
-}
-export type KnowledgeItem = {
-  id: string
-  categoryId: string
-  kind: KnowledgeItemKind
-  title: string
-  description?: string
-  content?: string
-  url?: string
-  path?: string
-  thumbnailUrl?: string
-  faviconUrl?: string
-  siteName?: string
-  rag?: KnowledgeRagConfig
-  tags: string[]
-  createdAt: number
-  updatedAt: number
-}
-export type KnowledgeRagConfig = {
-  rootDir?: string
-  command?: string
-  args?: string[]
-  category?: string
-  hybridAlpha?: number
-  maxResults?: number
-}
-export type KnowledgePreview = {
-  ok: boolean
-  url: string
-  title?: string
-  description?: string
-  thumbnailUrl?: string
-  faviconUrl?: string
-  siteName?: string
-  error?: string
-}
-export type KnowledgeBase = {
-  version: 1
-  categories: KnowledgeCategory[]
-  items: KnowledgeItem[]
-}
+import type {
+  KnowledgeBase,
+  KnowledgeCategory,
+  KnowledgeItem,
+  KnowledgeItemKind,
+  KnowledgePreview,
+  KnowledgeRagConfig,
+  KnowledgeScope,
+} from '../shared/types/knowledge'
+export type {
+  KnowledgeBase,
+  KnowledgeCategory,
+  KnowledgeItem,
+  KnowledgeItemKind,
+  KnowledgePreview,
+  KnowledgeRagConfig,
+  KnowledgeScope,
+} from '../shared/types/knowledge'
 
 const GLOBAL = (): string => configPath('knowledge.json')
 // Personal state — sidecar-resolved (legacy in-repo copies stay readable).

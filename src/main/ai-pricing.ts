@@ -303,7 +303,3 @@ export function costOf(
     inp * p.input + out * p.output + cr * (p.cacheRead ?? p.input) + cw * (p.cacheWrite ?? p.input)
   )
 }
-
-export function knownModels(): string[] {
-  return Object.keys(TABLE).sort()
-}

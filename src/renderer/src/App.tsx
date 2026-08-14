@@ -340,7 +340,7 @@ export default function App() {
   }, [sessions.length])
   useEffect(() => {
     const tick = () =>
-      window.gt.hitl
+      window.gt.inbox
         .list()
         .then((items) =>
           setInboxUnreadCount(items.filter((h) => h.status === 'open' && !h.readAt).length),

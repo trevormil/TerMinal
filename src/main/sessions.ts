@@ -2,23 +2,8 @@ import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { parseFrontmatter } from './frontmatter'
 import { existingProjectAreaPaths } from './project-layout'
-
-// Project sessions. v2 repos use .TerMinal/sessions; v1 repos use sessions/.
-// Distinct from Claude Code sessions — these are the repo's live work docs.
-export type ProjectSession = {
-  slug: string
-  id: number
-  title: string
-  status: string // active | closed | abandoned
-  goal: string
-  started: string
-  ended: string
-  anchor: string
-  tickets: string[]
-  branches: string[]
-  prs: string[]
-  body?: string
-}
+import type { ProjectSession } from '../shared/types/sessions'
+export type { ProjectSession } from '../shared/types/sessions'
 
 function toSession(slug: string, md: string, withBody = false): ProjectSession {
   const { fm, body } = parseFrontmatter(md)

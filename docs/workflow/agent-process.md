@@ -298,4 +298,4 @@ A complete handoff includes:
 - checks run
 - delegated artifact paths used
 - follow-up ticket ids or `none`
-- blockers/HITL ids if any
+- blockers/Inbox item ids if any

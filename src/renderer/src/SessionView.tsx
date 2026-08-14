@@ -407,8 +407,8 @@ export function SessionView({
   // approve-from-the-badge. Polled, because nothing pushes when the active
   // session's cwd changes.
   const trustPrompt = useRepoTrustPrompt(5000)
-  // One column, one collapse. The keys it reads are the cockpit's, which the
-  // Files column's were folded into on first launch (see lib/columnLayout).
+  // One column, one collapse. The keys it reads are the cockpit's (see
+  // lib/columnLayout).
   const [columnCollapsed, setColumnCollapsed] = useState(() =>
     readCollapsed(COLUMN_COLLAPSED_KEY, COLUMN_COLLAPSED_WHEN_UNSET),
   )

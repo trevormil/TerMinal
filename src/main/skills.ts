@@ -2,22 +2,16 @@ import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs'
 import { join, basename, dirname } from 'node:path'
 import { homedir } from 'node:os'
 import { parseFrontmatter } from './frontmatter'
+import type { SkillInfo, SkillScope } from '../shared/types/app'
+export type { SkillInfo, SkillScope } from '../shared/types/app'
+import type { SkillPlatform } from '../shared/types/app'
+export type { SkillPlatform } from '../shared/types/app'
 
 // Enumerate platform-agnostic skills available to a session, across three scopes:
 //   project  — <repoRoot>/.claude/skills, .codex/skills, and .cursor/skills
 //   personal — ~/.claude/skills, ~/.codex/skills, and ~/.cursor/skills
 //   plugin   — ~/.claude/plugins/cache/**/skills/<name>/SKILL.md (installed plugins)
 // "Ours" = project + personal; plugins are the larger external set shown on expand.
-
-export type SkillScope = 'project' | 'personal' | 'plugin'
-export type SkillPlatform = 'claude' | 'codex' | 'cursor'
-export type SkillInfo = {
-  name: string
-  description: string
-  scope: SkillScope
-  namespace?: string // plugin name, for scope === 'plugin'
-  platforms: SkillPlatform[]
-}
 
 // Plugin skills live at .../cache/<source>/<plugin>/<version>/skills/<name>/SKILL.md.
 // The namespace is the <plugin> segment (the dir two levels above the skills/ dir).

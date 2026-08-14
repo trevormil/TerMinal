@@ -1,6 +1,8 @@
 import { execFileSync } from 'node:child_process'
 import { userInfo } from 'node:os'
 import { readStatusLine } from './statusline'
+import type { Usage, UsageWindow } from '../shared/types/app'
+export type { Usage } from '../shared/types/app'
 
 // ---------------------------------------------------------------------------
 // Plan usage — mirrors Claude Code's `/usage`.
@@ -11,19 +13,6 @@ import { readStatusLine } from './statusline'
 // plus overage info. This endpoint is rate-limited, so we cache for 2 min and
 // serve the last good value (and back off) on 429.
 // ---------------------------------------------------------------------------
-
-export type Window = { pct: number; resetsAt: number | null } | null
-export type Usage = {
-  ok: boolean
-  plan: string
-  tier: string
-  fiveHour: Window
-  sevenDay: Window
-  overagePct: number | null
-  stale: boolean
-  error?: string
-  ts: number
-}
 
 const TTL = 30_000
 let cache: Usage | null = null
@@ -47,7 +36,7 @@ function keychainOauth(): {
   }
 }
 
-function win(w: any): Window {
+function win(w: any): UsageWindow {
   if (!w) return null
   const pct =
     typeof w.used_percentage === 'number'

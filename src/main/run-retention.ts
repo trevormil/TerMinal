@@ -6,6 +6,20 @@ import { readJsonState, updateJsonState, writeFileAtomic, writeJsonAtomic } from
 import { resolvedWorktreesDir } from './settings'
 import { promisify } from 'node:util'
 import { terminalConfigDir } from './config-dir'
+import type {
+  ScratchClearReport,
+  StorageEntry,
+  TerminalStateSweepReport,
+  WorktreeStoreReport,
+} from '../shared/types/runs'
+export type {
+  ScratchClearReport,
+  StorageEntry,
+  TerminalStateSweepReport,
+  WorktreeStoreReport,
+} from '../shared/types/runs'
+import type { CheckpointGcEntry } from '../shared/types/runs'
+export type { CheckpointGcEntry } from '../shared/types/runs'
 
 // The sweep walks ~/.config/TerMinal, which can hold hundreds of thousands of
 // files (worktrees, checkpoint stores). Everything below is async fs on
@@ -23,70 +37,6 @@ const execFileAsync = promisify(execFile)
 export function inMemoryWorkingSet<T extends { startedAt: number }>(metas: T[], keep: number): T[] {
   const sorted = [...metas].sort((a, b) => a.startedAt - b.startedAt)
   return keep > 0 && sorted.length > keep ? sorted.slice(-keep) : sorted
-}
-
-export type StorageEntry = {
-  path: string
-  bytes: number
-}
-
-export type CheckpointGcEntry = StorageEntry & {
-  error?: string
-}
-
-export type WorktreeStoreReport = {
-  bytes: number
-  thresholdBytes: number
-  planned: StorageEntry[]
-  deleted: StorageEntry[]
-  protectedRunning: StorageEntry[]
-  /** Held back because the worktree still has uncommitted work. */
-  protectedDirty: StorageEntry[]
-}
-
-export type TerminalStateSweepReport = {
-  root: string
-  dryRun: boolean
-  totalBytes: number
-  reclaimableBytes: number
-  reclaimedBytes: number
-  worktrees: WorktreeStoreReport
-  /** `<projectsDir>/.worktrees` — where agent/lane worktrees land (ticket 69 P8). */
-  agentWorktrees: WorktreeStoreReport & { dir: string }
-  /** Temp/lock/quarantine files the write path left behind. */
-  leftovers: {
-    bytes: number
-    planned: StorageEntry[]
-    deleted: StorageEntry[]
-  }
-  logs: {
-    bytes: number
-    maxBytes: number
-    planned: StorageEntry[]
-    rotated: StorageEntry[]
-  }
-  checkpoints: {
-    bytes: number
-    thresholdBytes: number
-    /** Whole shadow repos aged out — the only prune checkpoints.ts ever had. */
-    stores: {
-      maxAgeMs: number
-      planned: StorageEntry[]
-      deleted: StorageEntry[]
-    }
-    gc: {
-      planned: StorageEntry[]
-      completed: CheckpointGcEntry[]
-    }
-    tmpObjects: {
-      planned: StorageEntry[]
-      deleted: StorageEntry[]
-    }
-  }
-  scratch: {
-    bytes: number
-    clearable: boolean
-  }
 }
 
 export type TerminalStateSweepOptions = {
@@ -108,12 +58,6 @@ export type TerminalStateSweepOptions = {
   checkpointMaxAgeMs?: number
   /** Injectable so tests don't need real git repos. Defaults to `git status`. */
   isDirty?: (worktreePath: string) => Promise<boolean>
-}
-
-export type ScratchClearReport = {
-  path: string
-  bytes: number
-  deleted: boolean
 }
 
 const GiB = 1024 * 1024 * 1024

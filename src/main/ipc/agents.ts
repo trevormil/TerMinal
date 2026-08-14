@@ -4,7 +4,8 @@
 // remote-dispatch helpers are injected via deps — they are used by other
 // index.ts surfaces too (bg tasks, session spawn), so they stay owned there.
 
-import { ipcMain } from 'electron'
+import { handle } from '../typed-ipc'
+import { isEngineId } from '../../shared/engines'
 import { readFileSync } from 'node:fs'
 import { emitActivity } from '../events'
 import { repoRootOf } from '../repo'
@@ -56,13 +57,13 @@ export type AgentsIpcDeps = {
 }
 
 export function registerAgentsIpc(deps: AgentsIpcDeps): void {
-  ipcMain.handle('agents:list', async () => {
+  handle('agents:list', async () => {
     const remote = deps.curRemote()
     if (!remote) return readAgents(repoRootOf(deps.cur().cwd))
     return deps.remoteAgentCatalog(remote)
   })
-  ipcMain.handle('agents:definitions', () => listAgentDefinitions(repoRootOf(deps.cur().cwd)))
-  ipcMain.handle('agents:save', (_e, agent: { id: string; title: string; prompt: string }) => {
+  handle('agents:definitions', () => listAgentDefinitions(repoRootOf(deps.cur().cwd)))
+  handle('agents:save', (_e, agent: { id: string; title: string; prompt: string }) => {
     if (deps.curRemote()) return { error: 'remote agent editing needs the remote daemon writer' }
     const root = repoRootOf(deps.cur().cwd)
     const r = saveAgent(root, agent)
@@ -78,7 +79,7 @@ export function registerAgentsIpc(deps: AgentsIpcDeps): void {
     }
     return r
   })
-  ipcMain.handle('agents:reset', (_e, id: string) => {
+  handle('agents:reset', (_e, id: string) => {
     if (deps.curRemote()) return { error: 'remote agent reset needs the remote daemon writer' }
     const root = repoRootOf(deps.cur().cwd)
     const r = resetAgent(root, id)
@@ -97,7 +98,7 @@ export function registerAgentsIpc(deps: AgentsIpcDeps): void {
   // Read the script body for an agent if .agents/<id>.sh (or global) exists. Returns
   // { path, body } when found, null otherwise — used by the Agents tab to render
   // the bash inline alongside the prompt.
-  ipcMain.handle('agents:script', (_e, id: string) => {
+  handle('agents:script', (_e, id: string) => {
     const remote = deps.curRemote()
     if (remote) return remoteAgents.script(remote, id)
     const root = repoRootOf(deps.cur().cwd) || ''
@@ -109,12 +110,12 @@ export function registerAgentsIpc(deps: AgentsIpcDeps): void {
       return null
     }
   })
-  ipcMain.handle('agents:state', (_e, id: string) => {
+  handle('agents:state', (_e, id: string) => {
     if (deps.curRemote()) return { path: `remote:${id}`, exists: false, state: {} }
     const root = repoRootOf(deps.cur().cwd) || ''
     return readAgentState(root, id)
   })
-  ipcMain.handle('agents:state-reset', (_e, id: string) => {
+  handle('agents:state-reset', (_e, id: string) => {
     if (deps.curRemote()) return { ok: true }
     const root = repoRootOf(deps.cur().cwd) || ''
     const r = resetAgentState(root, id)
@@ -130,16 +131,16 @@ export function registerAgentsIpc(deps: AgentsIpcDeps): void {
     }
     return r
   })
-  ipcMain.handle(
+  handle(
     'agents:design',
     (_e, text: string, engine: Engine, scope: 'repo' | 'global', model?: string) =>
       deps.curRemote()
         ? { error: 'remote agent design needs the remote daemon writer' }
         : runDesignerSpawn(repoRootOf(deps.cur().cwd), text, engine, scope, model),
   )
-  ipcMain.handle('agents:pipelines', () => listPipelines())
-  ipcMain.handle('personas:list', () => readAgentRunContexts(repoRootOf(deps.cur().cwd)))
-  ipcMain.handle(
+  handle('agents:pipelines', () => listPipelines())
+  handle('personas:list', () => readAgentRunContexts(repoRootOf(deps.cur().cwd)))
+  handle(
     'agents:run',
     (
       _e,
@@ -202,7 +203,7 @@ export function registerAgentsIpc(deps: AgentsIpcDeps): void {
         return run
       })(),
   )
-  ipcMain.handle(
+  handle(
     'agents:run-ticket',
     async (
       _e,
@@ -293,7 +294,7 @@ export function registerAgentsIpc(deps: AgentsIpcDeps): void {
       return lead
     },
   )
-  ipcMain.handle(
+  handle(
     'agents:run-pr',
     (
       _e,
@@ -347,7 +348,7 @@ export function registerAgentsIpc(deps: AgentsIpcDeps): void {
         })
       })(),
   )
-  ipcMain.handle('agents:runs', async () => {
+  handle('agents:runs', async () => {
     const remote = deps.curRemote()
     if (!remote) return listRuns()
     return (await remoteRuns.all(remote).catch(() => []))
@@ -356,7 +357,12 @@ export function registerAgentsIpc(deps: AgentsIpcDeps): void {
         id: r.id,
         agentId: r.agentId,
         agentTitle: r.agentTitle,
-        engine: r.engine,
+        // Same boundary `remoteRuns.all` normalizes status at, for the same
+        // reason: the host may run an older or newer build, so its `engine` is
+        // free-form JSON. It was passed straight through as a checked `Engine`,
+        // so an unrecognized value reached the run list and every lookup keyed
+        // on it (label, vendor, model list) silently returned nothing.
+        engine: isEngineId(r.engine) ? r.engine : 'codex',
         status: r.status,
         startedAt: r.startedAt,
         endedAt: r.endedAt,
@@ -367,15 +373,13 @@ export function registerAgentsIpc(deps: AgentsIpcDeps): void {
         output: '',
       }))
   })
-  ipcMain.handle('agents:rerun', (_e, runId: string) =>
+  handle('agents:rerun', (_e, runId: string) =>
     deps.curRemote()
       ? { error: 'remote rerun needs the remote daemon runner' }
       : rerunAgentRun(runId),
   )
-  ipcMain.handle('agents:cancel', (_e, runId: string) =>
-    deps.curRemote() ? false : cancelRun(runId),
-  )
-  ipcMain.handle('agents:remove-worktree', (_e, runId: string) =>
+  handle('agents:cancel', (_e, runId: string) => (deps.curRemote() ? false : cancelRun(runId)))
+  handle('agents:remove-worktree', (_e, runId: string) =>
     deps.curRemote() ? false : removeWorktree(runId),
   )
 }

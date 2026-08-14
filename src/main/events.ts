@@ -28,6 +28,8 @@ import {
   dispatchAlert,
   type NotifyChannel,
 } from './notify-channels'
+import type { ActivityEvent, ActivityKind } from '../shared/types/activity'
+export type { ActivityEvent, ActivityKind } from '../shared/types/activity'
 
 // Activity feed + system notifications. Events are stored GLOBALLY (one log
 // across every repo/session) but each is tagged with repo + session, so the
@@ -37,55 +39,6 @@ import {
  *  const baked the developer's real feed in before any test line ran. */
 export const activityLogFile = (): string => configPath('activity.jsonl')
 const MAX_KEEP = 2000 // cap the on-disk log
-
-// Canonical activity kinds — workflow checkpoints emitted by the app AND by the
-// skills (the tm plugin's bin/activity + bin/gt-notify emit these by
-// name). Keep in sync with src/renderer/src/lib/types.ts and the tab's ICON/tone
-// maps. Unknown kinds still render (Info icon + mute tone fallbacks).
-export type ActivityKind =
-  | 'session-start'
-  | 'session-end'
-  | 'deploy'
-  | 'ticket-filed'
-  | 'ticket-closed'
-  | 'pr-opened'
-  | 'pr-verdict'
-  | 'pr-merged'
-  | 'tests-pass'
-  | 'tests-fail'
-  | 'check'
-  | 'doc'
-  | 'agent-run'
-  | 'task-complete'
-  | 'blocked'
-  | 'error'
-  | 'info'
-
-export type ActivityEvent = {
-  id: string
-  ts: number
-  kind: ActivityKind
-  title: string
-  detail?: string
-  repo?: string
-  repoRoot?: string
-  sessionId?: string
-  // join keys for cycle-time linkage: connect a ticket's events across its life
-  // (ticket-filed → pr-opened{ticket,pr} → pr-verdict{pr} → pr-merged{pr}).
-  ref?: { ticket?: number; pr?: number }
-  // Pointer back to the originating cron / in-process run, so clicking the
-  // event in the Activity tab can jump to that run's log in the Runs tab.
-  runId?: string
-  runSource?: 'cron' | 'agent' | 'bg' | 'session'
-  // Set when the event is a HITL filing — drives the inline Telegram buttons
-  // ([Resolve] / [View run]) so the user can act from the chat without
-  // having to text /hitl + /resolve.
-  hitlId?: string
-  // Set by HITL producers that already send a direct Telegram message. The
-  // activity event should still hit the in-app feed and desktop notifications,
-  // but must not be mirrored to Telegram a second time by the app tail.
-  suppressTelegram?: boolean
-}
 
 // Whether an event raises a notification, and on which channels, is now decided
 // by the per-channel × per-category matrix in shared/notifications — replacing

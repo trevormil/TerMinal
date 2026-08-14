@@ -49,7 +49,7 @@ model="${TERMINAL_MODEL:-haiku}"
 
 # Do deterministic work first. For TerMinal helpers:
 # terminal-cli ticket "<title>" "<body>"
-# terminal-cli hitl "<title>" "<action>"
+# terminal-cli inbox-item "<title>" "<action>"
 # terminal-cli activity <kind> "<title>" "<detail>"
 # terminal-cli state get|set <key> [value]
 # terminal-cli mcp list_agents repo="$(basename "$repo")"
@@ -91,7 +91,7 @@ Rules:
 - At the end of implementation-style agents, file follow-up tickets for any
   deferred cross-agent work. Each follow-up gets exactly one `agent_id`,
   `agent_scope`, and `agent_kind`; multi-phase work becomes linked tickets.
-- Use `terminal-cli hitl` only for true human blockers.
+- Use `terminal-cli inbox-item` only for true human blockers.
 - Treat HITL as append-only: do not edit `hitl.json` or resolve it from the
   script. After filing, exit only if that lane is blocked; otherwise continue
   independent work and periodically re-check the blocker or query HITL status.

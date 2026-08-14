@@ -14,7 +14,43 @@ import {
 } from '../shared/notifications'
 import { ENGINE_IDS, engineOf, type EngineId } from '../shared/engines'
 import { normalizeDestination, type InboxDestination } from '../shared/slack'
+import { normalizeExperiments } from '../shared/experiments'
 import { expandSecretPaths } from './secret-paths'
+import type {
+  DaemonCfg,
+  EngineCfg,
+  PinnedPanel,
+  ProjectsDirValidation,
+  RemoteHost,
+  RemotePlatform,
+  Settings,
+  SettingsPatch,
+  SlackCfg,
+  WebhookCfg,
+} from '../shared/types/settings'
+export type {
+  AlertsCfg,
+  AppearanceCfg,
+  AppearanceMode,
+  AppearanceTabLayout,
+  AppsCfg,
+  BridgeCfg,
+  DaemonCfg,
+  EngineCfg,
+  ForgePref,
+  InboxCfg,
+  PinnedPanel,
+  ProjectsDirValidation,
+  RemoteHost,
+  RemotePlatform,
+  Settings,
+  SettingsPatch,
+  SlackCfg,
+  SuggestionsCfg,
+  TelegramCfg,
+  WebhookCfg,
+} from '../shared/types/settings'
+export type { NotificationsCfg } from '../shared/types/settings'
 
 // Persisted, self-configuring app settings. Every key has a working default —
 // a fresh install (no file) runs fine, and an empty string means "resolve at
@@ -24,12 +60,6 @@ import { expandSecretPaths } from './secret-paths'
 // Derived from the shared registry (src/shared/engines.ts) — adding an engine
 // there adds it everywhere, instead of drifting across the copies this replaced.
 export { ENGINE_IDS, type EngineId }
-export type EngineCfg = {
-  path: string // '' = use the bare binary name on PATH
-  defaultModel: string // '' = let the engine pick its own default
-  defaultEffort: string // '' = engine default; validated against the registry level set
-  baseUrl: string // openai-compat only: the self-hosted /v1 endpoint ('' elsewhere)
-}
 
 /** A blank config row for every registered engine. Replaces the hand-written
  *  per-engine blocks that had to be edited (in three places) per new engine. */
@@ -49,180 +79,6 @@ export function mergeEngineCfgs(
     base[id] = { ...base[id], ...(cur?.[id] || {}), ...(patch?.[id] || {}) }
   }
   return base
-}
-export type ForgePref = 'auto' | 'github' | 'gitlab'
-export type DaemonCfg = {
-  projectsDir: string
-  worktreesDir: string
-  harnessDir: string
-  templateRepo: string
-  engines: Record<EngineId, EngineCfg>
-  defaultEngine: EngineId
-  forge: ForgePref
-}
-export type TelegramCfg = {
-  notify: boolean // mirror notifications to Telegram (opt-in)
-  control: boolean // accept inbound AFK commands from Telegram (opt-in)
-  botToken: string // BotFather token → native Bot API (else falls back to scripts)
-  chatId: string // the single authorized chat (auth boundary)
-}
-export type InboxCfg = {
-  completionHook: boolean // Claude/Codex/Cursor completion hooks file Inbox items by default
-  agentContextPreamble: boolean // prepend capped repo docs/learnings/decisions context to prompt-style runs
-  // Minimum severity that fires a notification (push/Telegram/desktop). Below it,
-  // items are inbox-only — email you sweep once or twice a day. Default 'urgent'.
-  notifyThreshold: 'urgent' | 'normal' | 'low'
-  // Where filings surface: the in-app Inbox, Slack, or both (shared/slack.ts).
-  // 'slack' still persists every item to hitl.json — it only moves the nag.
-  destination: InboxDestination
-}
-// Slack as an inbox destination (inbox.destination). A BOT token, not an
-// incoming webhook: webhooks are pinned to one channel each, and the point is
-// per-category channels (Monitoring/Certs → #inbox-monitoring-certs). Scopes:
-// chat:write, channels:manage + channels:join (auto-create), reactions:write.
-export type SlackCfg = {
-  botToken: string // sealed; xoxb- bot token
-  defaultChannel: string // Uncategorized + fallback channel, '#' optional
-  channelPrefix: string // derived-channel prefix; '' → bare category slug
-  autoCreateChannels: boolean // create+join missing public channels on first post
-  // Slack member id (U…) auto-invited to every channel the bot creates. Bot-made
-  // channels don't appear in anyone's sidebar until joined; without this, each
-  // new category means a manual channel-browser hunt. '' → skip.
-  inviteUserId: string
-}
-// Outbound alert channels (notify-channels.ts). Telegram keeps its own block
-// above (telegram.notify is that channel's enable knob — inbound control lives
-// there too); this covers the rest of the fan-out.
-/**
- * One outbound webhook destination. Several can be configured at once — a Slack
- * URL, a Discord URL, your own endpoint — because they rarely want the same
- * traffic. `categories` overrides the notification matrix's `webhook` row for
- * THIS destination only; omitted means "whatever the row says".
- *
- * `id` is stable and load-bearing: it keys the sealed-secret path and matches a
- * patched entry back to its saved URL (the renderer only ever sees a mask).
- */
-export type WebhookCfg = {
-  id: string
-  name: string
-  url: string
-  enabled: boolean
-  categories?: Partial<Record<NotifyCategory, boolean>>
-}
-export type AlertsCfg = {
-  desktop: { enabled: boolean } // Electron Notification; on by default (historical behavior)
-  webhooks: WebhookCfg[] // POST JSON; covers Slack/Discord incoming webhooks
-}
-export type AppearanceMode = 'dark' | 'light' | 'system'
-export type AppearanceTabLayout = 'horizontal' | 'sidebar'
-export type AppearanceCfg = {
-  mode: AppearanceMode
-  theme: string
-  accent: string
-  uiScale: number
-  tabLayout: AppearanceTabLayout
-}
-// External-app handoffs: macOS app names used with `open -a <name>` — robust
-// (no PATH/CLI dependency). '' → the built-in default.
-export type AppsCfg = {
-  editor: string // e.g. "Cursor" / "Visual Studio Code" — "Open in editor"
-  browser: string // e.g. "Brave Browser" — "Open in browser"
-  formatOnSave: boolean // Files tab: run the project's prettier on ⌘S (opt-in)
-}
-export type SuggestionsCfg = {
-  aiEngine: EngineId
-  aiModel: string
-  autoEngine: EngineId
-  autoModel: string
-}
-export type NoteFolder = {
-  id: string
-  title: string
-  path: string
-}
-// Mobile bridge (the TerMinal Remote iOS app). Off by default; nothing binds a
-// port until it is on. The bearer token and TLS cert deliberately live OUTSIDE
-// settings.json — see src/main/bridge/identity.ts for why.
-export type BridgeCfg = {
-  enabled: boolean
-  port: number
-}
-/** User overrides on the notification matrix; {} means "all shipped defaults". */
-export type NotificationsCfg = { matrix: NotifyMatrix }
-export type RemotePlatform = 'auto' | 'linux' | 'macos'
-export type RemoteHost = {
-  id: string
-  label: string
-  sshTarget: string // ssh config alias or user@host
-  defaultCwd: string // '' = remote login shell home
-  platform: RemotePlatform
-  daemon: DaemonCfg
-}
-export type PinnedPanel = { label: string; url: string }
-export type Settings = {
-  onboarded: boolean
-  projectsDir: string // '' → resolved to your home dir
-  worktreesDir: string // '' → <projectsDir>/.worktrees
-  engines: Record<EngineId, EngineCfg>
-  defaultEngine: EngineId
-  forge: ForgePref // 'auto' picks gh/glab per-repo from the remote host
-  telegram: TelegramCfg
-  alerts: AlertsCfg
-  inbox: InboxCfg
-  slack: SlackCfg
-  /** Per-channel × per-category notification routing (see shared/notifications). */
-  notifications: NotificationsCfg
-  bridge: BridgeCfg
-  appearance: AppearanceCfg
-  apps: AppsCfg
-  suggestions: SuggestionsCfg
-  noteFolders: NoteFolder[]
-  remoteHosts: RemoteHost[]
-  harnessDir: string // optional cross-repo review-artifact store
-  // Max agent runs loaded into memory at startup (the Runs-tab working set). Run
-  // logs on disk are NEVER auto-deleted (storage is cheap — prune manually); this
-  // only bounds RAM so a huge archive doesn't bloat the process. 0 = load all.
-  runMemoryCap: number
-  templateRepo: string // scaffold source
-  pinnedPanels: PinnedPanel[] // web dashboards pinned as the Panels tab; [] → tab hidden (personal)
-  openrouterApiKey: string // sealed; injected as OPENROUTER_API_KEY for OpenRouter (or-agent) runs. '' → fall back to process env
-  openaiCompatApiKey: string // sealed; injected as OPENAI_API_KEY for openai-compat (or-agent) runs. '' → fall back to process env
-  /** Allow repo-provided executable surfaces (.TerMinal/widgets.json +
-   *  tabs.json). OFF by default: even with the per-repo trust/approval flow, a
-   *  cloned repo getting command execution + in-app embeds is a real risk, so
-   *  the surfaces don't exist at all unless the operator opts in globally. */
-  allowRepoExtensions: boolean
-}
-
-// A patch may carry partial nested telegram/engines/apps without losing siblings.
-export type SettingsPatch = Partial<
-  Omit<
-    Settings,
-    | 'telegram'
-    | 'alerts'
-    | 'inbox'
-    | 'slack'
-    | 'bridge'
-    | 'appearance'
-    | 'engines'
-    | 'apps'
-    | 'suggestions'
-  >
-> & {
-  telegram?: Partial<TelegramCfg>
-  alerts?: {
-    desktop?: Partial<AlertsCfg['desktop']>
-    /** The whole list, always — see mergeWebhooks. Entries may omit `url`. */
-    webhooks?: (Partial<WebhookCfg> & { id: string })[]
-  }
-  inbox?: Partial<InboxCfg>
-  slack?: Partial<SlackCfg>
-  bridge?: Partial<BridgeCfg>
-  appearance?: Partial<AppearanceCfg>
-  engines?: Partial<Record<EngineId, Partial<EngineCfg>>>
-  apps?: Partial<AppsCfg>
-  suggestions?: Partial<SuggestionsCfg>
-  noteFolders?: NoteFolder[]
 }
 
 const DEFAULT_EDITOR = 'Cursor'
@@ -297,7 +153,6 @@ export function defaultSettings(): Settings {
       autoEngine: 'claude',
       autoModel: 'sonnet',
     },
-    noteFolders: [],
     remoteHosts: [],
     harnessDir: daemon.harnessDir,
     runMemoryCap: 1000,
@@ -306,6 +161,7 @@ export function defaultSettings(): Settings {
     openrouterApiKey: '',
     openaiCompatApiKey: '',
     allowRepoExtensions: false,
+    experiments: {}, // {} = every experiment off
   }
 }
 
@@ -367,27 +223,6 @@ function remoteHosts(raw: unknown): RemoteHost[] {
         (h) => h.id && h.sshTarget && !h.sshTarget.startsWith('-') && !/[\0\r\n]/.test(h.sshTarget),
       )
   )
-}
-
-function noteFolders(raw: unknown): NoteFolder[] {
-  if (!Array.isArray(raw)) return []
-  const seen = new Set<string>()
-  return raw
-    .filter((x): x is Record<string, unknown> => !!x && typeof x === 'object')
-    .map((x) => {
-      const path = typeof x.path === 'string' ? x.path.trim() : ''
-      const title =
-        typeof x.title === 'string' && x.title.trim()
-          ? x.title.trim()
-          : path.split('/').filter(Boolean).pop() || 'Notes'
-      const rawId = typeof x.id === 'string' ? x.id.trim() : title
-      let id = rawId.replace(/[^\w.-]/g, '-').replace(/^-+|-+$/g, '') || 'notes'
-      let i = 2
-      while (seen.has(id)) id = `${id}-${i++}`
-      seen.add(id)
-      return { id, title, path }
-    })
-    .filter((f) => f.path)
 }
 
 /**
@@ -538,12 +373,11 @@ export function migrate(raw: unknown): Settings {
     s.pinnedPanels = r.pinnedPanels
       .filter((p: unknown): p is PinnedPanel => !!p && isHttpUrl((p as PinnedPanel).url))
       .map((p: PinnedPanel) => ({ label: String(p.label ?? p.url), url: String(p.url) }))
-  } else if (typeof r.fleetAdminUrl === 'string' && isHttpUrl(r.fleetAdminUrl.trim())) {
-    s.pinnedPanels = [{ label: 'Fleet', url: r.fleetAdminUrl.trim() }] // migrate legacy single-URL setting
   }
   if (typeof r.openrouterApiKey === 'string') s.openrouterApiKey = r.openrouterApiKey
   if (typeof r.openaiCompatApiKey === 'string') s.openaiCompatApiKey = r.openaiCompatApiKey
   if (typeof r.allowRepoExtensions === 'boolean') s.allowRepoExtensions = r.allowRepoExtensions
+  s.experiments = normalizeExperiments(r.experiments)
   if (ENGINE_IDS.includes(r.defaultEngine as EngineId))
     s.defaultEngine = r.defaultEngine as EngineId
   if (r.forge === 'auto' || r.forge === 'github' || r.forge === 'gitlab') s.forge = r.forge
@@ -592,7 +426,6 @@ export function migrate(raw: unknown): Settings {
     const port = Number(r.bridge.port)
     if (Number.isInteger(port) && port >= 1024 && port <= 65535) s.bridge.port = port
   }
-  s.noteFolders = noteFolders(r.noteFolders)
   s.remoteHosts = remoteHosts(r.remoteHosts)
   if (typeof r.runMemoryCap === 'number' && r.runMemoryCap >= 0)
     s.runMemoryCap = Math.floor(r.runMemoryCap)
@@ -713,7 +546,7 @@ export function mergeSettingsPatch(cur: Settings, patch: SettingsPatch): Setting
     apps,
     engines,
     suggestions,
-    noteFolders: patchNoteFolders,
+    experiments,
     ...scalarPatch
   } = legacyPatch
   delete (scalarPatch as Record<string, unknown>)['open' + 'router']
@@ -744,7 +577,9 @@ export function mergeSettingsPatch(cur: Settings, patch: SettingsPatch): Setting
     apps: { ...cur.apps, ...(apps || {}) },
     engines: mergeEngineCfgs(cur.engines, engines),
     suggestions: { ...cur.suggestions, ...(suggestions || {}) },
-    noteFolders: patchNoteFolders ? noteFolders(patchNoteFolders) : cur.noteFolders,
+    // Normalized on the way in: a patch can arrive from a shell-built CLI call,
+    // and an unknown id persisted here would read as a flag nothing gates on.
+    experiments: { ...cur.experiments, ...normalizeExperiments(experiments) },
   }
 }
 
@@ -888,18 +723,6 @@ export function syncSlackSidecar(s: Settings = readSettings()): void {
 export function worktreesFrom(worktreesDir: string, projectsResolved: string): string {
   return worktreesDir || join(projectsResolved, '.worktrees')
 }
-
-export type ProjectsDirValidation =
-  | { ok: true; dir: string; repoCount: number }
-  | { ok: false; reason: 'is-repo'; dir: string; suggestedParent: string; message: string }
-  | {
-      ok: false
-      reason: 'no-repos-found'
-      dir: string
-      suggestedChild?: string
-      suggestedCount?: number
-      message: string
-    }
 
 // Candidate parent folders scanned when auto-detecting a default projects dir,
 // densest-first fallback. '' means the home folder itself. Keep in sync with the

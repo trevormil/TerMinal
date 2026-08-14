@@ -3,7 +3,7 @@
 // Register from src/main/index.ts with:
 //   registerSessionSearchIpc({ cwd: () => cur().cwd })
 
-import { ipcMain } from 'electron'
+import { handle } from '../typed-ipc'
 import { findSessionFile, listSessions } from '../data'
 import { searchTranscripts, type SearchOptions, type SessionRef } from '../session-search'
 
@@ -28,7 +28,7 @@ function sessionRefs(): SessionRef[] {
 }
 
 export function registerSessionSearchIpc(deps: { cwd: () => string }): void {
-  ipcMain.handle(
+  handle(
     'sessions:search',
     (_e, query: string, opts?: SearchOptions & { thisRepoOnly?: boolean }) => {
       const o: SearchOptions = { ...opts }

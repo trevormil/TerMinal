@@ -1,5 +1,7 @@
 import { execFile, execFileSync } from 'node:child_process'
 import { promisify } from 'node:util'
+import type { GitStatus, WorkingDiff } from '../shared/types/git'
+export type { GitStatus, WorkingDiff } from '../shared/types/git'
 
 export type RepoId = { host: string; path: string }
 
@@ -178,14 +180,6 @@ export async function getFileAtHeadBinary(repoRoot: string, rel: string): Promis
   }
 }
 
-export type WorkingDiff = {
-  ok: boolean
-  diff: string
-  base: string
-  branch: string
-  error?: string
-}
-
 // The "pre-PR" diff: everything from the merge-base with the default branch to
 // the working tree (committed branch work + staged + unstaged), plus untracked
 // files rendered as full additions. On the base branch this collapses to just
@@ -218,15 +212,6 @@ export async function getWorkingDiff(repoRoot: string): Promise<WorkingDiff> {
   } catch (e) {
     return { ok: false, diff: '', base: '', branch: '', error: (e as Error).message || String(e) }
   }
-}
-
-export type GitStatus = {
-  ok: boolean
-  branch: string
-  ahead: number
-  behind: number
-  dirty: number
-  upstream: boolean
 }
 
 export const GIT_STATUS_TTL_MS = 1_000

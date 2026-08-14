@@ -9,21 +9,9 @@
 // Every failure degrades to status 'unknown' — the check never throws and
 // never blocks startup.
 import { execFile } from 'node:child_process'
-
-export type UpdateStatus = 'up-to-date' | 'behind' | 'diverged' | 'unknown'
-export type UpdateCheckResult = {
-  buildSha: string // short sha as baked, -dirty suffix stripped ('' → uncomparable)
-  buildDirty: boolean // build was made from an uncommitted working tree
-  status: UpdateStatus
-  behindBy: number // commits origin/main is ahead of the build (when status 'behind')
-  latestSha: string // short sha of origin/main when known
-  source: 'git' | 'github' | 'none'
-  checkedAt: number
-  repoPath?: string // the source checkout used for the git check (for UI hints)
-  checkoutBranch?: string // current branch of that checkout (git source only)
-  checkoutDirty?: boolean // that checkout has local changes (git source only)
-  error?: string
-}
+import type { UpdateCheckResult } from '../shared/types/app'
+export type { UpdateCheckResult } from '../shared/types/app'
+export type { UpdateStatus } from '../shared/types/app'
 
 /** Split the baked build stamp into a comparable sha + dirty flag. */
 export function parseBuildSha(stamp: string): { sha: string; dirty: boolean } {

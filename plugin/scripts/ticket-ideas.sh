@@ -55,7 +55,7 @@ proposed=$(terminal-cli state get proposedIdeas)
 if [ -z "$proposed" ]; then
   proposed='[]'
 elif ! echo "$proposed" | jq -e 'type == "array"' >/dev/null 2>&1; then
-  terminal-cli hitl "ticket-ideas ledger is corrupt in $repo_name" \
+  terminal-cli inbox-item "ticket-ideas ledger is corrupt in $repo_name" \
     "proposedIdeas in ~/.config/TerMinal/agent-state/$repo_name/$TERMINAL_AGENT_ID.json is not an array. Refusing to run — re-proposing rejected ideas is worse than skipping a day."
   exit 0
 fi
@@ -67,7 +67,7 @@ dismissed_file="$HOME/.config/TerMinal/agent-state/$repo_name/$TERMINAL_AGENT_ID
 dismissed='[]'
 if [ -f "$dismissed_file" ]; then
   if ! dismissed=$(jq -c '.dismissed // []' "$dismissed_file" 2>/dev/null); then
-    terminal-cli hitl "ticket-ideas dismissal ledger is corrupt in $repo_name" \
+    terminal-cli inbox-item "ticket-ideas dismissal ledger is corrupt in $repo_name" \
       "$dismissed_file is unparseable. Refusing to run — proceeding would re-propose ideas you already rejected."
     exit 0
   fi

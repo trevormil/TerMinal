@@ -11,30 +11,14 @@
 
 import { execFile } from 'node:child_process'
 import { ghEnvFor } from './repo'
-
-/** The `stack` field on a GitHub pull request object. Field names and shape are
- *  taken verbatim from the REST pulls docs — see the ticket's verified spec. */
-export type PrStack = {
-  base: { ref: string; sha: string }
-  size: number
-  position: number
-  id: number
-  number: number
-}
+import type { PrStack } from '../shared/types/mrs'
+export type { PrStack, Stack } from '../shared/types/mrs'
+import type { Stack } from '../shared/types/mrs'
 
 /** One PR as far as stacking is concerned. */
 export type StackedPr = {
   iid: number
   stack: PrStack | null
-}
-
-/** A resolved stack: its layers in bottom-to-top order. */
-export type Stack = {
-  id: number
-  size: number
-  /** Base branch the whole stack lands on. */
-  baseRef: string
-  layers: { iid: number; position: number }[]
 }
 
 // --- pure shaping ------------------------------------------------------------

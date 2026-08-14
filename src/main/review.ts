@@ -3,6 +3,8 @@ import { repoForCwd, repoRootOf } from './repo'
 import { join, resolve, extname, sep } from 'node:path'
 import { existingProjectAreaPaths } from './project-layout'
 import { resolvedHarnessDir } from './settings'
+import type { Review, Screenshot, TddInfo } from '../shared/types/mrs'
+export type { Review, Screenshot, TddInfo } from '../shared/types/mrs'
 
 // Reads code-review/test artifacts from two stores:
 //   the project sidecar:    <sidecar>/reviews/<iid>/<short_sha>.md — where new
@@ -12,24 +14,6 @@ import { resolvedHarnessDir } from './settings'
 //     (+ meta.json commit list)
 // The project store wins when present; the harness store is opt-in
 // (Settings → harnessDir, '' = off).
-
-export type Review = {
-  number: number
-  overall: number | null
-  verdict: string
-  testStatus: string
-  stale: boolean
-  commitsBehind: number
-  /** Canonical change blast-radius, 0-5, graded by the reviewer
-   *  (artifact frontmatter `risk_score:`). null when the artifact predates
-   *  the field or is tests-only. */
-  riskScore: number | null
-  /** Cross-PR triage classification — high/medium/low/unscored.
-   *  Derived from `riskScore` (0-1 low, 2-3 medium, 4-5 high) when present;
-   *  otherwise falls back to the legacy frontmatter `risk_tier:` field that
-   *  bin/compute-verdict writes deterministically post-codex. */
-  riskTier: 'high' | 'medium' | 'low' | 'unscored'
-}
 
 /** Derive the categorical tier from the canonical 0-5 risk score. */
 export function riskTierFromScore(score: number): 'high' | 'medium' | 'low' {
@@ -52,20 +36,6 @@ export function readJsonSafe<T = unknown>(file: string, fallback: T): T {
   } catch {
     return fallback
   }
-}
-
-/** One reviewer-captured screenshot. Optional per review — the reviewer only
- *  records these when a visual/UX change makes an image materially help the
- *  reviewer or the human merger decide. Image bytes are embedded as a data URL
- *  so the renderer never needs filesystem access. */
-export type Screenshot = {
-  id: string
-  caption: string
-  /** before | after | diff | state — the role of this frame, when given. */
-  kind?: 'before' | 'after' | 'diff' | 'state'
-  /** Optional findings.json id this screenshot backs. */
-  findingId?: string
-  dataUrl: string
 }
 
 const SCREENSHOT_KINDS = new Set(['before', 'after', 'diff', 'state'])
@@ -354,18 +324,6 @@ export function newestReviewDirForRepo(
 // Derives owner/repo from the cwd's git remote, reads that repo's newest
 // tracked PR review artifact (moved here from data.ts, ticket 91 — this is that shared logic).
 // ---------------------------------------------------------------------------
-
-export type TddInfo = {
-  ok: boolean
-  repo: string
-  number: number
-  overall: number | null
-  verdict: string
-  testStatus: string
-  stale: boolean
-  commitsBehind: number
-  ts: number
-}
 
 let tddCache: { cwd: string; ts: number; info: TddInfo } | null = null
 export function readHarnessTdd(cwd: string): TddInfo {

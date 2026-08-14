@@ -5,7 +5,6 @@
 // renderer seam is bindSessionSender — the module never touches the window.
 
 import * as pty from 'node-pty'
-import { type Engine } from './agents'
 import { getTicket, updateTicket } from './backlog'
 import { appendSessionRunLog, beginSessionRun, finalizeSessionRun } from './cron-runs'
 import { findSessionFile, lastAssistantText } from './data'
@@ -24,8 +23,6 @@ import {
   readSettings,
   resolvedOpenAICompatKey,
   resolvedOpenRouterKey,
-  type DaemonCfg,
-  type RemotePlatform,
 } from './settings'
 import { processSpawnCwd } from './spawn-cwd'
 import { statuslineSettingsArg } from './statusline'
@@ -37,6 +34,8 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
+import type { RemoteSession, SessionEngine, StartOpts } from '../shared/types/sessions'
+export type { RemoteSession, SessionEngine, StartOpts } from '../shared/types/sessions'
 
 let send: (channel: string, ...args: unknown[]) => void = () => {}
 /** Bind the renderer sender (index.ts's window-guarded send). */
@@ -48,18 +47,6 @@ const LOGIN_SHELL = process.env.SHELL || '/bin/zsh'
 
 export const activeSessionKey = (): string => activeKey
 
-// One window now hosts MANY sessions, each its own PTY, keyed by a renderer-
-// generated tab key. Data IPC reads the *active* session; PTY IPC is routed by
-// key so every (even backgrounded) terminal keeps streaming.
-export type SessionEngine = Engine | 'local'
-export type RemoteSession = {
-  hostId: string
-  label: string
-  sshTarget: string
-  cwd?: string
-  platform?: RemotePlatform
-  daemon?: DaemonCfg
-}
 export type Pinned = {
   sessionId: string
   cwd: string
@@ -118,29 +105,6 @@ export const repoLabelFor = (cwdOrRoot: string) =>
   cwdOrRoot.startsWith('ssh://')
     ? sshPathBasename(cwdOrRoot)
     : repoForCwd(cwdOrRoot)?.path || basename(repoRootOf(cwdOrRoot) || cwdOrRoot || '')
-
-export type StartOpts = {
-  mode: 'new' | 'resume'
-  engine?: SessionEngine
-  /** Per-session model override → passed as --model. Falls back to the engine's default. */
-  model?: string
-  /** Per-session reasoning-effort override. Falls back to the engine's
-   *  configured default; dropped for engines without an effort control. */
-  effort?: string
-  sessionId?: string
-  cwd?: string
-  name?: string
-  initialInput?: string
-  ticketSlug?: string
-  remote?: RemoteSession
-  /** Live-paired loop linkage — set on the two sessions of a paired loop. */
-  loopId?: string
-  loopRole?: 'driver' | 'worker'
-  /** Which harness runs an `openrouter` session (default 'codex'). */
-  openrouterHarness?: 'codex' | 'hermes'
-  cols: number
-  rows: number
-}
 
 const shq = (s: string) => (/^[\w@%+=:,./-]+$/.test(s) ? s : `'${s.replace(/'/g, "'\\''")}'`)
 

@@ -1,49 +1,29 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-
-type FilesSearchOptions = {
-  regex?: boolean
-  caseSensitive?: boolean
-  wholeWord?: boolean
-  include?: string
-  exclude?: string
-}
-
-type StartOpts = {
-  mode: 'new' | 'resume'
-  engine?: 'claude' | 'codex' | 'cursor' | 'openrouter' | 'hermes' | 'local'
-  model?: string
-  effort?: string
-  sessionId?: string
-  cwd?: string
-  name?: string
-  initialInput?: string
-  ticketSlug?: string
-  remote?: {
-    hostId: string
-    label: string
-    sshTarget: string
-    cwd?: string
-    platform?: 'auto' | 'linux' | 'macos'
-    daemon?: unknown
-  }
-  loopId?: string
-  loopRole?: 'driver' | 'worker'
-  openrouterHarness?: 'codex' | 'hermes'
-  cols: number
-  rows: number
-}
+// `gt` is annotated `GtApi`, so the bridge is now checked against the surface
+// the renderer declares — a preload key that drifts from its declaration (a
+// narrowed engine union, a renamed argument, a method the renderer expects and
+// the bridge never grew) fails the build here instead of at runtime.
+import type {
+  ActivityEvent,
+  AgentRun,
+  CheapMessage,
+  DigestRunState,
+  Engine,
+  FilesSearchOptions,
+  GtApi,
+  StartOpts,
+  UpdateCheckResult,
+} from '../renderer/src/lib/types'
 
 // The single bridge the renderer (and every plugin) talks to.
-const gt = {
+const gt: GtApi = {
   // session lifecycle (each session keyed by a renderer-generated id)
-  listSessions: (engine?: 'claude' | 'codex' | 'cursor') =>
-    ipcRenderer.invoke('sessions:list', engine),
+  listSessions: (engine?: Engine) => ipcRenderer.invoke('sessions:list', engine),
   startSession: (key: string, opts: StartOpts) => ipcRenderer.invoke('session:start', key, opts),
   setActiveSession: (key: string) => ipcRenderer.invoke('session:setActive', key),
   stopSession: (key: string) => ipcRenderer.invoke('session:stop', key),
   fleet: () => ipcRenderer.invoke('fleet:list'),
   pickDir: () => ipcRenderer.invoke('dialog:pickDir'),
-  projectDirs: () => ipcRenderer.invoke('dirs:projects'),
   detectEnv: () => ipcRenderer.invoke('env:detect'),
   installGtNotify: () => ipcRenderer.invoke('env:install-gt-notify'),
   scaffoldProject: (name: string, parentDir?: string, ticketProvider?: unknown) =>
@@ -92,20 +72,15 @@ const gt = {
       ipcRenderer.invoke('alerts:test', channel, webhookId),
   },
   cheapLlm: (opts: {
-    messages: { role: string; content: string }[]
+    messages: CheapMessage[]
     model?: string
-    engine?: 'codex' | 'claude' | 'cursor'
+    engine?: Engine
     route?: 'auto' | 'claude-p'
     cwd?: string
     maxTokens?: number
     temperature?: number
     timeoutMs?: number
   }) => ipcRenderer.invoke('llm:cheap', opts),
-  classify: {
-    ci: (rawLog: string) => ipcRenderer.invoke('classify:ci', rawLog),
-    risk: (input: { files: string[]; diffLines?: number; title?: string }) =>
-      ipcRenderer.invoke('classify:risk', input),
-  },
   // on-demand codex/claude/cursor agents
   agents: {
     allRuns: () => ipcRenderer.invoke('runs:all'),
@@ -203,13 +178,13 @@ const gt = {
     rerun: (runId: string) => ipcRenderer.invoke('agents:rerun', runId),
     cancel: (runId: string) => ipcRenderer.invoke('agents:cancel', runId),
     removeWorktree: (runId: string) => ipcRenderer.invoke('agents:remove-worktree', runId),
-    onStatus: (cb: (run: unknown) => void) => {
-      const h = (_e: unknown, run: unknown) => cb(run)
+    onStatus: (cb: (run: AgentRun) => void) => {
+      const h = (_e: unknown, run: AgentRun) => cb(run)
       ipcRenderer.on('agent:status', h)
       return () => ipcRenderer.removeListener('agent:status', h)
     },
-    onOutput: (cb: (p: unknown) => void) => {
-      const h = (_e: unknown, p: unknown) => cb(p)
+    onOutput: (cb: (p: { runId: string; chunk: string }) => void) => {
+      const h = (_e: unknown, p: { runId: string; chunk: string }) => cb(p)
       ipcRenderer.on('agent:output', h)
       return () => ipcRenderer.removeListener('agent:output', h)
     },
@@ -258,8 +233,7 @@ const gt = {
     runs: (id?: string) => ipcRenderer.invoke('schedules:runs', id),
     runLog: (runId: string) => ipcRenderer.invoke('schedules:run-log', runId),
     reconcile: () => ipcRenderer.invoke('schedules:reconcile'),
-    removeAll: () => ipcRenderer.invoke('schedules:remove-all'),
-    disabledList: () => ipcRenderer.invoke('schedules:disabled-list'),
+    disabledDetail: () => ipcRenderer.invoke('schedules:disabled-detail'),
     disabledToggle: (id: string, disabled: boolean) =>
       ipcRenderer.invoke('schedules:disabled-toggle', id, disabled),
     disabledAll: (disabled: boolean) => ipcRenderer.invoke('schedules:disabled-all', disabled),
@@ -282,12 +256,7 @@ const gt = {
   },
   listeners: {
     status: () => ipcRenderer.invoke('listeners:status'),
-    process: () => ipcRenderer.invoke('listeners:process'),
     toggle: (enabled: boolean) => ipcRenderer.invoke('listeners:toggle', enabled),
-    openDir: () => ipcRenderer.invoke('listeners:open-dir'),
-  },
-  remote: {
-    active: () => ipcRenderer.invoke('remote:active'),
   },
   monitors: {
     list: () => ipcRenderer.invoke('monitors:list'),
@@ -299,10 +268,12 @@ const gt = {
     jobs: (repoRoot: string, runId: string) => ipcRenderer.invoke('ci:jobs', repoRoot, runId),
     log: (repoRoot: string, jobId: string) => ipcRenderer.invoke('ci:log', repoRoot, jobId),
   },
+  // Pre-rename spelling of gt.inbox's item methods (ticket 0123). Kept as a
+  // permanent alias — main binds `hitl:*` to the same implementations as
+  // `inbox:*` — so a plugin or widget written against it keeps working.
   hitl: {
     list: () => ipcRenderer.invoke('hitl:list'),
     remoteAll: () => ipcRenderer.invoke('hitl:remote-all'),
-    file: (item: unknown) => ipcRenderer.invoke('hitl:file', item),
     resolve: (id: string, resolved?: boolean, hostId?: string) =>
       ipcRenderer.invoke('hitl:resolve', id, resolved, hostId),
     remove: (id: string, hostId?: string) => ipcRenderer.invoke('hitl:remove', id, hostId),
@@ -310,19 +281,13 @@ const gt = {
       ipcRenderer.invoke('hitl:mark-read', ids, hostId, read),
     markAllRead: () => ipcRenderer.invoke('hitl:mark-all-read'),
   },
-  factory: {
-    health: () => ipcRenderer.invoke('factory:health'),
-    start: (engine: string) => ipcRenderer.invoke('factory:start', engine),
-  },
   // Agent reliability: scorecards computed from the existing run stores, the
   // disabled roster with its reasons, and persistent-agent memory compaction.
   agentInsights: {
     scorecard: (agentId: string) => ipcRenderer.invoke('agents:scorecard', agentId),
-    scorecards: () => ipcRenderer.invoke('agents:scorecards'),
     disabledDetail: () => ipcRenderer.invoke('agents:disabled-detail'),
     setDisabled: (id: string, disabled: boolean, reason?: string) =>
       ipcRenderer.invoke('agents:set-disabled', id, disabled, reason),
-    compactMemory: (id: string) => ipcRenderer.invoke('persistent-agents:compact', id),
   },
 
   // activity feed + notifications
@@ -331,8 +296,8 @@ const gt = {
     unseenCount: (since: number, kinds: string[]) =>
       ipcRenderer.invoke('activity:unseen-count', since, kinds),
     clear: () => ipcRenderer.invoke('activity:clear'),
-    onEvent: (cb: (ev: unknown) => void) => {
-      const h = (_e: unknown, ev: unknown) => cb(ev)
+    onEvent: (cb: (ev: ActivityEvent) => void) => {
+      const h = (_e: unknown, ev: ActivityEvent) => cb(ev)
       ipcRenderer.on('activity:event', h)
       return () => ipcRenderer.removeListener('activity:event', h)
     },
@@ -442,7 +407,6 @@ const gt = {
     list: () => ipcRenderer.invoke('checkpoints:list'),
     create: (label: string) => ipcRenderer.invoke('checkpoints:create', label),
     restore: (sha: string) => ipcRenderer.invoke('checkpoints:restore', sha),
-    file: (sha: string, rel: string) => ipcRenderer.invoke('checkpoints:file', sha, rel),
     ranges: (sha: string) => ipcRenderer.invoke('checkpoints:ranges', sha),
     reviewBase: (rel: string, buffer: string) =>
       ipcRenderer.invoke('checkpoints:review-base', rel, buffer),
@@ -456,8 +420,8 @@ const gt = {
   getDigest: (iid: number, short?: string) => ipcRenderer.invoke('digest:get', iid, short),
   runDigest: (iid: number) => ipcRenderer.invoke('digest:run', iid),
   digestStatus: (iid: number) => ipcRenderer.invoke('digest:status', iid),
-  onDigestStatus: (cb: (s: unknown) => void) => {
-    const h = (_e: unknown, s: unknown) => cb(s)
+  onDigestStatus: (cb: (s: DigestRunState) => void) => {
+    const h = (_e: unknown, s: DigestRunState) => cb(s)
     ipcRenderer.on('digest:status', h)
     return () => ipcRenderer.removeListener('digest:status', h)
   },
@@ -488,8 +452,8 @@ const gt = {
   },
   update: {
     check: () => ipcRenderer.invoke('update:check'),
-    onStatus: (cb: (r: unknown) => void) => {
-      const h = (_e: unknown, r: unknown) => cb(r)
+    onStatus: (cb: (r: UpdateCheckResult) => void) => {
+      const h = (_e: unknown, r: UpdateCheckResult) => cb(r)
       ipcRenderer.on('update:status', h)
       return () => ipcRenderer.removeListener('update:status', h)
     },
@@ -499,12 +463,8 @@ const gt = {
     list: () => ipcRenderer.invoke('bg:list'),
     get: (id: string) => ipcRenderer.invoke('bg:get', id),
     log: (id: string) => ipcRenderer.invoke('bg:log', id),
-    spawn: (input: {
-      repoRoot: string
-      prompt: string
-      engine?: 'claude' | 'codex' | 'cursor'
-      model?: string
-    }) => ipcRenderer.invoke('bg:spawn', input),
+    spawn: (input: { repoRoot: string; prompt: string; engine?: Engine; model?: string }) =>
+      ipcRenderer.invoke('bg:spawn', input),
     cancel: (id: string) => ipcRenderer.invoke('bg:cancel', id),
   },
   loops: {
@@ -512,10 +472,10 @@ const gt = {
     get: (id: string) => ipcRenderer.invoke('loops:get', id),
     state: (id: string) => ipcRenderer.invoke('loops:state', id),
     create: (input: {
-      repoRoot: string
+      repoRoot?: string
       goal: string
       mode?: 'headless' | 'paired' | 'single'
-      engine?: 'claude' | 'codex' | 'cursor' | 'hermes'
+      engine?: Engine
       model?: string
       maxIterations?: number
     }) => ipcRenderer.invoke('loops:create', input),
@@ -524,11 +484,8 @@ const gt = {
     stop: (id: string) => ipcRenderer.invoke('loops:stop', id),
   },
   observability: {
-    summary: (range: string = 'today') => ipcRenderer.invoke('observability:summary', range),
     byAgent: (range: string = 'week') => ipcRenderer.invoke('observability:byAgent', range),
-    daily: (days: number = 7) => ipcRenderer.invoke('observability:daily', days),
     runs: (limit: number = 100) => ipcRenderer.invoke('observability:runs', limit),
-    models: () => ipcRenderer.invoke('observability:models'),
     indexStatus: () => ipcRenderer.invoke('observability:index-status'),
     rebuildIndex: (limit: number = 240) => ipcRenderer.invoke('observability:index-rebuild', limit),
     indexQuery: (query: string, arg?: string, filter?: unknown) =>
@@ -542,8 +499,15 @@ const gt = {
     merge: (repoRoot: string, iid: number) => ipcRenderer.invoke('stacks:merge', repoRoot, iid),
   },
   inbox: {
+    list: () => ipcRenderer.invoke('inbox:list'),
+    remoteAll: () => ipcRenderer.invoke('inbox:remote-all'),
+    resolve: (id: string, resolved?: boolean, hostId?: string) =>
+      ipcRenderer.invoke('inbox:resolve', id, resolved, hostId),
+    remove: (id: string, hostId?: string) => ipcRenderer.invoke('inbox:remove', id, hostId),
+    markRead: (ids: string[], hostId?: string, read?: boolean) =>
+      ipcRenderer.invoke('inbox:mark-read', ids, hostId, read),
+    markAllRead: () => ipcRenderer.invoke('inbox:mark-all-read'),
     snoozes: () => ipcRenderer.invoke('inbox:snoozes'),
-    snoozePresets: () => ipcRenderer.invoke('inbox:snooze-presets'),
     snooze: (id: string, until: number) => ipcRenderer.invoke('inbox:snooze', id, until),
     unsnooze: (id: string) => ipcRenderer.invoke('inbox:unsnooze', id),
     deliveryLog: (channel?: string, limit?: number) =>
@@ -576,10 +540,6 @@ const gt = {
     read: (scope: 'repo' | 'global') => ipcRenderer.invoke('notes:read', scope),
     write: (scope: 'repo' | 'global', content: string) =>
       ipcRenderer.invoke('notes:write', scope, content),
-    folderList: (id: string, rel: string) => ipcRenderer.invoke('notes:folder-list', id, rel),
-    folderRead: (id: string, rel: string) => ipcRenderer.invoke('notes:folder-read', id, rel),
-    folderWrite: (id: string, rel: string, content: string) =>
-      ipcRenderer.invoke('notes:folder-write', id, rel, content),
   },
   knowledge: {
     read: (scope: 'repo' | 'global') => ipcRenderer.invoke('knowledge:read', scope),

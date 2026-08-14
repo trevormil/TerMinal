@@ -23,6 +23,8 @@ import {
   readRunLogTail,
 } from './run-summarizer'
 import { configPath } from './config-dir'
+import type { CronRun, UnifiedRun } from '../shared/types/runs'
+export type { CronRun, UnifiedRun } from '../shared/types/runs'
 
 // Read the run records the headless runner (bin/terminal-cron) writes per run.
 const DEFAULT_RUNS_DIR = (): string => configPath('cron-runs')
@@ -35,24 +37,6 @@ const SESSION_RUN_LOG_TRUNCATED = '[TerMinal: earlier session log truncated]\n'
 const cronRunsDir = (): string => process.env.TERMINAL_CRON_RUNS_DIR || DEFAULT_RUNS_DIR()
 const sessionRunsDir = (): string =>
   process.env.TERMINAL_SESSION_RUNS_DIR || DEFAULT_SESSION_RUNS_DIR()
-
-export type CronRun = {
-  id: string
-  scheduleId: string
-  agentId: string
-  agentTitle: string
-  engine: string
-  status: Extract<RunStatus, 'running' | 'done' | 'failed' | 'canceled'>
-  startedAt: number
-  endedAt?: number
-  exitCode?: number
-  branch: string
-  repoLabel: string
-  worktree: string
-  error?: string
-  pid?: number // script-wrapper pid (watchdog liveness probe)
-  runnerPid?: number // this runner's pid — SIGTERM'd to cancel the run (#9)
-}
 
 export type SessionRun = {
   id: string
@@ -434,43 +418,6 @@ export function readSessionRunLogTail(
 }
 
 // ---- unified runs view -----------------------------------------------------
-
-// A single shape for every run regardless of origin — cron-fired vs in-process
-// agent vs ticket-spawn etc. Powers the Runs tab so the operator gets one
-// global picture instead of jumping between Schedules and Agents.
-export type UnifiedRun = {
-  id: string
-  source: 'cron' | 'agent' | 'bg' | 'session'
-  agentId: string
-  agentTitle: string
-  engine: string
-  // Narrowed from `string` (ticket 91): the four stores share one vocabulary
-  // now, and remote records normalize at the fetch boundary.
-  status: RunStatus
-  startedAt: number
-  endedAt?: number
-  exitCode?: number
-  repoRoot: string
-  repoLabel: string
-  branch: string
-  worktree: string
-  scheduleId?: string
-  error?: string
-  force?: boolean
-  /** USD cost when the harness reports it (OpenRouter/or-agent runs). */
-  costUsd?: number
-  trace?: AgentRun['trace']
-  evaluation?: AgentRun['evaluation']
-  /** Remote host this run came from. Undefined = local machine. Stamped by
-   *  the `runs:remote-all` fan-out so the Runs tab can badge/filter by host. */
-  hostId?: string
-  hostLabel?: string
-  /** Cron runner's own pid — SIGTERM'd to cancel the run (#9). */
-  runnerPid?: number
-  /** Best-effort two-line "what actually got done", written after the run
-   *  settled. Absent whenever summarization was skipped or failed. */
-  summary?: string
-}
 
 function agentRunToUnified(r: AgentRun): UnifiedRun {
   return {

@@ -29,8 +29,8 @@ inspectable — you can `cat` an agent definition and read what it does.
 .agents/<id>.json                            # per-repo metadata (sidecar)
 ```
 
-The default script agents (health, drift, coverage, ticket-ideas,
-ci-watchdog) ship with the tm plugin (`plugin/scripts/`) and are seeded once
+The default script agents (health, drift, coverage, ticket-ideas)
+ship with the tm plugin (`plugin/scripts/`) and are seeded once
 into the global dir by the plugin install — repos are not seeded with copies.
 A repo carries `.agents/<id>.sh` only for a genuinely repo-specific agent or
 a deliberate override of a global one (per-repo wins on id collision).
@@ -85,7 +85,7 @@ if bunx tsc --noEmit -p tsconfig.json \
 fi
 
 # Failed precheck — escalate
-claude -p "The health check failed. Diagnose and either apply a safe fix and open a PR, or file a HITL with the failure context." \
+claude -p "The health check failed. Diagnose and either apply a safe fix and open a PR, or file an Inbox item with the failure context." \
   --permission-mode auto \
   --model "${TERMINAL_MODEL:-haiku}"
 ```
@@ -116,17 +116,17 @@ PATH is augmented to include the TerMinal CLI helpers:
 
 ```
 ~/.config/TerMinal/bin/terminal-cli ticket "<title>" "<body>"
-~/.config/TerMinal/bin/terminal-cli hitl "<title>" "<action>"
+~/.config/TerMinal/bin/terminal-cli inbox-item "<title>" "<action>"
 ~/.config/TerMinal/bin/terminal-cli activity "<kind>" "<title>" "<detail>"
 ~/.config/TerMinal/bin/terminal-cli notify "<message>"
 ~/.config/TerMinal/bin/terminal-cli listener enqueue '<json-envelope>'
 ~/.config/TerMinal/bin/terminal-cli state {get-sha,mark-main,get,set,set-sha}
 ```
 
-So a script can file a HITL with `terminal-cli hitl "Auth keys missing" "rotate in 1password"` — no need to hardcode the JSON file location.
+So a script can file an Inbox item with `terminal-cli inbox-item "Auth keys missing" "rotate in 1password"` — no need to hardcode the JSON file location.
 Treat this API as append-only from agent code: it writes Inbox, emits activity,
 and pings Telegram; only the human/operator resolves the item. To wait, query
-HITL status or periodically re-check the original blocker.
+Inbox status or periodically re-check the original blocker.
 
 Use `terminal-cli listener enqueue` when a script should request follow-up work
 without running it inline. It writes a durable JSON event to
@@ -292,7 +292,7 @@ recent=$(terminal-cli state get proposedIdeas | jq --argjson c "$cutoff" \
 ```
 
 **Fail CLOSED on a corrupt ledger.** Distinguish *absent* (first run — proceed
-normally) from *present but unparseable* (something is wrong — file a HITL and
+normally) from *present but unparseable* (something is wrong — file an Inbox item and
 exit 0). Treating a corrupt ledger as empty is the worst option available: it
 silently re-proposes every idea the human has ever rejected, which is precisely
 the failure the ledger exists to prevent.

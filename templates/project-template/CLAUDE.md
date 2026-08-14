@@ -112,7 +112,7 @@ Two inboxes; full contracts in
 [`docs/workflow/inbox.md`](./docs/workflow/inbox.md).
 
 - **HITL inbox** (one GLOBAL, not per-repo) — file with
-  `$HOME/.config/TerMinal/plugin/bin/hitl "<title>" "<action needed>" "<detail>"` (helper only).
+  `$HOME/.config/TerMinal/plugin/bin/inbox-item "<title>" "<action needed>" "<detail>"` (helper only).
   Append-only: agents file + query; **humans resolve** (never self-resolve).
   When a blocker clears, move the related `stuck` ticket back to `open`/
   `in-progress`. Reserve for **true human-needs** (spec forks, approvals,

@@ -1,4 +1,12 @@
-import type { Agent, AgentDefinition, Engine, Persona, Ticket, UnifiedRun } from './types'
+import type {
+  Agent,
+  AgentDefinition,
+  Engine,
+  Persona,
+  Ticket,
+  TicketProviderKind,
+  UnifiedRun,
+} from './types'
 import { withLaunchContext } from './launch'
 
 export function ticketImplementationPrompt(
@@ -11,7 +19,7 @@ export function ticketImplementationPrompt(
     pipeline?: string
     model?: string
     runContext?: Persona
-    ticketProvider?: 'local' | 'github' | 'linear'
+    ticketProvider?: TicketProviderKind
     ticketProviderLabel?: string
   } = {},
 ): string {
@@ -51,7 +59,7 @@ export function fileTicketPrompt(
   text: string,
   opts: {
     model?: string
-    ticketProvider?: 'local' | 'github' | 'linear'
+    ticketProvider?: TicketProviderKind
     ticketProviderLabel?: string
   } = {},
 ): string {
