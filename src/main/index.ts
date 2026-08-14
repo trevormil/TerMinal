@@ -70,10 +70,8 @@ function projectTemplateSource(marker: string): TemplateSource | { error: string
 
 import {
   readTranscriptStats,
-  readHarnessTdd,
   listSessions,
   findSessionFile,
-  readSessionTasks,
   lastAssistantTurn,
   readObservabilitySnapshot,
   readObservabilitySessionDetail,
@@ -96,6 +94,8 @@ import { registerRunsIpc } from './ipc/runs'
 import { registerHostsIpc } from './ipc/hosts'
 import { registerHitlIpc } from './ipc/hitl'
 import { registerMonitorsIpc } from './ipc/monitors'
+import { registerDataIpc } from './ipc/data'
+import { registerWidgetsIpc } from './ipc/widgets'
 import { createBridgeDeps } from './bridge-deps'
 import {
   bindSessionSender,
@@ -124,18 +124,7 @@ import { registerSessionSearchIpc } from './ipc/session-search'
 import { registerStacksIpc } from './ipc/stacks'
 import { fixPath } from './env'
 import { emitActivity, onActivity, startActivityTail } from './events'
-import { readUsage } from './usage'
 import { installStatuslineShim } from './statusline'
-import { listCommandWidgets, runCommand, repoRoot as widgetRepoRoot } from './widgets'
-import { listCustomTabs, runTabCommand } from './tabs'
-import {
-  approveRepo,
-  commandSetHash,
-  isRepoTrusted,
-  readTrustStore,
-  revokeRepo,
-  writeTrustStore,
-} from './repo-trust'
 import { repoRootOf, repoForCwd } from './repo'
 import { orderFleetSnapshotEntries, restoreFleetSnapshotEntryOrder } from './fleet-snapshot'
 import { checkForUpdate } from './update-check'
@@ -172,7 +161,6 @@ import {
   resolvedEditorApp,
   resolvedBrowserApp,
   resolvedTemplateRepo,
-  enginePath,
   resolveEngineModel,
 } from './settings'
 import { startMonitorLivenessWatch } from './monitor-liveness-runtime'
@@ -870,124 +858,6 @@ ipcMain.on('pty:resize', (_e, key: string, size: { cols: number; rows: number })
   }
 })
 
-// ---- data IPC (plugin pollers; all keyed to the attached session) ----
-handle('data:transcript', () => readTranscriptStats(cur().sessionId))
-handle('data:harness-tdd', () => readHarnessTdd(cur().cwd))
-handle('data:usage', () => readUsage(cur().sessionId))
-handle('data:git-status', () => {
-  return activeDaemon().gitStatus()
-})
-handle('data:session-tasks', () => readSessionTasks(cur().sessionId))
-handle('data:meta', () => ({ ...cur(), claude: enginePath('claude') }))
-
-// ---- command widgets + custom tabs (declarative, per-repo extensible) ------
-//
-// Two trust rules live here, both of which used to be enforced only by renderer
-// convention:
-//
-//  1. The renderer never supplies a COMMAND, only an opaque widget/tab id. Main
-//     resolves it against the widget set for the session's own cwd, so the
-//     "run an arbitrary shell string" sink no longer exists on the IPC surface.
-//  2. REPO-sourced entries (.TerMinal/widgets.json, .TerMinal/tabs.json) are
-//     inert until the user approves that repo for that exact command set — see
-//     repo-trust.ts. GLOBAL entries (~/.config/TerMinal) are the user's own
-//     files and behave exactly as before.
-function repoTrustContext(cwd: string) {
-  // Global kill switch ABOVE the per-repo trust flow: with repo extensions
-  // disabled (the default), repo-sourced widgets/tabs are never listed, never
-  // runnable, and never even prompt for approval — the surface doesn't exist.
-  // Global entries (~/.config/TerMinal) are the user's own files and unaffected.
-  const allowRepo = readSettings().allowRepoExtensions
-  const widgets = listCommandWidgets(cwd).filter((w) => allowRepo || w.source !== 'repo')
-  const tabs = listCustomTabs(cwd).filter((t) => allowRepo || t.source !== 'repo')
-  const root = cwd ? widgetRepoRoot(cwd) : ''
-  const commands = [
-    ...widgets.filter((w) => w.source === 'repo').map((w) => `widget: ${w.command}`),
-    ...tabs
-      .filter((t) => t.source === 'repo')
-      .map((t) => (t.command ? `tab: ${t.command}` : `tab url: ${t.url}`)),
-  ]
-  const hash = commandSetHash(commands)
-  return {
-    repoRoot: root,
-    hash,
-    commands,
-    widgets,
-    tabs,
-    trusted: isRepoTrusted(readTrustStore(), root, hash),
-  }
-}
-/** Global entries are always live; repo entries only once the repo is approved. */
-const entryTrusted = (source: 'global' | 'repo', repoTrusted: boolean) =>
-  source === 'global' || repoTrusted
-
-handle('widgets:list', () => {
-  const ctx = repoTrustContext(cur().cwd)
-  return ctx.widgets.map((w) => ({ ...w, trusted: entryTrusted(w.source, ctx.trusted) }))
-})
-handle('widgets:run', (_e, id: string) => {
-  const cwd = cur().cwd
-  const ctx = repoTrustContext(cwd)
-  const w = ctx.widgets.find((x) => x.id === id)
-  if (!w) return { ok: false, stdout: 'unknown widget', code: 127 }
-  if (!entryTrusted(w.source, ctx.trusted))
-    return { ok: false, stdout: 'repo not trusted — approve it in the Plugins drawer', code: 126 }
-  return runCommand(w.command, cwd)
-})
-
-// A renderer-supplied cwd is a REQUEST, never an authority: it is only honoured
-// when it belongs to a session the user actually has open. Otherwise a
-// compromised renderer could name any directory on disk — approve it, then run
-// its widgets — which would defeat the trust gate entirely.
-const openSessionCwd = (cwd?: string): string => {
-  if (!cwd) return cur().cwd
-  for (const s of sessions.values()) if (s.pinned.cwd === cwd) return cwd
-  console.error('[gt] refused a cwd that is not an open session:', String(cwd).slice(0, 120))
-  return cur().cwd
-}
-
-handle('tabs:list', (_e, cwd?: string) => {
-  const ctx = repoTrustContext(openSessionCwd(cwd))
-  return ctx.tabs.map((t) => ({ ...t, trusted: entryTrusted(t.source, ctx.trusted) }))
-})
-handle('tabs:run', (_e, id: string, cwd?: string) => {
-  const dir = openSessionCwd(cwd)
-  const ctx = repoTrustContext(dir)
-  const t = ctx.tabs.find((x) => x.id === id)
-  if (!t?.command) return { ok: false, html: 'unknown tab', code: 127 }
-  if (!entryTrusted(t.source, ctx.trusted))
-    return { ok: false, html: 'repo not trusted — approve it in the Plugins drawer', code: 126 }
-  return runTabCommand(t.command, dir)
-})
-
-// The approval surface: the literal commands the repo wants to run, so the user
-// approves what they can actually read.
-handle('repoTrust:status', () => {
-  const ctx = repoTrustContext(cur().cwd)
-  return { repoRoot: ctx.repoRoot, hash: ctx.hash, trusted: ctx.trusted, commands: ctx.commands }
-})
-// Deliberately takes NO cwd. Granting trust is the one operation the renderer
-// must not be able to point anywhere: `approve('/attacker/repo')` followed by
-// `tabs:run(id, '/attacker/repo')` would walk straight around the gate. The
-// approval always applies to the session the user is actually looking at.
-handle('repoTrust:approve', () => {
-  const ctx = repoTrustContext(cur().cwd)
-  if (!ctx.repoRoot || !ctx.commands.length) return false
-  writeTrustStore(approveRepo(readTrustStore(), ctx.repoRoot, ctx.hash))
-  emitActivity({
-    kind: 'check',
-    title: `Trusted repo widgets · ${basename(ctx.repoRoot)}`,
-    detail: `${ctx.commands.length} repo-defined command${ctx.commands.length > 1 ? 's' : ''} approved`,
-  })
-  return true
-})
-handle('repoTrust:revoke', () => {
-  const ctx = repoTrustContext(cur().cwd)
-  if (!ctx.repoRoot) return false
-  writeTrustStore(revokeRepo(readTrustStore(), ctx.repoRoot))
-  return true
-})
-
 // ---- scratch workspace (throwaway, repo-less sessions) ----
 // One app-owned dir under the existing TerMinal config root — persistent
 // (unlike /tmp), out of the way (unlike ~), and not a git repo so repo-scoped
@@ -1067,15 +937,6 @@ handle('mcp:install', () => {
 // "Bootstrapped" === the project-template repo data + Codex mirror are present
 // (BOOTSTRAP_MARKERS in bootstrap.ts; Claude skills come from the global tm
 // plugin, not the repo). Used by the in-session banner.
-// First-user-prompt for an arbitrary session id (not just the active one).
-// Used by the auto-naming flow in App.tsx — labels brand-new sessions with a
-// truncated version of what the user actually asked Claude to do, instead of
-// the bare "S1"/"S2" ordinal. The firstUserText is already extracted +
-// capped to 140 chars by parseTranscriptFile.
-handle('data:first-prompt', (_e, sessionId: string) => {
-  if (!sessionId) return ''
-  return readTranscriptStats(sessionId).firstUserText || ''
-})
 
 handle('workspace:is-bootstrapped', (_e, repoRoot: string) => {
   const remote = curRemote()
@@ -1548,6 +1409,13 @@ registerRunsIpc({ curRemote, remoteFromHostId })
 registerHostsIpc({ runnerSrcPath, cliSrcPath })
 registerHitlIpc({ remoteFromHostId })
 registerMonitorsIpc()
+// Plugin pollers (all keyed to the attached session) and the declarative
+// widget/tab surface with its repo-trust gate.
+registerDataIpc({ cur, activeDaemon })
+registerWidgetsIpc({
+  cur,
+  openCwds: () => [...sessions.values()].map((s) => s.pinned.cwd),
+})
 
 // ---- my workflow (local Claude/Codex configuration) ----
 handle('workflow:list', (_e, rel: string) => listWorkflowFiles(rel || ''))
