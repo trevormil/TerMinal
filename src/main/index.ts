@@ -1243,8 +1243,8 @@ handle('listeners:toggle', (_e, enabled: boolean) => {
 handle('hitl:list', () => readHitl())
 // Monitoring: read-only list for the tab; writes go through monitors.json (the
 // tab edits it directly via these handlers), and a check triggers the daemon.
-ipcMain.handle('monitors:list', () => listMonitorsWithStatus())
-ipcMain.handle('monitors:save', (_e, list: unknown) => {
+handle('monitors:list', () => listMonitorsWithStatus())
+handle('monitors:save', (_e, list: unknown) => {
   // monitors.json is executed by bin/terminal-monitor on a launchd timer, so
   // the write path validates rather than trusting the renderer's JSON.
   if (!Array.isArray(list)) return { ok: false, saved: 0, rejected: 0, error: 'expected an array' }
@@ -1272,7 +1272,7 @@ handle('ci:log', (_e, repoRoot: string, jobId: string) => fetchCiLog(repoRoot, j
 // IPC handler, so one "Run check" click on a hung endpoint froze the entire main
 // process — every window, every session, every timer — for up to 40s. The worst
 // remaining blocker in the app.
-ipcMain.handle('monitors:run', async (_e, id: string) => {
+handle('monitors:run', async (_e, id: string) => {
   await runMonitorProbe(id) // never rejects; failures surface via the state file
   return listMonitorsWithStatus()
 })
@@ -1720,15 +1720,15 @@ handle('mrs:ci', (_e, iid: number) => {
 handle('mrs:merge', (_e, iid: number) => {
   return activeDaemon().mrMerge(iid)
 })
-ipcMain.handle('open:external', (_e, url: string) => openExternalSafe(url))
+handle('open:external', (_e, url: string) => openExternalSafe(url))
 // Reveal ~/.config/TerMinal/ in Finder. Power-user QoL for editing
 // schedules.json, settings.json, or per-(repo, agent) state sidecars by hand.
-ipcMain.handle('open:config-dir', () => shell.openPath(terminalConfigDir()))
+handle('open:config-dir', () => shell.openPath(terminalConfigDir()))
 
 // Install the MCP server entry into ~/.claude/mcp.json (and ~/.codex's
 // equivalent if it exists). Read-only, stdio transport. Idempotent —
 // re-running just updates the binary path.
-ipcMain.handle('mcp:install', () => {
+handle('mcp:install', () => {
   const binPath = configPath('bin', 'terminal-mcp-server')
   if (!existsSync(binPath)) {
     return { error: `terminal-mcp-server not installed at ${binPath}` }
@@ -1863,7 +1863,7 @@ ipcMain.handle('update:check', () => runUpdateCheck())
 
 // Global tm plugin status/sync for the Settings panel. Sync re-copies the
 // bundled plugin and repairs the ~/.claude/skills/tm symlink.
-ipcMain.handle('plugin:status', () => tmPluginStatus())
+handle('plugin:status', () => tmPluginStatus())
 
 // Per-project sidecar: where this repo's tickets/reviews/sessions live, how
 // many files are still sitting in the repo, and the one-time move.
@@ -1891,7 +1891,7 @@ ipcMain.handle('repoState:migrate', (_e, repoRoot: string) => {
     : sweepLegacyPluginCopies(root, pluginDir).moved + sweepLegacySeeds(root, pluginDir).moved
   return { ...r, sweptCopies: swept }
 })
-ipcMain.handle('plugin:sync', () => installTmPlugin(tmPluginSrcDir()))
+handle('plugin:sync', () => installTmPlugin(tmPluginSrcDir()))
 
 // In-app rebuild. Spawns bin/release fully detached and routes its output to
 // a log file the renderer can tail. The release script kills the running
@@ -2156,7 +2156,7 @@ function openInApp(appName: string, target: string, fallback: () => void) {
 // `open -a <App> <target>` hands the OS an arbitrary string, so this sink needs
 // the same scheme gate as shell.openExternal (url-safety.ts) — otherwise it is
 // simply a second, unguarded way to reach an OS protocol handler.
-ipcMain.handle('open:in-browser', (_e, url: string) => {
+handle('open:in-browser', (_e, url: string) => {
   if (!isExternallyOpenableUrl(url)) return openExternalSafe(url)
   openInApp(resolvedBrowserApp(), url, () => openExternalSafe(url))
 })
@@ -2174,7 +2174,7 @@ function editorOpenRoots(): (string | undefined)[] {
     terminalConfigDir(),
   ]
 }
-ipcMain.handle('open:in-editor', (_e, path?: string) => {
+handle('open:in-editor', (_e, path?: string) => {
   const fallbackTarget = repoRootOf(cur().cwd) || cur().cwd || homedir()
   const target = path ? resolveWithinAny(editorOpenRoots(), path) : fallbackTarget
   if (!target) {
@@ -2196,10 +2196,10 @@ handle('clipboard:imageToFile', () => {
 })
 
 // ---- notes (repo-bound + global, persisted) ----
-ipcMain.handle('notes:read', (_e, scope: NotesScope) => {
+handle('notes:read', (_e, scope: NotesScope) => {
   return activeDaemon().notesRead(scope)
 })
-ipcMain.handle('notes:write', (_e, scope: NotesScope, content: string) =>
+handle('notes:write', (_e, scope: NotesScope, content: string) =>
   activeDaemon().notesWrite(scope, content),
 )
 handle('knowledge:read', (_e, scope: KnowledgeScope) => {
