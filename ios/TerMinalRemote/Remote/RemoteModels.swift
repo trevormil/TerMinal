@@ -52,6 +52,14 @@ struct HitlItem: Codable, Identifiable, Hashable {
     /// see InboxCategories and src/shared/inbox-categories.ts. Absent for most
     /// existing items, which is a real state, not a gap.
     let category: String?
+    /// The remote host that OWNS this item; nil ⇒ this Mac. Every write MUST
+    /// carry it back: a host item's id does not exist in the Mac's own inbox,
+    /// so a local resolve 404s and a local mark-read is reverted by the Mac's
+    /// next 15s fan-in.
+    let hostId: String?
+    /// That host's display name, for the row's chip. Its own field — the repo
+    /// column is a repo, not "host · repo" glued together.
+    let hostLabel: String?
 
     var isNormal: Bool { severity == "normal" }
     var isResolved: Bool { status == "resolved" }
