@@ -22,13 +22,23 @@ struct RootView: View {
             if let pairing {
                 // Re-key on the token so unpair/re-pair rebuilds the client and its
                 // pinned session rather than reusing stale credentials.
-                PairedView(pairing: pairing, onUnpair: {
-                    PairingStore.clear()
-                    // Drop the push singleton's client too, so a later APNs token
-                    // refresh can't POST with the revoked credentials.
-                    PushRegistrar.shared.client = nil
-                    self.pairing = nil
-                })
+                PairedView(
+                    pairing: pairing,
+                    onUnpair: {
+                        PairingStore.clear()
+                        // Drop the push singleton's client too, so a later APNs token
+                        // refresh can't POST with the revoked credentials.
+                        PushRegistrar.shared.client = nil
+                        self.pairing = nil
+                    },
+                    // Fleet switch: the picker has already stored the new Mac's
+                    // pairing. Drop the push client for the same reason as
+                    // unpair — the old Mac's token must not be reused — and let
+                    // the .id(pairing.t) rekey rebuild the whole tree.
+                    onSwitch: { payload in
+                        PushRegistrar.shared.client = nil
+                        self.pairing = payload
+                    })
                 .id(pairing.t)
             } else {
                 PairingView { payload in
@@ -58,6 +68,7 @@ struct RootView: View {
 private struct PairedView: View {
     let pairing: PairingPayload
     let onUnpair: () -> Void
+    let onSwitch: (PairingPayload) -> Void
 
     @State private var client: BridgeClient
     @State private var feed: RemoteFeed
@@ -76,9 +87,13 @@ private struct PairedView: View {
 
     private enum Tab: Hashable { case active, workspaces, inbox, activity, monitoring }
 
-    init(pairing: PairingPayload, onUnpair: @escaping () -> Void) {
+    init(
+        pairing: PairingPayload, onUnpair: @escaping () -> Void,
+        onSwitch: @escaping (PairingPayload) -> Void
+    ) {
         self.pairing = pairing
         self.onUnpair = onUnpair
+        self.onSwitch = onSwitch
         // One client shared across tabs so a single pinned session is reused,
         // and one feed so every tab reads the same poll.
         let c = BridgeClient(pairing: pairing)
@@ -144,7 +159,12 @@ private struct PairedView: View {
         }
         .sheet(isPresented: $showingSettings) {
             NavigationStack {
-                SettingsView(pairing: pairing, onUnpair: onUnpair)
+                SettingsView(
+                    pairing: pairing, client: client, onUnpair: onUnpair,
+                    onSwitch: { payload in
+                        showingSettings = false
+                        onSwitch(payload)
+                    })
                     .toolbar {
                         ToolbarItem(placement: .topBarLeading) {
                             Button("Close") { showingSettings = false }

@@ -5,9 +5,15 @@ import UserNotifications
 /// app version, and the one destructive action — unpair.
 struct SettingsView: View {
     let pairing: PairingPayload
+    let client: BridgeClient
     let onUnpair: () -> Void
+    /// Called when the fleet picker pairs with a different Mac.
+    let onSwitch: (PairingPayload) -> Void
 
     @State private var notifStatus: UNAuthorizationStatus?
+    @State private var hook: GlobalHookStatus?
+    @State private var hookBusy = false
+    @State private var hookMessage: String?
     @State private var confirmingUnpair = false
     @State private var lock = AppLock.shared
     @State private var settingPasscode = false
@@ -20,6 +26,8 @@ struct SettingsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
                     section("Paired Mac") { pairedMacPanel }
+                    section("Fleet") { fleetPanel }
+                    section("Listener hook") { hookPanel }
                     section("App lock") { appLockPanel }
                     section("Notifications") { notificationsPanel }
                     section("About") { aboutPanel }
@@ -57,6 +65,7 @@ struct SettingsView: View {
             Button("Cancel", role: .cancel) {}
         }
         .task { await refreshNotifStatus() }
+        .task { await refreshHook() }
         // Coming back from iOS Settings should reflect a changed permission.
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { Task { await refreshNotifStatus() } }
@@ -94,6 +103,106 @@ struct SettingsView: View {
                 row("Certificate", fingerprintPrefix)
             }
         }
+    }
+
+    /// Every Mac on the tailnet, one tap from taking over this phone. Reached
+    /// through the Mac you are already paired with, so there is no second
+    /// pairing bootstrap to solve.
+    private var fleetPanel: some View {
+        NavigationLink {
+            FleetView(
+                model: FleetViewModel(client: client, port: pairing.p), onSwitch: onSwitch)
+        } label: {
+            GTPanel {
+                HStack(spacing: 10) {
+                    Image(systemName: "rectangle.3.group")
+                        .font(.system(size: 15))
+                        .foregroundStyle(GT.accentLight)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Switch Mac")
+                            .font(GT.sans(14, .medium))
+                            .foregroundStyle(GT.text)
+                        Text("Pick another machine on your tailnet")
+                            .font(GT.sans(12))
+                            .foregroundStyle(GT.textMuted)
+                    }
+                    Spacer(minLength: 4)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(GT.textFaint)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// The never-die Stop hook, installed globally on the Mac. Without it, a
+    /// session started from the phone in a repo that carries no hook answers
+    /// once and then goes quiet. Never automatic: TerMinal does not write to
+    /// ~/.claude unless asked, so this is the asking.
+    private var hookPanel: some View {
+        GTPanel {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 10) {
+                    Image(systemName: hook?.installed == true ? "bolt.circle.fill" : "bolt.slash")
+                        .font(.system(size: 15))
+                        .foregroundStyle(hook?.installed == true ? GT.green : GT.textMuted)
+                    Text(hookLabel)
+                        .font(GT.sans(14))
+                        .foregroundStyle(GT.textSoft)
+                    Spacer()
+                    if hookBusy {
+                        ProgressView().tint(GT.accentLight)
+                    } else if let hook {
+                        Button(hook.installed ? "Remove" : "Install") {
+                            Task { await setHook(install: !hook.installed) }
+                        }
+                        .font(GT.sans(13, .medium))
+                        .foregroundStyle(hook.installed ? GT.red : GT.accentLight)
+                        .buttonStyle(.plain)
+                    }
+                }
+                Text(
+                    "Keeps phone-started sessions alive between turns in every repo on "
+                        + "that Mac, by registering a Stop hook in its ~/.claude/settings.json."
+                )
+                .font(GT.sans(12))
+                .foregroundStyle(GT.textMuted)
+                if let hook, !hook.commandExists {
+                    Text("The Mac hasn't installed the tm plugin yet — open TerMinal there once.")
+                        .font(GT.sans(12))
+                        .foregroundStyle(GT.yellow)
+                }
+                if let hookMessage {
+                    Divider().overlay(GT.border)
+                    Text(hookMessage)
+                        .font(GT.sans(12))
+                        .foregroundStyle(GT.textSoft)
+                }
+            }
+        }
+    }
+
+    private var hookLabel: String {
+        guard let hook else { return "Checking…" }
+        return hook.installed ? "Installed globally" : "Not installed"
+    }
+
+    private func refreshHook() async {
+        let status = try? await client.globalHook()
+        await MainActor.run { hook = status }
+    }
+
+    private func setHook(install: Bool) async {
+        await MainActor.run { hookBusy = true }
+        defer { Task { @MainActor in hookBusy = false } }
+        do {
+            let result = try await client.setGlobalHook(install: install)
+            await MainActor.run { hookMessage = result.summary }
+        } catch {
+            await MainActor.run { hookMessage = error.localizedDescription }
+        }
+        await refreshHook()
     }
 
     /// Enough of the fingerprint to compare against the Mac, never the token.

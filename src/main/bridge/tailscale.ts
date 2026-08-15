@@ -97,6 +97,105 @@ export async function tailscaleSelf(): Promise<TailscaleSelf | null> {
   }
 }
 
+/** One machine on the tailnet, as the phone's fleet picker shows it. */
+export type TailnetMachine = {
+  /** Short host name, e.g. "studio". */
+  name: string
+  /** MagicDNS name without the trailing dot — what the phone connects to. */
+  dnsName: string
+  os: string
+  online: boolean
+  /** True for the Mac answering the request; it can't switch to itself. */
+  self: boolean
+}
+
+/**
+ * The tailnet as the bridge can see it. `unavailable` is a first-class answer,
+ * not an error: Tailscale being stopped or absent is an ordinary state the
+ * phone must render, so it never surfaces as a failed request.
+ */
+export type TailnetFleet =
+  { status: 'ok'; machines: TailnetMachine[] } | { status: 'unavailable'; reason: string }
+
+type StatusNode = {
+  HostName?: string
+  DNSName?: string
+  OS?: string
+  Online?: boolean
+}
+
+function machine(node: StatusNode, self: boolean): TailnetMachine | null {
+  const dnsName = (node.DNSName || '').replace(/\.$/, '')
+  const name = node.HostName || dnsName.split('.')[0]
+  if (!dnsName && !name) return null
+  return {
+    name: name || dnsName,
+    dnsName,
+    os: node.OS || '',
+    // The Mac itself is by definition reachable — it just answered this
+    // request — and `status --json` does not always mark Self online.
+    online: self ? true : node.Online === true,
+    self,
+  }
+}
+
+/**
+ * Turn `tailscale status --json` into the fleet list, online first then by
+ * name. Pure, so the interesting cases (stopped backend, no peers, a machine
+ * with no MagicDNS name) are unit-testable without a tailnet.
+ */
+export function parseTailnetStatus(raw: string): TailnetFleet {
+  let status: {
+    BackendState?: string
+    Self?: StatusNode
+    Peer?: Record<string, StatusNode>
+  }
+  try {
+    status = JSON.parse(raw)
+  } catch {
+    return { status: 'unavailable', reason: 'Tailscale returned something unreadable.' }
+  }
+  const state = status.BackendState || ''
+  if (state && state !== 'Running') {
+    return {
+      status: 'unavailable',
+      reason:
+        state === 'NeedsLogin'
+          ? 'Tailscale is signed out on this Mac.'
+          : `Tailscale is not running on this Mac (${state}).`,
+    }
+  }
+  const machines: TailnetMachine[] = []
+  const self = status.Self ? machine(status.Self, true) : null
+  if (self) machines.push(self)
+  for (const node of Object.values(status.Peer ?? {})) {
+    const m = machine(node, false)
+    if (m) machines.push(m)
+  }
+  machines.sort((a, b) => {
+    if (a.online !== b.online) return a.online ? -1 : 1
+    return a.name.localeCompare(b.name)
+  })
+  return { status: 'ok', machines }
+}
+
+/**
+ * The tailnet's machines. `runner` is the exec seam — the default shells out to
+ * the Tailscale CLI; tests pass their own.
+ */
+export async function tailscaleFleet(
+  runner: (args: string[]) => Promise<string | null> = run,
+): Promise<TailnetFleet> {
+  const out = await runner(['status', '--json'])
+  if (!out) {
+    return {
+      status: 'unavailable',
+      reason: 'Tailscale is not installed or not responding on this Mac.',
+    }
+  }
+  return parseTailnetStatus(out)
+}
+
 export type TailscalePeer = {
   userId: string
   login: string

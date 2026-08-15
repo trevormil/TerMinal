@@ -24,7 +24,11 @@ if (!process.env.TERMINAL_CONFIG_DIR) {
 // ~/.codex/skills. Same rule as above: you may override, you may not forget.
 // Repo workflow state (tickets/reviews/sessions) now resolves to a per-project
 // sidecar dir. Same rule: a test must not be able to reach the real one.
+// TERMINAL_CLAUDE_DIR is the same guard for ~/.claude itself: the global hook
+// install writes settings.json there, and a test that forgot to pass a path
+// would edit the developer's real Claude Code configuration.
 for (const key of [
+  'TERMINAL_CLAUDE_DIR',
   'TERMINAL_CLAUDE_SKILLS_DIR',
   'TERMINAL_CODEX_SKILLS_DIR',
   'TERMINAL_CLAUDE_PLUGINS_DIR',
