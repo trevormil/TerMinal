@@ -23,7 +23,7 @@ import { openPromptInTerminal, remoteForTabContext } from '../lib/launch'
 // see shouldAutoShowRepoOrientation) and on demand from the ⌘K palette.
 // Closing it persists the per-repo dismissal via onClose.
 
-const PROVIDERS: TicketProviderKind[] = ['local', 'github', 'linear', 'obsidian']
+const PROVIDERS: TicketProviderKind[] = ['local', 'github', 'linear']
 
 // The lay-of-the-land prompt seeded into a fresh session by the CTA.
 const FIRST_PROMPT =

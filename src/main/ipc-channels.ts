@@ -250,7 +250,6 @@ export type ChannelMap = {
   'tickets:get': Of<GtApi['tickets']['get']>
   'tickets:linear-teams': Of<GtApi['tickets']['linearTeams']>
   'tickets:list': Of<GtApi['tickets']['list']>
-  'tickets:open-in-obsidian': Of<GtApi['tickets']['openInObsidian']>
   'tickets:provider-get': Of<GtApi['tickets']['providerGet']>
   'tickets:provider-save': Of<GtApi['tickets']['providerSave']>
   'tickets:provider-test': Of<GtApi['tickets']['providerTest']>

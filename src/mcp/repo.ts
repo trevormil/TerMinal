@@ -11,9 +11,9 @@ import { CFG, configuredProjectsDir } from './env'
 
 export { areaPath, areaPathsFor as areaPaths }
 
-// Ticket-provider config (.TerMinal/tickets.json). Obsidian repos store tickets
-// in an external vault; every ticket op resolves its dir through these so
-// list/get/file/update all hit the vault, not the repo's local backlog.
+// Ticket-provider config (.TerMinal/tickets.json). Every ticket op resolves its
+// dir through the helpers below, so list/get/file/update all agree on where a
+// repo's tickets actually live.
 export function readTicketConfig(root: string): Record<string, any> {
   try {
     // Personal config — sidecar first, legacy in-repo copy as fallback.
@@ -26,40 +26,13 @@ export function readTicketConfig(root: string): Record<string, any> {
   }
 }
 
-function obsidianTicketsDir(cfg: Record<string, any>): string | null {
-  if (!cfg || cfg.provider !== 'obsidian' || !cfg.obsidian || !cfg.obsidian.vaultPath) return null
-  const sub = String(cfg.obsidian.ticketsSubdir || 'tickets').replace(/^\/+|\/+$/g, '') || 'tickets'
-  return join(cfg.obsidian.vaultPath, sub)
-}
-
-/**
- * Read dirs (obsidian → the vault only; else the repo's backlog layouts).
- * An obsidian repo with a missing vault path exposes nothing — never the repo
- * backlog, which would leak/accept tickets the provider contract routes away.
- */
+/** Read dirs — the repo's backlog layouts. */
 export function backlogReadDirs(root: string): string[] {
-  const cfg = readTicketConfig(root)
-  if (cfg.provider === 'obsidian') {
-    const dir = obsidianTicketsDir(cfg)
-    return dir && existsSync(dir) ? [dir] : []
-  }
   return areaPathsFor(root, 'backlog')
 }
 
-/**
- * Write dir (obsidian → the vault, failing closed when unconfigured; else the
- * repo's canonical backlog).
- */
+/** Write dir — the repo's canonical backlog. */
 export function backlogWriteDir(root: string): string {
-  const cfg = readTicketConfig(root)
-  if (cfg.provider === 'obsidian') {
-    const dir = obsidianTicketsDir(cfg)
-    if (!dir)
-      throw new Error(
-        'Obsidian vault path is not configured for this repo (.TerMinal/tickets.json)',
-      )
-    return dir
-  }
   return areaPath(root, 'backlog')
 }
 

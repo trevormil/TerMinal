@@ -27,8 +27,8 @@ const gt: GtApi = {
   pickDir: () => ipcRenderer.invoke('dialog:pickDir'),
   detectEnv: () => ipcRenderer.invoke('env:detect'),
   installGtNotify: () => ipcRenderer.invoke('env:install-gt-notify'),
-  scaffoldProject: (name: string, parentDir?: string, ticketProvider?: unknown) =>
-    ipcRenderer.invoke('project:scaffold', name, parentDir, ticketProvider),
+  scaffoldProject: (name: string, parentDir?: string) =>
+    ipcRenderer.invoke('project:scaffold', name, parentDir),
   remoteDirs: (hostId: string, path?: string) => ipcRenderer.invoke('remote:dirs', hostId, path),
   remoteScaffoldProject: (hostId: string, name: string, parentDir?: string) =>
     ipcRenderer.invoke('remote:scaffold', hostId, name, parentDir),
@@ -369,7 +369,6 @@ const gt: GtApi = {
     providerTest: (cfg: unknown, smoke?: boolean) =>
       ipcRenderer.invoke('tickets:provider-test', cfg, smoke),
     linearTeams: (cfg?: unknown) => ipcRenderer.invoke('tickets:linear-teams', cfg),
-    openInObsidian: (slug: string) => ipcRenderer.invoke('tickets:open-in-obsidian', slug),
     recommendAgent: (input: unknown) => ipcRenderer.invoke('tickets:recommend-agent', input),
     update: (slug: string, patch: unknown) => ipcRenderer.invoke('tickets:update', slug, patch),
     comment: (slug: string, comment: unknown) =>

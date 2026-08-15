@@ -15,30 +15,21 @@ export const localDay = (at = new Date()): string =>
 
 export type TicketConfig = {
   provider?: string
-  obsidian?: { vaultPath?: string; ticketsSubdir?: string }
 }
 
-// Ticket-provider config (.TerMinal/tickets.json). An Obsidian repo keeps its
-// tickets in an external vault, and a provider that cannot be served from a
-// script (linear/webview) must FAIL CLOSED rather than silently filing into a
-// backlog nobody reads — misrouting a write is worse than refusing it
-// (ADR-0015). Mirrors bin/terminal-cli and bin/terminal-mcp-server.
+// Ticket-provider config (.TerMinal/tickets.json). A provider that cannot be
+// served from a script (linear/webview) must FAIL CLOSED rather than silently
+// filing into a backlog nobody reads — misrouting a write is worse than
+// refusing it (ADR-0015). Mirrors bin/terminal-cli and bin/terminal-mcp-server.
 export function readTicketConfig(root: string): TicketConfig {
   // Personal config — sidecar first, legacy in-repo copy as fallback.
   return readJson<TicketConfig>(statePathForRead(root, 'tickets.json')) || {}
-}
-
-export function obsidianTicketsDir(cfg: TicketConfig | null): string | null {
-  if (!cfg || cfg.provider !== 'obsidian' || !cfg.obsidian || !cfg.obsidian.vaultPath) return null
-  const sub = String(cfg.obsidian.ticketsSubdir || 'tickets').replace(/^\/+|\/+$/g, '') || 'tickets'
-  return join(cfg.obsidian.vaultPath, sub)
 }
 
 /** Where a ticket should be written, or null when the provider forbids it. */
 export function ticketWriteDir(root: string): string | null {
   const cfg = readTicketConfig(root)
   const provider = String(cfg.provider || 'local').toLowerCase()
-  if (provider === 'obsidian') return obsidianTicketsDir(cfg)
   if (provider === 'linear' || provider === 'webview' || provider === 'github') return null
   return areaPath(root, 'backlog')
 }

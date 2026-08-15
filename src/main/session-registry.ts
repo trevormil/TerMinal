@@ -26,7 +26,6 @@ import {
 } from './settings'
 import { processSpawnCwd } from './spawn-cwd'
 import { statuslineSettingsArg } from './statusline'
-import { obsidianRepoVault } from './ticket-provider'
 import { repoStateEnv } from './repo-state'
 import { configPath } from './config-dir'
 import { createLocalWorkspaceDaemon, createSshWorkspaceDaemon } from './workspace-daemon'
@@ -261,14 +260,7 @@ export function startSession(key: string, opts: StartOpts) {
     GT_TERMINAL_CWD: displayCwd,
   } as Record<string, string>
   delete env.NO_COLOR
-  // Obsidian-provider repos: expose the vault so a session's native file tools
-  // can browse tickets directly (no MCP needed). Local only.
   if (repoRoot) {
-    const ov = obsidianRepoVault(repoRoot)
-    if (ov) {
-      env.OBSIDIAN_VAULT_PATH = ov.vaultPath
-      env.OBSIDIAN_TICKETS_DIR = ov.ticketsDir
-    }
     // Workflow state lives in a per-project sidecar, not the repo. Agents write
     // some artifacts by hand (a review .md, a report), so they need the resolved
     // paths — a prompt or skill that hardcodes `.TerMinal/reviews/` would put the

@@ -951,17 +951,9 @@ var localDay = (at = new Date) => `${at.getFullYear()}-${String(at.getMonth() + 
 function readTicketConfig(root) {
   return readJson(statePathForRead(root, "tickets.json")) || {};
 }
-function obsidianTicketsDir(cfg) {
-  if (!cfg || cfg.provider !== "obsidian" || !cfg.obsidian || !cfg.obsidian.vaultPath)
-    return null;
-  const sub = String(cfg.obsidian.ticketsSubdir || "tickets").replace(/^\/+|\/+$/g, "") || "tickets";
-  return join8(cfg.obsidian.vaultPath, sub);
-}
 function ticketWriteDir(root) {
   const cfg = readTicketConfig(root);
   const provider = String(cfg.provider || "local").toLowerCase();
-  if (provider === "obsidian")
-    return obsidianTicketsDir(cfg);
   if (provider === "linear" || provider === "webview" || provider === "github")
     return null;
   return areaPath(root, "backlog");

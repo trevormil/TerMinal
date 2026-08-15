@@ -1,5 +1,5 @@
 import { test, expect, describe } from 'bun:test'
-import { isExternallyOpenableUrl, isHttpUrl, isObsidianDeepLink } from './url-safety'
+import { isExternallyOpenableUrl, isHttpUrl } from './url-safety'
 
 describe('isExternallyOpenableUrl', () => {
   test('allows web + mail schemes', () => {
@@ -36,21 +36,5 @@ describe('isHttpUrl', () => {
     expect(isHttpUrl('mailto:a@b.com')).toBe(false)
     expect(isHttpUrl(undefined)).toBe(false)
     expect(isHttpUrl('/relative/path')).toBe(false)
-  })
-})
-
-describe('isObsidianDeepLink', () => {
-  test('allows the obsidian://open link we mint', () => {
-    expect(isObsidianDeepLink('obsidian://open?vault=Notes&file=tickets%2F0001.md')).toBe(true)
-  })
-
-  test('refuses any other obsidian action or scheme', () => {
-    // obsidian:// exposes more than `open` (e.g. advanced-uri can execute).
-    expect(isObsidianDeepLink('obsidian://advanced-uri?commandid=x')).toBe(false)
-    expect(isObsidianDeepLink('obsidian://new?vault=Notes')).toBe(false)
-    expect(isObsidianDeepLink('vscode://open')).toBe(false)
-    expect(isObsidianDeepLink('file:///etc/passwd')).toBe(false)
-    expect(isObsidianDeepLink('')).toBe(false)
-    expect(isObsidianDeepLink(null)).toBe(false)
   })
 })

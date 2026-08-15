@@ -379,12 +379,6 @@ export type GtApi = {
   scaffoldProject: (
     name: string,
     parentDir?: string,
-    ticketProvider?: {
-      kind: 'local' | 'obsidian'
-      vaultLocation?: 'in-repo' | 'sibling' | 'existing'
-      vaultPath?: string
-      vaultName?: string
-    },
   ) => Promise<{ ok: boolean; path?: string; error?: string }>
   remoteDirs: (hostId: string, path?: string) => Promise<RemoteDirList>
   remoteScaffoldProject: (
@@ -727,7 +721,6 @@ export type GtApi = {
     providerSave: (cfg: RepoTicketsConfig) => Promise<RepoTicketsConfig | { error: string }>
     providerTest: (cfg: RepoTicketsConfig, smoke?: boolean) => Promise<TicketProviderTestResult>
     linearTeams: (cfg?: RepoTicketsConfig) => Promise<{ id: string; name: string; key?: string }[]>
-    openInObsidian: (slug: string) => Promise<boolean>
     recommendAgent: (input: {
       title?: string
       type?: string

@@ -207,9 +207,6 @@ function areaPath(root, area) {
 function areaPathsFor(root, area) {
   return repoState().areaPathsFor(root, area, areaCandidates(area));
 }
-function statePathForRead(root, rel) {
-  return repoState().statePathForRead(root, rel);
-}
 function statePathForWrite(root, rel) {
   return repoState().statePathForWrite(root, rel);
 }
@@ -253,39 +250,10 @@ function prsRoot() {
 // src/mcp/repo.ts
 import { existsSync as existsSync3, readFileSync as readFileSync2, readdirSync as readdirSync2 } from "fs";
 import { basename as basename2, join as join5 } from "path";
-function readTicketConfig(root) {
-  try {
-    const p = statePathForRead(root, "tickets.json");
-    if (!existsSync3(p))
-      return {};
-    const parsed = JSON.parse(readFileSync2(p, "utf8"));
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-function obsidianTicketsDir(cfg) {
-  if (!cfg || cfg.provider !== "obsidian" || !cfg.obsidian || !cfg.obsidian.vaultPath)
-    return null;
-  const sub = String(cfg.obsidian.ticketsSubdir || "tickets").replace(/^\/+|\/+$/g, "") || "tickets";
-  return join5(cfg.obsidian.vaultPath, sub);
-}
 function backlogReadDirs(root) {
-  const cfg = readTicketConfig(root);
-  if (cfg.provider === "obsidian") {
-    const dir = obsidianTicketsDir(cfg);
-    return dir && existsSync3(dir) ? [dir] : [];
-  }
   return areaPathsFor(root, "backlog");
 }
 function backlogWriteDir(root) {
-  const cfg = readTicketConfig(root);
-  if (cfg.provider === "obsidian") {
-    const dir = obsidianTicketsDir(cfg);
-    if (!dir)
-      throw new Error("Obsidian vault path is not configured for this repo (.TerMinal/tickets.json)");
-    return dir;
-  }
   return areaPath(root, "backlog");
 }
 function parseFrontmatter(md) {

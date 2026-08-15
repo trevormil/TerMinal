@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Schedule } from '../shared/types/schedules'
@@ -265,7 +272,9 @@ describe('ticket filing', () => {
     expect(fileTicket(repo, { title: 'x', body: '' })).toBeNull()
   })
 
-  test('an obsidian repo files into its vault, not the backlog', () => {
+  // The obsidian provider was retired: a config that still names it degrades to
+  // the sidecar backlog instead of failing or writing into the old vault.
+  test('a retired obsidian config files into the sidecar backlog', () => {
     const cfg = sandbox()
     const repo = gitRepo()
     const vault = mkdtempSync(join(tmpdir(), 'tm-vault-'))
@@ -275,7 +284,9 @@ describe('ticket filing', () => {
       join(sidecar, 'tickets.json'),
       JSON.stringify({ provider: 'obsidian', obsidian: { vaultPath: vault } }),
     )
-    expect(fileTicket(repo, { title: 'x', body: '' })).toBe(join(vault, 'tickets', '0001-x.md'))
+    const filed = fileTicket(repo, { title: 'x', body: '' })
+    expect(filed).toBe(join(sidecar, 'backlog', '0001-x.md'))
+    expect(existsSync(join(vault, 'tickets'))).toBe(false)
   })
 
   test('a title with no usable characters still produces a filename', () => {

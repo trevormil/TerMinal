@@ -742,7 +742,7 @@ export function EntryScreen({
                     </button>
                   </div>
                 </div>
-                {/* Ticket-provider choice (local / Obsidian / Linear / …) is
+                {/* Ticket-provider choice (local / GitHub / Linear / …) is
                     deliberately NOT here: the per-repo orientation modal that
                     auto-opens on first launch of a fresh repo carries the full
                     picker, so the scaffold row stays a single input + button. */}

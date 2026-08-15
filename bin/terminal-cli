@@ -1053,12 +1053,6 @@ function readTicketConfig() {
     return {};
   }
 }
-function obsidianTicketsDir(cfg) {
-  if (cfg.provider !== "obsidian" || !cfg.obsidian || !cfg.obsidian.vaultPath)
-    return null;
-  const sub = String(cfg.obsidian.ticketsSubdir || "tickets").replace(/^\/+|\/+$/g, "") || "tickets";
-  return join7(cfg.obsidian.vaultPath, sub);
-}
 var areaReadPaths = (root, area) => areaPathsFor(root, area);
 function fileTicket(title, body, modelTier) {
   if (!repo()) {
@@ -1076,14 +1070,9 @@ function fileTicket(title, body, modelTier) {
     console.error("terminal-cli ticket: this repo has no ticket store \u2014 its Tickets tab is a webview, not a queryable backlog");
     process.exit(2);
   }
-  if (cfg.provider === "obsidian" && !obsidianTicketsDir(cfg)) {
-    console.error("terminal-cli ticket: Obsidian vault path is not configured for this repo (.TerMinal/tickets.json)");
-    process.exit(2);
-  }
-  const vault = obsidianTicketsDir(cfg);
-  const backlog = vault || areaPath(repo(), "backlog");
+  const backlog = areaPath(repo(), "backlog");
   mkdirSync6(backlog, { recursive: true });
-  const maxId = maxAreaId(vault ? [vault] : areaReadPaths(repo(), "backlog").concat(backlog));
+  const maxId = maxAreaId(areaReadPaths(repo(), "backlog").concat(backlog));
   const id = String(maxId + 1).padStart(4, "0");
   const slug = (title || "untitled").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 50) || "untitled";
   const today = localDay();
@@ -1129,9 +1118,8 @@ function commentOnTicket(slug, body) {
     console.error("terminal-cli ticket comment: this repo has no ticket store \u2014 its Tickets tab is a webview, not a queryable backlog");
     process.exit(2);
   }
-  const vault = obsidianTicketsDir(cfg);
-  const dirs = vault ? [vault] : areaReadPaths(repo(), "backlog");
-  const writeDir = vault || areaPath(repo(), "backlog");
+  const dirs = areaReadPaths(repo(), "backlog");
+  const writeDir = areaPath(repo(), "backlog");
   const safe = String(slug || "").replace(/[^\w-]/g, "");
   const path = safe ? dirs.map((d) => join7(d, `${safe}.md`)).find((p) => existsSync4(p)) : "";
   if (!path) {

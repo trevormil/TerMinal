@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname } from 'node:path'
 import { repoStatePathForRead, repoStatePathForWrite } from './repo-state'
 import {
   appendTicketComment as appendLocalComment,
@@ -21,7 +21,6 @@ import type {
   GithubTicketConfig,
   LinearTicketConfig,
   NewTicketComment,
-  ObsidianTicketConfig,
   RepoTicketsConfig,
   SavedTicketView,
   TicketGroupBy,
@@ -35,7 +34,6 @@ export type {
   GithubTicketConfig,
   LinearTicketConfig,
   NewTicketComment,
-  ObsidianTicketConfig,
   RepoTicketsConfig,
   SavedTicketView,
   TicketProviderKind,
@@ -44,11 +42,37 @@ export type {
   WebviewTicketConfig,
 } from '../shared/types/tickets'
 
-const PROVIDER_KINDS: TicketProviderKind[] = ['local', 'github', 'linear', 'obsidian', 'webview']
+const PROVIDER_KINDS: TicketProviderKind[] = ['local', 'github', 'linear', 'webview']
 // Normalize an unknown stored value to a known provider kind — anything
 // unrecognized falls back to local (never silently misroute reads/writes).
 function normProvider(p: unknown): TicketProviderKind {
   return PROVIDER_KINDS.includes(p as TicketProviderKind) ? (p as TicketProviderKind) : 'local'
+}
+
+// Providers that existed once and no longer do. A saved config still naming one
+// degrades to the local backlog via normProvider — correct, but invisible, and a
+// repo silently swapping ticket stores is exactly the kind of change that has to
+// be said out loud. So the degrade warns, ONCE per repo per app run: the config
+// is re-read on every list/get/save, and a warning per read would be its own bug.
+const RETIRED_PROVIDERS: Record<string, string> = {
+  obsidian: 'Obsidian vault',
+}
+const warnedRetired = new Set<string>()
+
+/** The one-time warning for a repo whose saved provider was retired, or null.
+ *  Returned rather than emitted: this module stays free of the Activity feed
+ *  (which pulls in Electron), so the caller that already has it does the emit. */
+export function retiredProviderWarning(repoRoot: string): { title: string; detail: string } | null {
+  const savedProvider = readConfig(repoRoot).provider
+  const label = RETIRED_PROVIDERS[String(savedProvider)]
+  if (!label) return null
+  const key = repoRoot || '<none>'
+  if (warnedRetired.has(key)) return null
+  warnedRetired.add(key)
+  return {
+    title: `Ticket provider retired · ${label}`,
+    detail: `This repo's saved ticket provider (${savedProvider}) no longer exists — TerMinal is reading its tickets from the local backlog instead. Pick a provider in Settings → Tickets. Nothing was deleted.`,
+  }
 }
 
 export type RepoTicketProvider = {
@@ -85,93 +109,7 @@ const PROVIDER_LABEL: Record<TicketProviderKind, string> = {
   local: 'Local backlog',
   github: 'GitHub Issues',
   linear: 'Linear',
-  obsidian: 'Obsidian',
   webview: 'Webview',
-}
-
-// Resolve the on-disk ticket folder for an Obsidian vault: <vaultPath>/<subdir>.
-// Returns null when no vault is configured (callers degrade gracefully).
-function obsidianBaseDir(cfg: ObsidianTicketConfig | undefined): string | null {
-  const vault = cfg?.vaultPath?.trim()
-  if (!vault) return null
-  const sub = (cfg?.ticketsSubdir?.trim() || 'tickets').replace(/^\/+|\/+$/g, '')
-  return sub ? join(vault, sub) : vault
-}
-const stampObsidian = (t: Ticket): Ticket => ({
-  ...t,
-  provider: 'obsidian',
-  providerLabel: PROVIDER_LABEL.obsidian,
-})
-
-const vaultNameFor = (cfg: ObsidianTicketConfig): string =>
-  cfg.vaultName?.trim() || cfg.vaultPath.replace(/\/+$/, '').split('/').pop() || 'vault'
-
-// An `obsidian://open` deep link to a ticket file, or null if the vault isn't
-// configured. Used by the Tickets tab's "Open in Obsidian" action.
-export function obsidianDeepLink(
-  cfg: ObsidianTicketConfig | undefined,
-  slug: string,
-): string | null {
-  if (!cfg) return null
-  const dir = obsidianBaseDir(cfg)
-  if (!dir) return null
-  const sub = (cfg.ticketsSubdir?.trim() || 'tickets').replace(/^\/+|\/+$/g, '')
-  const rel = `${sub}/${slug.replace(/[^\w-]/g, '')}.md`
-  return `obsidian://open?vault=${encodeURIComponent(vaultNameFor(cfg))}&file=${encodeURIComponent(rel)}`
-}
-
-export function obsidianRepoDeepLink(repoRoot: string, slug: string): string | null {
-  return obsidianDeepLink(readConfig(repoRoot).obsidian, slug)
-}
-
-// The vault + tickets folder for a repo IF it's on the obsidian provider — used
-// to expose OBSIDIAN_VAULT_PATH / OBSIDIAN_TICKETS_DIR to spawned sessions so an
-// agent's native file tools can browse the vault directly. null otherwise.
-export function obsidianRepoVault(
-  repoRoot: string,
-): { vaultPath: string; ticketsDir: string } | null {
-  const cfg = readConfig(repoRoot)
-  if (normProvider(cfg.provider) !== 'obsidian') return null
-  const dir = obsidianBaseDir(cfg.obsidian)
-  if (!cfg.obsidian?.vaultPath || !dir) return null
-  return { vaultPath: cfg.obsidian.vaultPath.trim(), ticketsDir: dir }
-}
-
-// Idempotently seed helper notes into an Obsidian vault: a guide, a Dataview
-// board, and a Templater new-ticket template. Never overwrites existing files,
-// so it's safe to run on every save and safe against a vault the user also uses
-// for their own notes. Best-effort — a write failure never blocks saving.
-export function scaffoldObsidianVault(cfg: ObsidianTicketConfig | undefined): void {
-  const vault = cfg?.vaultPath?.trim()
-  if (!vault || !existsSync(vault)) return
-  const sub = (cfg!.ticketsSubdir?.trim() || 'tickets').replace(/^\/+|\/+$/g, '')
-  const seed = (rel: string, content: string) => {
-    try {
-      const p = join(vault, rel)
-      if (existsSync(p)) return
-      mkdirSync(join(p, '..'), { recursive: true })
-      writeFileSync(p, content)
-    } catch {
-      /* best effort */
-    }
-  }
-  try {
-    mkdirSync(join(vault, sub), { recursive: true })
-  } catch {
-    /* best effort */
-  }
-  seed(
-    '_TerMinal.md',
-    `# TerMinal tickets\n\nThis vault is TerMinal's private ticket store for a repo. Tickets are markdown\nfiles with YAML frontmatter in \`${sub}/\` — TerMinal reads and writes them; edit\nfreely in Obsidian, they stay in sync.\n\n- **Board:** [[_Boards/Tickets]] (needs the Dataview community plugin)\n- **New ticket:** \`_Templates/Ticket.md\` (needs the Templater community plugin)\n\nTerMinal allocates ticket ids (\`NNNN-slug.md\`). If you hand-create a ticket in\nObsidian, use the next free number.\n\nFrontmatter: \`id, title, status, priority, horizon, type, source, created,\nupdated, prs, refs, depends_on, acceptance, model_tier, worked_by, agent_id,\nagent_scope, agent_kind\`.\n`,
-  )
-  seed(
-    join('_Boards', 'Tickets.md'),
-    `# Tickets\n\n> Needs the **Dataview** plugin. Board over \`${sub}/\`.\n\n\`\`\`dataview\nTABLE WITHOUT ID file.link AS Ticket, status, priority, type, updated\nFROM "${sub}"\nWHERE id\nSORT priority ASC, updated DESC\n\`\`\`\n\n## Open by priority\n\n\`\`\`dataview\nTABLE WITHOUT ID file.link AS Ticket, type, updated\nFROM "${sub}"\nWHERE id AND status != "closed" AND status != "done"\nGROUP BY priority\n\`\`\`\n`,
-  )
-  seed(
-    join('_Templates', 'Ticket.md'),
-    `---\nid:\ntitle: "<% tp.file.title %>"\nstatus: open\npriority: medium\nhorizon: now\ntype: feature\nsource: obsidian\ncreated: <% tp.date.now("YYYY-MM-DD") %>\nupdated: <% tp.date.now("YYYY-MM-DD") %>\nprs: []\nrefs: []\ndepends_on: []\nacceptance: []\nmodel_tier: auto\nworked_by: []\nagent_id: 1000x-ai-engineer\nagent_scope: global\nagent_kind: classic\n---\n\n<!-- Templater template. TerMinal normally allocates the id + NNNN-slug filename;\n     if you create a ticket here manually, set id to the next free number. -->\n`,
-  )
 }
 
 // Views are loaded into a real <webview>, so the url is a capability, not a
@@ -286,7 +224,6 @@ export function readRepoTicketConfig(repoRoot: string): RepoTicketsConfig {
     provider,
     ...(cfg.github ? { github: cfg.github } : {}),
     ...(cfg.linear ? { linear: cfg.linear } : {}),
-    ...(cfg.obsidian ? { obsidian: cfg.obsidian } : {}),
     ...(cfg.webview ? { webview: cfg.webview } : {}),
     ...(views.length ? { views } : {}),
     ...(cfg.savedViews?.length ? { savedViews: sanitizeSavedViews(cfg.savedViews) } : {}),
@@ -304,17 +241,6 @@ export function saveRepoTicketConfig(repoRoot: string, cfg: RepoTicketsConfig): 
   const next: RepoTicketsConfig = {
     provider,
     ...(provider === 'github' && cfg.github ? { github: cfg.github } : {}),
-    ...(provider === 'obsidian' && cfg.obsidian?.vaultPath
-      ? {
-          obsidian: {
-            vaultPath: cfg.obsidian.vaultPath.trim(),
-            ...(cfg.obsidian.ticketsSubdir?.trim()
-              ? { ticketsSubdir: cfg.obsidian.ticketsSubdir.trim() }
-              : {}),
-            ...(cfg.obsidian.vaultName?.trim() ? { vaultName: cfg.obsidian.vaultName.trim() } : {}),
-          },
-        }
-      : {}),
     ...(provider === 'linear'
       ? {
           linear: {
@@ -968,8 +894,7 @@ function linearPriority(priority: string): number {
  *  ladder now runs once, here, and every entry point is a one-line dispatch.
  *  Per-provider degradation contracts are unchanged and pinned by tests:
  *  webview has no queryable store (reads empty, writes refused, create loud —
- *  silently dropping a new ticket would lose data); obsidian without a vault
- *  fails closed rather than falling back to the repo backlog. */
+ *  silently dropping a new ticket would lose data). */
 type TicketBackend = {
   list(): Promise<Ticket[]>
   get(slug: string): Promise<Ticket | null>
@@ -1024,24 +949,6 @@ function backendFor(
       },
     }
   }
-  if (provider === 'obsidian') {
-    const dir = obsidianBaseDir(cfg.obsidian)
-    return {
-      list: async () => (dir ? listLocalTickets(repoRoot, dir).map(stampObsidian) : []),
-      get: async (slug) => {
-        if (!dir) return null
-        const t = getLocalTicket(repoRoot, slug, dir)
-        return t ? stampObsidian(t) : null
-      },
-      create: async (input) => {
-        if (!dir) throw new Error('Obsidian vault path is not configured for this repo.')
-        return stampObsidian(createLocalTicket(repoRoot, input, dir))
-      },
-      update: async (slug, patch) => (dir ? updateLocalTicket(repoRoot, slug, patch, dir) : false),
-      comment: async (slug, comment) =>
-        dir ? appendLocalComment(repoRoot, slug, comment, dir) : false,
-    }
-  }
   return {
     list: async () => listLocalTickets(repoRoot),
     get: async (slug) => getLocalTicket(repoRoot, slug),
@@ -1087,7 +994,7 @@ export async function resolveHumanAuthor(repoRoot: string): Promise<string> {
 
 /**
  * Append a comment to a ticket's log, wherever that ticket actually lives.
- * Local/Obsidian tickets get a `## Log` entry in their markdown; GitHub and
+ * Local tickets get a `## Log` entry in their markdown; GitHub and
  * Linear get a real platform comment, so the thread stays where that platform's
  * own UI shows it. An agent comment is prefixed on the remote providers, which
  * have no notion of a non-human author.
@@ -1117,9 +1024,6 @@ export function ticketProviderInstructions(provider: RepoTicketProvider): string
   }
   if (provider.kind === 'linear') {
     return 'Ticket provider: Linear. Use the configured Linear MCP/CLI for ticket reads/writes. Do not create or edit local backlog markdown files for ticket state.'
-  }
-  if (provider.kind === 'obsidian') {
-    return "Ticket provider: Obsidian. Tickets are NNNN-slug.md markdown files in this repo's configured Obsidian vault (NOT in the repo). Prefer the TerMinal ticket tools / terminal-cli ticket commands, which read/write the vault automatically. For raw browsing, the vault is at $OBSIDIAN_VAULT_PATH and its tickets at $OBSIDIAN_TICKETS_DIR — use your native file tools there, never inside the repo working tree."
   }
   return 'Ticket provider: local backlog. Tickets are NNNN-slug.md markdown files in the per-project sidecar at $TERMINAL_BACKLOG_DIR (resolve with `tm-state-dir backlog` when the env is unset) — NOT inside the repo working tree. Legacy tickets still committed in the repo remain readable, but never write new ones there.'
 }
@@ -1156,47 +1060,6 @@ export async function testRepoTicketProvider(
       if (!webview)
         return { ok: false, provider, message: 'Enter a valid http(s) URL before saving.' }
       return { ok: true, provider, message: `Webview ready (${webview.url}).` }
-    }
-    if (provider === 'obsidian') {
-      const dir = obsidianBaseDir(cfg.obsidian)
-      if (!dir)
-        return { ok: false, provider, message: 'Pick an Obsidian vault folder before saving.' }
-      const vault = cfg.obsidian!.vaultPath.trim()
-      if (!existsSync(vault))
-        return { ok: false, provider, message: `Vault folder not found: ${vault}` }
-      try {
-        mkdirSync(dir, { recursive: true }) // ensure tickets/ exists + is writable
-      } catch (e) {
-        return {
-          ok: false,
-          provider,
-          message: `Vault tickets folder not writable: ${(e as Error).message}`,
-        }
-      }
-      const count = listLocalTickets(repoRoot, dir).length
-      if (!opts.smoke)
-        return { ok: true, provider, message: `Obsidian vault ready (${dir}).`, count }
-      const smoke = createLocalTicket(
-        repoRoot,
-        {
-          title: 'TerMinal smoke test - safe to delete',
-          type: 'testing',
-          priority: 'low',
-          status: 'open',
-          body: `Created by TerMinal ticket-provider smoke test at ${new Date().toISOString()}.`,
-        },
-        dir,
-      )
-      updateLocalTicket(repoRoot, smoke.slug, { priority: 'high' }, dir)
-      updateLocalTicket(repoRoot, smoke.slug, { status: 'closed' }, dir)
-      const after = getLocalTicket(repoRoot, smoke.slug, dir)
-      return {
-        ok: true,
-        provider,
-        message: `Obsidian smoke ticket ${smoke.slug}.md created, updated, and closed in ${dir}.`,
-        count,
-        smoke: { key: after?.slug, status: after?.status, priority: after?.priority },
-      }
     }
     if (provider === 'github') {
       const auth = await runCli('gh', ['auth', 'status'], repoRoot, { timeout: 10_000 })

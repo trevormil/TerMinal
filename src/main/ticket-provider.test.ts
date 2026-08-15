@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
-import { existsSync, mkdirSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -9,17 +9,14 @@ import {
   githubIssueToTicket,
   linearIssueToTicket,
   listRepoTickets,
-  obsidianDeepLink,
-  obsidianRepoVault,
   readRepoTicketConfig,
   repoTicketProvider,
+  retiredProviderWarning,
   saveRepoTicketConfig,
-  scaffoldObsidianVault,
   testRepoTicketProvider,
   ticketProviderInstructions,
   updateRepoTicket,
 } from './ticket-provider'
-import { readFileSync } from 'node:fs'
 
 import { INSIDE_MIGRATION_WINDOW, setMigrationClock } from '../shared/migration-sunset'
 
@@ -57,24 +54,24 @@ describe('repoTicketProvider', () => {
     expect(repoTicketProvider(repo)).toMatchObject({ kind: 'local', label: 'Local backlog' })
   })
 
-  test('recognizes the obsidian provider', () => {
+  // The obsidian provider was retired (2026-08-14). A repo whose saved config
+  // still names it must READ as local — the store it actually falls back to —
+  // rather than reporting a provider that no longer has a backend.
+  test('a retired obsidian config reads as the local provider', () => {
     const repo = repoWithTicketConfig({ provider: 'obsidian', obsidian: { vaultPath: '/tmp/x' } })
-    expect(repoTicketProvider(repo)).toMatchObject({ kind: 'obsidian', label: 'Obsidian' })
+    expect(repoTicketProvider(repo)).toMatchObject({ kind: 'local', label: 'Local backlog' })
+    expect(readRepoTicketConfig(repo).provider).toBe('local')
   })
 
-  test('obsidianRepoVault exposes vault + tickets dir only when the provider is obsidian', () => {
-    const obs = repoWithTicketConfig({
-      provider: 'obsidian',
-      obsidian: { vaultPath: '/v/MyVault', ticketsSubdir: 'issues' },
-    })
-    expect(obsidianRepoVault(obs)).toEqual({
-      vaultPath: '/v/MyVault',
-      ticketsDir: '/v/MyVault/issues',
-    })
-    // configured vault block but provider is local → not exposed
-    const local = repoWithTicketConfig({ provider: 'local', obsidian: { vaultPath: '/v/x' } })
-    expect(obsidianRepoVault(local)).toBeNull()
-    expect(obsidianRepoVault(repoWithTicketConfig({ provider: 'obsidian' }))).toBeNull()
+  test('the retired-provider degrade warns once per repo, and not at all otherwise', () => {
+    const repo = repoWithTicketConfig({ provider: 'obsidian', obsidian: { vaultPath: '/tmp/x' } })
+    const first = retiredProviderWarning(repo)
+    expect(first?.title).toMatch(/retired/i)
+    expect(first?.detail).toMatch(/local backlog/i)
+    // The config is re-read on every list/get/save — the warning must not be.
+    expect(retiredProviderWarning(repo)).toBeNull()
+    // A live provider never warns.
+    expect(retiredProviderWarning(repoWithTicketConfig({ provider: 'linear' }))).toBeNull()
   })
 })
 
@@ -100,126 +97,6 @@ describe('webview provider dispatch', () => {
         body: '',
       }),
     ).rejects.toThrow(/no ticket store/)
-  })
-})
-
-describe('obsidian provider dispatch', () => {
-  test('writes tickets into the vault (not the repo) and stamps provider:obsidian', async () => {
-    const vault = mkdtempSync(join(tmpdir(), 'terminal-obs-vault-'))
-    const repo = repoWithTicketConfig({ provider: 'obsidian', obsidian: { vaultPath: vault } })
-    try {
-      const t = await createRepoTicket(repo, {
-        title: 'Vault route',
-        type: 'feature',
-        priority: 'medium',
-        status: 'open',
-        body: 'b',
-      })
-      expect(t.provider).toBe('obsidian')
-      expect(t.providerLabel).toBe('Obsidian')
-      // landed in <vault>/tickets/, never in the repo working tree
-      expect(existsSync(join(vault, 'tickets', `${t.slug}.md`))).toBe(true)
-      expect(existsSync(join(repo, 'backlog'))).toBe(false)
-      const listed = await listRepoTickets(repo)
-      expect(listed.map((x) => x.slug)).toContain(t.slug)
-      expect(listed.every((x) => x.provider === 'obsidian')).toBe(true)
-    } finally {
-      rmSync(vault, { recursive: true, force: true })
-      rmSync(repo, { recursive: true, force: true })
-    }
-  })
-
-  test('updates and reads Obsidian tickets through the vault with sanitized slugs', async () => {
-    const vault = mkdtempSync(join(tmpdir(), 'terminal-obs-vault-'))
-    const repo = repoWithTicketConfig({ provider: 'obsidian', obsidian: { vaultPath: vault } })
-    try {
-      const ticket = await createRepoTicket(repo, {
-        title: 'Sanitize vault route',
-        type: 'testing',
-        priority: 'medium',
-        status: 'open',
-        body: 'b',
-      })
-
-      expect(
-        await updateRepoTicket(repo, `../${ticket.slug}`, { status: 'closed', priority: 'high' }),
-      ).toBe(true)
-
-      const loaded = await getRepoTicket(repo, `../${ticket.slug}`)
-      expect(loaded).toMatchObject({
-        slug: ticket.slug,
-        provider: 'obsidian',
-        providerLabel: 'Obsidian',
-        status: 'closed',
-        priority: 'high',
-      })
-      expect(existsSync(join(repo, `${ticket.slug}.md`))).toBe(false)
-      expect(existsSync(join(vault, 'tickets', `${ticket.slug}.md`))).toBe(true)
-    } finally {
-      rmSync(vault, { recursive: true, force: true })
-      rmSync(repo, { recursive: true, force: true })
-    }
-  })
-
-  test('missing Obsidian vault config fails closed instead of falling back to repo backlog', async () => {
-    const repo = repoWithTicketConfig({ provider: 'obsidian' })
-    try {
-      await expect(
-        createRepoTicket(repo, {
-          title: 'No vault',
-          type: 'testing',
-          priority: 'medium',
-          status: 'open',
-          body: 'b',
-        }),
-      ).rejects.toThrow(/Obsidian vault path is not configured/)
-      expect(await listRepoTickets(repo)).toEqual([])
-      expect(await getRepoTicket(repo, '0001-no-vault')).toBeNull()
-      expect(await updateRepoTicket(repo, '0001-no-vault', { status: 'closed' })).toBe(false)
-      expect(existsSync(join(repo, 'backlog'))).toBe(false)
-    } finally {
-      rmSync(repo, { recursive: true, force: true })
-    }
-  })
-})
-
-describe('obsidian deep link + scaffold', () => {
-  test('obsidianDeepLink builds an obsidian:// URI honoring vaultName + subdir', () => {
-    expect(obsidianDeepLink({ vaultPath: '/x/My Vault' }, '0001-add-x')).toBe(
-      'obsidian://open?vault=My%20Vault&file=tickets%2F0001-add-x.md',
-    )
-    expect(
-      obsidianDeepLink(
-        { vaultPath: '/x/v', vaultName: 'Named', ticketsSubdir: 'issues' },
-        '0002-y',
-      ),
-    ).toBe('obsidian://open?vault=Named&file=issues%2F0002-y.md')
-    expect(obsidianDeepLink(undefined, '0001-x')).toBeNull()
-    expect(obsidianDeepLink({ vaultPath: '' }, '0001-x')).toBeNull()
-  })
-
-  test('obsidianDeepLink strips traversal characters from ticket slugs', () => {
-    expect(
-      obsidianDeepLink({ vaultPath: '/x/v', ticketsSubdir: '/issues/' }, '../0007-escape !'),
-    ).toBe('obsidian://open?vault=v&file=issues%2F0007-escape.md')
-  })
-
-  test('scaffoldObsidianVault seeds guide/board/template idempotently, never clobbering', () => {
-    const vault = mkdtempSync(join(tmpdir(), 'terminal-obs-scaffold-'))
-    try {
-      scaffoldObsidianVault({ vaultPath: vault, ticketsSubdir: 'tickets' })
-      expect(existsSync(join(vault, '_TerMinal.md'))).toBe(true)
-      expect(existsSync(join(vault, '_Boards', 'Tickets.md'))).toBe(true)
-      expect(existsSync(join(vault, '_Templates', 'Ticket.md'))).toBe(true)
-      // Board references the tickets subdir for Dataview
-      expect(readFileSync(join(vault, '_Boards', 'Tickets.md'), 'utf8')).toContain('FROM "tickets"')
-      // Idempotent: a user edit survives a re-scaffold
-      writeFileSync(join(vault, '_TerMinal.md'), 'MY EDIT')
-      scaffoldObsidianVault({ vaultPath: vault })
-      expect(readFileSync(join(vault, '_TerMinal.md'), 'utf8')).toBe('MY EDIT')
-    } finally {
-      rmSync(vault, { recursive: true, force: true })
-    }
   })
 })
 
@@ -386,10 +263,10 @@ describe('repo ticket views', () => {
   })
 
   test('views are generic — any https ticket platform, several at once', () => {
-    const repo = repoWithTicketConfig({ provider: 'obsidian', obsidian: { vaultPath: '/v/V' } })
+    const repo = repoWithTicketConfig({ provider: 'github' })
     const saved = saveRepoTicketConfig(repo, {
-      provider: 'obsidian',
-      obsidian: { vaultPath: '/v/V' },
+      provider: 'github',
+      github: { priorityLabels: { high: 'p1' } },
       views: [
         { label: 'Linear', url: 'https://linear.app/acme/team/ENG/active' },
         { label: 'Jira', url: 'https://acme.atlassian.net/jira/software/board/1' },
@@ -397,7 +274,7 @@ describe('repo ticket views', () => {
     })
     expect(saved.views?.map((v) => v.label)).toEqual(['Linear', 'Jira'])
     // provider config is untouched by the presence of views
-    expect(saved.obsidian?.vaultPath).toBe('/v/V')
+    expect(saved.github?.priorityLabels).toEqual({ high: 'p1' })
   })
 
   test('a view can be flagged default — the flag round-trips, only when truthy', () => {
@@ -552,37 +429,6 @@ describe('commentOnRepoTicket', () => {
       ).toBe(true)
       expect((await getRepoTicket(repo, t.slug))?.comments.map((c) => c.body)).toEqual(['noted'])
     } finally {
-      rmSync(repo, { recursive: true, force: true })
-    }
-  })
-
-  test('an Obsidian comment is written into the vault, not the repo', async () => {
-    const vault = mkdtempSync(join(tmpdir(), 'terminal-obs-vault-'))
-    const repo = repoWithTicketConfig({ provider: 'obsidian', obsidian: { vaultPath: vault } })
-    try {
-      const t = await createRepoTicket(repo, {
-        title: 'Vault comment',
-        type: 'feature',
-        priority: 'medium',
-        status: 'open',
-        body: 'b',
-      })
-      expect(
-        await commentOnRepoTicket(repo, t.slug, {
-          author: 'docs',
-          kind: 'agent',
-          via: 'codex/gpt-5',
-          body: 'from a run',
-        }),
-      ).toBe(true)
-      expect(readFileSync(join(vault, 'tickets', `${t.slug}.md`), 'utf8')).toContain(
-        'agent:docs (codex/gpt-5)',
-      )
-      const got = await getRepoTicket(repo, t.slug)
-      expect(got?.comments.map((c) => c.body)).toEqual(['from a run'])
-      expect(got?.body).toBe('b')
-    } finally {
-      rmSync(vault, { recursive: true, force: true })
       rmSync(repo, { recursive: true, force: true })
     }
   })

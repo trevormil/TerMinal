@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 import { app } from 'electron'
 import { resolvedProjectsDir, resolvedTemplateRepo } from './settings'
@@ -10,11 +10,7 @@ import {
   templateCandidates,
   type TemplateSource,
 } from './template'
-import { saveRepoTicketConfig, scaffoldObsidianVault } from './ticket-provider'
-import { resolveObsidianScaffold, type ScaffoldTicketProvider } from './scaffold-vault'
 import { bakedTemplateSha, resolveTemplateSha, writeBootstrapStamp } from './bootstrap-stamp'
-
-export type { ScaffoldTicketProvider } // re-exported so callers keep importing from './scaffold'
 
 // Spin up a new repo from the template, which is embedded in this repo at
 // templates/project-template (no standalone template repo). Resolution order:
@@ -43,11 +39,7 @@ function templateSource(): TemplateSource {
 }
 
 /** Create <parentDir>/<name> from the template: copy → git init → first commit. */
-export function scaffoldProject(
-  name: string,
-  parentDir?: string,
-  ticketProvider?: ScaffoldTicketProvider,
-): ScaffoldResult {
+export function scaffoldProject(name: string, parentDir?: string): ScaffoldResult {
   const safe = name
     .trim()
     .replace(/[^\w.-]/g, '-')
@@ -107,26 +99,6 @@ export function scaffoldProject(
           GIT_COMMITTER_EMAIL: process.env.GIT_COMMITTER_EMAIL || 'noreply@terminal.local',
         },
       })
-    // Resolve the vault path + the .gitignore rules to add. The per-machine
-    // vault pointer (.TerMinal/tickets.json) is always ignored; an in-repo vault
-    // also ignores its own folder. Done BEFORE the first commit so the rules are
-    // tracked and the files written below stay ignored.
-    const wantsObsidian = ticketProvider?.kind === 'obsidian'
-    let obsidianVaultPath = ''
-    if (wantsObsidian) {
-      const resolved = resolveObsidianScaffold(dest, parent, safe, ticketProvider!)
-      obsidianVaultPath = resolved.vaultPath
-      try {
-        const gi = join(dest, '.gitignore')
-        const cur = existsSync(gi) ? readFileSync(gi, 'utf8') : ''
-        const have = new Set(cur.split('\n').map((l) => l.trim()))
-        const add = resolved.ignore.filter((l) => !have.has(l))
-        if (add.length)
-          appendFileSync(gi, `${cur && !cur.endsWith('\n') ? '\n' : ''}${add.join('\n')}\n`)
-      } catch {
-        /* best effort */
-      }
-    }
     git('init', '-q')
     // Template provenance (ticket 0045): stamp WHICH template version was
     // copied. Lives in the SIDECAR now (machine-local bookkeeping), written
@@ -139,24 +111,6 @@ export function scaffoldProject(
     })
     git('add', '-A')
     git('commit', '-qm', 'chore: scaffold from project-template')
-    // Write the (now-gitignored) provider config + seed the vault after the
-    // commit. Best-effort — a failure still returns the repo on local backlog.
-    try {
-      if (wantsObsidian && obsidianVaultPath) {
-        saveRepoTicketConfig(dest, {
-          provider: 'obsidian',
-          obsidian: {
-            vaultPath: obsidianVaultPath,
-            ...(ticketProvider!.vaultName?.trim()
-              ? { vaultName: ticketProvider!.vaultName.trim() }
-              : {}),
-          },
-        })
-        scaffoldObsidianVault({ vaultPath: obsidianVaultPath })
-      }
-    } catch {
-      /* leave the new repo on local backlog */
-    }
     return { ok: true, path: dest }
   } catch (e) {
     return { ok: false, error: (e as Error).message }

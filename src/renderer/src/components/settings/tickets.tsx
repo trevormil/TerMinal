@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import {
   Activity,
   CircleCheck,
-  FolderOpen,
   Loader2,
   Plus,
   RotateCcw,
@@ -46,8 +45,6 @@ function normalizeTicketConfig(
       linear: { ...defaultLinearConfig(), ...(cfg.linear || {}) },
       ...views,
     }
-  if (cfg.provider === 'obsidian')
-    return { provider: 'obsidian', obsidian: cfg.obsidian || { vaultPath: '' }, ...views }
   if (cfg.provider === 'webview')
     return { provider: 'webview', webview: cfg.webview || { url: '' }, ...views }
   return { provider: 'local', ...views }
@@ -98,24 +95,8 @@ function TicketProviderPanel() {
         linear: { ...defaultLinearConfig(draft.linear?.team || draft.linear?.teamKey || '') },
       })
     else if (next === 'github') setDraft({ provider: next, github: draft.github || {} })
-    else if (next === 'obsidian')
-      setDraft({ provider: next, obsidian: draft.obsidian || { vaultPath: '' } })
     else if (next === 'webview') setDraft({ provider: next, webview: draft.webview || { url: '' } })
     else setDraft({ provider: 'local' })
-  }
-  const pickVault = async () => {
-    const dir = await window.gt.pickDir()
-    if (!dir) return
-    const name = dir.replace(/\/+$/, '').split('/').pop() || ''
-    setResult(null)
-    setDraft({
-      provider: 'obsidian',
-      obsidian: {
-        ...(draft.obsidian || { vaultPath: '' }),
-        vaultPath: dir,
-        ...(draft.obsidian?.vaultName ? {} : { vaultName: name }),
-      },
-    })
   }
   const loadTeams = async () => {
     setBusy('teams')
@@ -220,11 +201,6 @@ function TicketProviderPanel() {
           'linear',
           'Linear',
           'Uses Linear MCP. Pick a team and file issues directly in Linear.',
-        )}
-        {providerOpt(
-          'obsidian',
-          'Obsidian',
-          'Private local vault. Tickets are markdown in a vault folder, never in git.',
         )}
         {providerOpt(
           'webview',
@@ -347,87 +323,6 @@ function TicketProviderPanel() {
               />
             </div>
           </details>
-        </div>
-      )}
-
-      {provider === 'obsidian' && (
-        <div className="space-y-2 rounded-lg border border-[var(--gt-border)] bg-black/20 p-3">
-          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
-            <label className="space-y-1">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
-                Vault folder
-              </span>
-              <input
-                value={draft.obsidian?.vaultPath || ''}
-                onChange={(e) =>
-                  setDraft({
-                    provider: 'obsidian',
-                    obsidian: {
-                      ...(draft.obsidian || { vaultPath: '' }),
-                      vaultPath: e.target.value,
-                    },
-                  })
-                }
-                placeholder="/Users/you/Obsidian/MyRepoVault"
-                className={`${inp} font-mono`}
-                spellCheck={false}
-              />
-            </label>
-            <button onClick={pickVault} className={`${action} self-end`}>
-              <FolderOpen size={13} strokeWidth={2} />
-              Choose…
-            </button>
-          </div>
-          <div className="grid gap-2 md:grid-cols-2">
-            <label className="space-y-1">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
-                Tickets subfolder
-              </span>
-              <input
-                value={draft.obsidian?.ticketsSubdir ?? ''}
-                onChange={(e) =>
-                  setDraft({
-                    provider: 'obsidian',
-                    obsidian: {
-                      ...(draft.obsidian || { vaultPath: '' }),
-                      ticketsSubdir: e.target.value,
-                    },
-                  })
-                }
-                placeholder="tickets"
-                className={`${inp} font-mono`}
-                spellCheck={false}
-              />
-            </label>
-            <label className="space-y-1">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
-                Vault name (for links)
-              </span>
-              <input
-                value={draft.obsidian?.vaultName ?? ''}
-                onChange={(e) =>
-                  setDraft({
-                    provider: 'obsidian',
-                    obsidian: {
-                      ...(draft.obsidian || { vaultPath: '' }),
-                      vaultName: e.target.value,
-                    },
-                  })
-                }
-                placeholder="MyRepoVault"
-                className={`${inp} font-mono`}
-                spellCheck={false}
-              />
-            </label>
-          </div>
-          <div className="text-[10.5px] leading-snug text-zinc-500">
-            Each repo gets its own vault. Tickets are{' '}
-            <span className="font-mono text-zinc-300">NNNN-slug.md</span> in{' '}
-            <span className="font-mono text-zinc-300">
-              {draft.obsidian?.ticketsSubdir?.trim() || 'tickets'}/
-            </span>{' '}
-            — private and outside git. Keep the vault outside any repo so nothing leaks.
-          </div>
         </div>
       )}
 

@@ -10,8 +10,8 @@
 #
 # Each arg is classified automatically as a status, priority, horizon, or the
 # `hitl` flag by matching the known value sets below.
-# Portable (macOS + Linux). Reads the resolved ticket store (Obsidian vault when
-# configured, else v2 $TERMINAL_BACKLOG_DIR or legacy backlog).
+# Portable (macOS + Linux). Reads the resolved ticket store (v2
+# $TERMINAL_BACKLOG_DIR, or legacy backlog).
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
@@ -48,9 +48,7 @@ printf '%-6s %-12s %-9s %-7s %-5s %-12s %-18s %s\n' "----" "------" "--------" "
 shopt -s nullglob 2>/dev/null || true
 found=""
 # Every root this repo reads from — the sidecar plus whatever has not migrated
-# yet — resolved in ONE place instead of hardcoded here, so an Obsidian vault
-# correctly owns tickets outright rather than being merged with a stale
-# in-repo backlog. Newest id first.
+# yet — resolved in ONE place instead of hardcoded here. Newest id first.
 read_dirs=()
 while IFS= read -r d; do
   [ -n "$d" ] && read_dirs+=("$d/[0-9]*.md")

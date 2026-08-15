@@ -144,3 +144,26 @@ Before the date, nothing changes. From it:
 The app and the standalone scripts cut over on the same day by construction:
 the sunset lives in the canonical inline block too, and a parity test drives
 both implementations against one injected clock.
+
+## Obsidian provider retired (2026-08-14)
+
+Appended 2026-08-14. The decision above is unchanged; this note corrects one of
+its consequences.
+
+The `obsidian` ticket provider — the per-repo vault that `backlog.ts`'s `baseDir`
+override existed to serve — is **retired**. Linear is always the preferred
+external provider, and the vault backend was not worth its surface: a second
+ticket store, its own deep-link scheme, its own session env vars, and a
+precedence rule every resolver (app, CLI, cron, MCP, the plugin's shell helpers)
+had to repeat.
+
+So the Consequences bullet "Obsidian-provider repos are unaffected: the vault
+still wins for tickets…" no longer describes reality. There is no vault
+precedence anywhere. `baseDir` is gone with it, and the sidecar is the single
+write target for `backlog`.
+
+A repo whose saved `tickets.json` still says `provider: "obsidian"` is not
+broken and is not silently reinterpreted: unknown provider values normalize to
+`local` (ADR-0015), the repo reads and writes its sidecar backlog, and the app
+files ONE Activity warning per repo naming the retirement and pointing at
+Settings → Tickets. Vault folders on disk are never read, written, or deleted.

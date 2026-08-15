@@ -1,5 +1,5 @@
-// Filing and commenting on tickets, across the four ticket providers a repo can
-// be configured with (local backlog markdown, obsidian vault, github, linear).
+// Filing and commenting on tickets, across the ticket providers a repo can be
+// configured with (local backlog markdown, github, linear).
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -22,7 +22,6 @@ const normalizeModelTier = (value: string | undefined): string =>
 
 type TicketConfig = {
   provider?: string
-  obsidian?: { vaultPath?: string; ticketsSubdir?: string }
   github?: GithubCfg
 }
 
@@ -41,14 +40,6 @@ function readTicketConfig(): TicketConfig {
   } catch {
     return {}
   }
-}
-
-// Obsidian tickets live in <vaultPath>/<ticketsSubdir||tickets>, not the repo.
-// Returns null unless the repo is configured for the obsidian provider.
-function obsidianTicketsDir(cfg: TicketConfig): string | null {
-  if (cfg.provider !== 'obsidian' || !cfg.obsidian || !cfg.obsidian.vaultPath) return null
-  const sub = String(cfg.obsidian.ticketsSubdir || 'tickets').replace(/^\/+|\/+$/g, '') || 'tickets'
-  return join(cfg.obsidian.vaultPath, sub)
 }
 
 /** Every dir an area's content may live in (sidecar first), for reads. */
@@ -79,20 +70,11 @@ export function fileTicket(
     )
     process.exit(2)
   }
-  // Obsidian repos keep tickets in their vault, not the repo's local backlog.
-  // A misconfigured vault fails closed — never silently fall back to the repo.
-  if (cfg.provider === 'obsidian' && !obsidianTicketsDir(cfg)) {
-    console.error(
-      'terminal-cli ticket: Obsidian vault path is not configured for this repo (.TerMinal/tickets.json)',
-    )
-    process.exit(2)
-  }
-  const vault = obsidianTicketsDir(cfg)
-  const backlog = vault || areaPath(repo(), 'backlog')
+  const backlog = areaPath(repo(), 'backlog')
   mkdirSync(backlog, { recursive: true })
   // Allocate across every dir the repo READS from, so a fresh sidecar beside a
   // repo that still holds 0001-0042 does not restart at 0001.
-  const maxId = maxAreaId(vault ? [vault] : areaReadPaths(repo(), 'backlog').concat(backlog))
+  const maxId = maxAreaId(areaReadPaths(repo(), 'backlog').concat(backlog))
   const id = String(maxId + 1).padStart(4, '0')
   const slug =
     (title || 'untitled')
@@ -158,9 +140,8 @@ export function commentOnTicket(slug: string | undefined, body: string | undefin
   // Look across every store the repo reads from (sidecar + any state still
   // committed in-repo), not just where new tickets are written — otherwise
   // commenting on a ticket that predates the sidecar would fail.
-  const vault = obsidianTicketsDir(cfg)
-  const dirs = vault ? [vault] : areaReadPaths(repo(), 'backlog')
-  const writeDir = vault || areaPath(repo(), 'backlog')
+  const dirs = areaReadPaths(repo(), 'backlog')
+  const writeDir = areaPath(repo(), 'backlog')
   const safe = String(slug || '').replace(/[^\w-]/g, '')
   const path = safe ? dirs.map((d) => join(d, `${safe}.md`)).find((p) => existsSync(p)) : ''
   if (!path) {
