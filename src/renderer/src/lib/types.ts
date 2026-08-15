@@ -233,6 +233,10 @@ export type MonitorSaveResult = {
 
 /** Which layer a failing probe failed at — re-exported from the shared flap logic. */
 import type { FailureCategory as MonitorFailureCategory } from '../../../shared/monitor-flap'
+// The Inbox's storage shapes are declared once, next to the store that writes
+// them, so the renderer cannot drift from what main actually returns.
+import type { InboxArchivePage, InboxCounts } from '../../../shared/inbox-store'
+export type { InboxArchivePage, InboxCounts }
 export type { FailureCategory as MonitorFailureCategory } from '../../../shared/monitor-flap'
 /** Daemon verdict on whether THIS machine has connectivity. */
 export type MonitorConnectivity = { offline: boolean; since?: number }
@@ -673,6 +677,8 @@ export type GtApi = {
     remove: (id: string, hostId?: string) => Promise<boolean>
     markRead: (ids: string[], hostId?: string, read?: boolean) => Promise<number>
     markAllRead: () => Promise<number>
+    counts: () => Promise<InboxCounts>
+    archive: (cursor?: string | null, limit?: number) => Promise<InboxArchivePage>
   }
   agentInsights: {
     scorecard: (agentId: string) => Promise<AgentScorecard | null>
@@ -914,6 +920,12 @@ export type GtApi = {
     remove: (id: string, hostId?: string) => Promise<boolean>
     markRead: (ids: string[], hostId?: string, read?: boolean) => Promise<number>
     markAllRead: () => Promise<number>
+    /** Live + archived totals from the small on-disk index — what a badge
+     *  should poll instead of counting a list it then throws away. */
+    counts: () => Promise<InboxCounts>
+    /** One page of retired items, newest first. Hand `cursor` back from the
+     *  previous page; `done` means the history is exhausted. */
+    archive: (cursor?: string | null, limit?: number) => Promise<InboxArchivePage>
     snoozes: () => Promise<Record<string, number>>
     snooze: (id: string, until: number) => Promise<Record<string, number>>
     unsnooze: (id: string) => Promise<Record<string, number>>

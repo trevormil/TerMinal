@@ -106,6 +106,8 @@ export type ChannelMap = {
   'github-review:reply': Of<GtApi['githubReview']['reply']>
   'github-review:submit': Of<GtApi['githubReview']['submit']>
   'harness:status': Of<GtApi['harnessStatus']>
+  'hitl:archive': Of<GtApi['hitl']['archive']>
+  'hitl:counts': Of<GtApi['hitl']['counts']>
   'hitl:list': Of<GtApi['hitl']['list']>
   'hitl:mark-all-read': Of<GtApi['hitl']['markAllRead']>
   'hitl:mark-read': Of<GtApi['hitl']['markRead']>
@@ -114,6 +116,8 @@ export type ChannelMap = {
   'hitl:resolve': Of<GtApi['hitl']['resolve']>
   'hosts:health': Of<GtApi['healthCheckHost']>
   'hosts:provision': Of<GtApi['provisionHost']>
+  'inbox:archive': Of<GtApi['inbox']['archive']>
+  'inbox:counts': Of<GtApi['inbox']['counts']>
   'inbox:delivery-log': Of<GtApi['inbox']['deliveryLog']>
   'inbox:list': Of<GtApi['inbox']['list']>
   'inbox:mark-all-read': Of<GtApi['inbox']['markAllRead']>

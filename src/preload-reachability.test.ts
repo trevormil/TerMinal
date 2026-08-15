@@ -49,6 +49,8 @@ const ALLOWED = new Set([
   'hitl.remove',
   'hitl.markRead',
   'hitl.markAllRead',
+  'hitl.counts',
+  'hitl.archive',
 ])
 
 /** Comments and string bodies carry unbalanced braces/parens — drop them first. */

@@ -16,7 +16,15 @@
 
 import { handle } from '../typed-ipc'
 import { readSettings } from '../settings'
-import { readHitl, resolveHitl, removeHitl, markHitlRead, markAllHitlRead } from '../hitl'
+import {
+  hitlCounts,
+  readHitl,
+  readHitlArchive,
+  resolveHitl,
+  removeHitl,
+  markHitlRead,
+  markAllHitlRead,
+} from '../hitl'
 import { collectRemoteHitl } from '../remote-runs'
 import { remoteHitl, type RemoteSessionRef } from '../remote'
 
@@ -71,6 +79,12 @@ export function registerInboxItemsIpc(deps: InboxItemsIpcDeps): void {
 
   const markAllItemsRead = () => markAllHitlRead()
 
+  // `list` returns the LIVE items only — tens, not thousands. The two reads
+  // below are what the rest of the inbox needs: a badge that costs one tiny
+  // file, and history paged out of the append-only archive on demand.
+  const counts = () => hitlCounts()
+  const archive = (cursor?: string | null, limit?: number) => readHitlArchive(cursor, limit)
+
   // Canonical spelling.
   handle('inbox:list', () => listItems())
   handle('inbox:remote-all', () => remoteAllItems())
@@ -82,6 +96,8 @@ export function registerInboxItemsIpc(deps: InboxItemsIpcDeps): void {
     markItemsRead(ids, hostId, read),
   )
   handle('inbox:mark-all-read', () => markAllItemsRead())
+  handle('inbox:counts', () => counts())
+  handle('inbox:archive', (_e, cursor?: string | null, limit?: number) => archive(cursor, limit))
 
   // Permanent aliases — the pre-rename spelling, same implementations.
   handle('hitl:list', () => listItems())
@@ -94,4 +110,6 @@ export function registerInboxItemsIpc(deps: InboxItemsIpcDeps): void {
     markItemsRead(ids, hostId, read),
   )
   handle('hitl:mark-all-read', () => markAllItemsRead())
+  handle('hitl:counts', () => counts())
+  handle('hitl:archive', (_e, cursor?: string | null, limit?: number) => archive(cursor, limit))
 }

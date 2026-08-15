@@ -346,12 +346,13 @@ export default function App() {
     return () => clearInterval(id)
   }, [sessions.length])
   useEffect(() => {
+    // The counts index, not the item list. This fires every 5 seconds whether
+    // or not the drawer is open, and used to ship (and then discard) the entire
+    // inbox over IPC just to produce one integer.
     const tick = () =>
       window.gt.inbox
-        .list()
-        .then((items) =>
-          setInboxUnreadCount(items.filter((h) => h.status === 'open' && !h.readAt).length),
-        )
+        .counts()
+        .then((c) => setInboxUnreadCount(c.unread))
         .catch(() => {})
     tick()
     const off = window.gt.activity.onEvent((ev) => {
