@@ -1,17 +1,6 @@
 import { Notification } from 'electron'
 import { appSignatureKind } from './code-signature'
-import {
-  appendFileSync,
-  readFileSync,
-  existsSync,
-  mkdirSync,
-  writeFileSync,
-  statSync,
-  openSync,
-  readSync,
-  closeSync,
-  watch,
-} from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, writeFileSync, statSync, watch } from 'node:fs'
 import { dirname, basename } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { configPath } from './config-dir'
@@ -29,7 +18,18 @@ import {
   type NotifyChannel,
 } from './notify-channels'
 import type { ActivityEvent, ActivityKind } from '../shared/types/activity'
+import {
+  ACTIVITY_ROTATE_BYTES,
+  countActivitySince,
+  readActivityDelta,
+  readActivityPage,
+  readActivityTail,
+  rotateActivityLog,
+  type ActivityCursor,
+  type ActivityPage,
+} from '../shared/activity-log'
 export type { ActivityEvent, ActivityKind } from '../shared/types/activity'
+export type { ActivityCursor, ActivityPage } from '../shared/activity-log'
 
 // Activity feed + system notifications. Events are stored GLOBALLY (one log
 // across every repo/session) but each is tagged with repo + session, so the
@@ -38,7 +38,6 @@ export type { ActivityEvent, ActivityKind } from '../shared/types/activity'
  *  test (or a second profile) can point it somewhere throwaway — a module-level
  *  const baked the developer's real feed in before any test line ran. */
 export const activityLogFile = (): string => configPath('activity.jsonl')
-const MAX_KEEP = 2000 // cap the on-disk log
 
 // Whether an event raises a notification, and on which channels, is now decided
 // by the per-channel × per-category matrix in shared/notifications — replacing
@@ -170,6 +169,7 @@ export function emitActivity(
   try {
     mkdirSync(dirname(log), { recursive: true })
     appendFileSync(log, JSON.stringify(ev) + '\n')
+    maybeRotateActivityLog()
   } catch {
     /* best effort */
   }
@@ -208,67 +208,65 @@ export function startActivityTail() {
 
 function drainTail() {
   const log = activityLogFile()
-  let size = 0
+  // Byte-delta read: the log only grows, so the new events are exactly the new
+  // bytes. A half-written trailing append is left for the next drain rather
+  // than dropped, which is why `size` comes back from the reader.
+  // A shrunken file (cleared, or rotated aside) re-reads from the top; the
+  // reader reports where it stopped either way.
+  const { events, size } = readActivityDelta(log, tailSize)
+  tailSize = size
+  if (!events.length) return
+  for (const ev of events) {
+    broadcast(ev)
+    // Notify for EXTERNAL high-signal events (skills, cron, gt-notify) that the
+    // app didn't emit in-process — so skill-raised HITL/blocked/errors actually
+    // ping. Deduped against emittedIds so app emits don't double-notify.
+    if (!emittedIds.has(ev.id) && wantedByAnyChannel(ev)) fireNotification(ev)
+  }
+  // External appenders (bin/gt-notify, terminal-cli, the MCP server) only ever
+  // append — rotation is the app's job, and this is where it learns they wrote.
+  if (maybeRotateActivityLog()) tailSize = 0
+}
+
+/** Rotate the live log aside once it outgrows `maxBytes`, so no single file
+ *  grows without bound. History is NOT lost: the readers below span the rotated
+ *  generations. (This replaced a compaction that ran inside the read path and
+ *  silently deleted everything past the newest 2000 events.) */
+export function maybeRotateActivityLog(maxBytes = ACTIVITY_ROTATE_BYTES): boolean {
+  return rotateActivityLog(activityLogFile(), maxBytes)
+}
+
+/** Newest-first, capped — a tail read, so the cost is the size of `limit`
+ *  rather than the size of the history. */
+export function readActivity(limit = 500): ActivityEvent[] {
+  return readActivityTail(activityLogFile(), limit)
+}
+
+/** One page of the feed, newest first, resuming from `cursor` (null = newest).
+ *  `page.cursor` is null once the oldest kept event has been returned. */
+export function readActivityPageAt(cursor: ActivityCursor | null, limit = 200): ActivityPage {
+  return readActivityPage(activityLogFile(), { limit, cursor })
+}
+
+// The tab badge polls ~1/s while a terminal streams. The count itself already
+// early-exits at the first event older than `since`, and this memo means the
+// steady state (nothing appended) costs one stat() and no parse at all.
+let badgeMemo: { key: string; size: number; count: number } | null = null
+
+/** Count of events newer than `since` whose kind is in `kinds`. */
+export function unseenActivityCount(since: number, kinds: string[]): number {
+  const log = activityLogFile()
+  let size = -1
   try {
     size = statSync(log).size
   } catch {
-    return
+    /* missing log — a memoized answer still stands until something appends */
   }
-  if (size < tailSize) tailSize = 0 // truncated/cleared → restart
-  if (size <= tailSize) return
-  const len = size - tailSize
-  try {
-    const fd = openSync(log, 'r')
-    const buf = Buffer.alloc(len)
-    readSync(fd, buf, 0, len, tailSize)
-    closeSync(fd)
-    tailSize = size
-    for (const line of buf.toString('utf8').split('\n')) {
-      if (!line.trim()) continue
-      try {
-        const ev = JSON.parse(line) as ActivityEvent
-        broadcast(ev)
-        // Notify for EXTERNAL high-signal events (skills, cron, gt-notify) that the
-        // app didn't emit in-process — so skill-raised HITL/blocked/errors actually
-        // ping. Deduped against emittedIds so app emits don't double-notify.
-        if (!emittedIds.has(ev.id) && wantedByAnyChannel(ev)) fireNotification(ev)
-      } catch {
-        /* partial/garbled line — skip */
-      }
-    }
-  } catch {
-    /* read race — next change will catch up */
-  }
-}
-
-/** Newest-first, capped. */
-export function readActivity(limit = 500): ActivityEvent[] {
-  const log = activityLogFile()
-  if (!existsSync(log)) return []
-  try {
-    const lines = readFileSync(log, 'utf8').split('\n').filter(Boolean)
-    // opportunistically compact a runaway log
-    if (lines.length > MAX_KEEP) {
-      try {
-        writeFileSync(log, lines.slice(-MAX_KEEP).join('\n') + '\n')
-      } catch {
-        /* ignore */
-      }
-    }
-    return lines
-      .slice(-limit)
-      .map((l) => {
-        try {
-          return JSON.parse(l) as ActivityEvent
-        } catch {
-          return null
-        }
-      })
-      .filter((e): e is ActivityEvent => !!e)
-      .reverse()
-  } catch {
-    return []
-  }
+  const key = `${since} ${kinds.join(',')}`
+  if (badgeMemo && badgeMemo.key === key && badgeMemo.size === size) return badgeMemo.count
+  const count = countActivitySince(log, since, kinds)
+  badgeMemo = { key, size, count }
+  return count
 }
 
 export function clearActivity() {
@@ -278,4 +276,5 @@ export function clearActivity() {
   } catch {
     /* ignore */
   }
+  badgeMemo = null
 }
