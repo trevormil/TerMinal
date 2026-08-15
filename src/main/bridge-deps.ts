@@ -147,38 +147,9 @@ export function createBridgeDeps(ctx: BridgeDepsCtx): BridgeDeps {
   }
 
   function spawnPrompt(remoteId: string, task?: string): string {
-    // Absolute path to THIS app's terminal-cli, which always has the `remote`
-    // subcommand. Bare `terminal-cli` isn't on an interactive session's PATH, and
-    // the repo's own bin/ may be on a branch that predates `remote` — the agent
-    // otherwise burns several turns guessing. Quote it in case the path has spaces.
-    const cli = `"${ctx.cliSrcPath()}"`
-    const lines = [
-      `You were started from TerMinal Remote on a phone. There is no one at this Mac —`,
-      `report through the phone, not the terminal.`,
-      ``,
-      `A remote thread is already registered for you. Adopt it, then use it`,
-      `(use this exact path — bare terminal-cli is not on PATH):`,
-      ``,
-      `    ${cli} remote register --id ${remoteId} "<short title>"`,
-      `    ${cli} remote post --id ${remoteId} "<update>"`,
-      `    ${cli} remote ask  --id ${remoteId} "<question>"   # blocks for a reply`,
-      ``,
-      `Follow the remote-terminal skill for when to post vs ask. Post at real`,
-      `checkpoints, not every command. Ask only at a genuine fork; otherwise pick`,
-      `the safe default and say so in a post.`,
-      ``,
-      `This session stays live between turns. When you finish a task, post the result`,
-      `and just stop — the human's next phone message is handed to you automatically`,
-      `as your next instruction, so you do NOT need to keep an ask open to stay`,
-      `reachable.`,
-    ]
-    if (task) lines.push(``, `Your task:`, ``, task)
-    else
-      lines.push(
-        ``,
-        `No task was given — post that you are ready and stop; wait for the first message.`,
-      )
-    return lines.join('\n')
+    // One prompt, shared with the e2e harness (remote-spawn-prompt.ts) so the
+    // app and harness cannot drift.
+    return remoteSpawnPrompt({ cliPath: ctx.cliSrcPath(), remoteId, task })
   }
 
   // Harness-agnostic listener. Claude keeps its remote-check.sh Stop hook, which
