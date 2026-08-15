@@ -12,6 +12,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { HitlItem } from './types/activity'
+import type { InboxArchivePage } from './inbox-store'
 import {
   findInboxItem,
   inboxCounts,
@@ -145,11 +146,23 @@ describe('migration of a legacy oversized hitl.json', () => {
     ).toBe(true)
   })
 
-  test('a corrupt hot file is refused, never silently emptied', () => {
+  test('a corrupt hot file is refused and quarantined, never silently emptied', () => {
     const p = fresh()
     writeFileSync(p.hot, '[{"id":"real"},{"id"')
+    // A READ never moves the user's file — it only refuses to answer.
     expect(() => readInboxLive(p)).toThrow(/corrupt/i)
+    expect(readFileSync(p.hot, 'utf8')).toContain('real')
+
+    // A WRITE moves it aside so the next filing is not wedged forever, and the
+    // bytes survive for recovery.
     expect(() => updateInbox(p, (l) => [item(), ...l])).toThrow(/corrupt/i)
+    const dir = p.hot.replace(/\/hitl\.json$/, '')
+    const quarantined = readdirSync(dir).filter((n) => n.includes('.corrupt-'))
+    expect(quarantined).toHaveLength(1)
+    expect(readFileSync(join(dir, quarantined[0]), 'utf8')).toContain('real')
+    // ...and the inbox is usable again rather than permanently refusing.
+    expect(updateInbox(p, (l) => [item({ id: 'after' }), ...l])).toBe(true)
+    expect(readInboxLive(p).map((h) => h.id)).toEqual(['after'])
   })
 })
 
@@ -166,7 +179,7 @@ describe('cursor pagination over the archive', () => {
     const seen: string[] = []
     let cursor: string | null | undefined = undefined
     for (let i = 0; i < 50; i++) {
-      const page = readInboxArchive(p, { cursor, limit: 20 })
+      const page: InboxArchivePage = readInboxArchive(p, { cursor, limit: 20 })
       seen.push(...page.items.map((h) => h.id))
       if (page.done) break
       cursor = page.cursor
@@ -346,7 +359,7 @@ describe('the counts index', () => {
     let archived = 0
     let cursor: string | null | undefined = undefined
     for (let i = 0; i < 200; i++) {
-      const page = readInboxArchive(p, { cursor, limit: 100 })
+      const page: InboxArchivePage = readInboxArchive(p, { cursor, limit: 100 })
       archived += page.items.length
       if (page.done) break
       cursor = page.cursor

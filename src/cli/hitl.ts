@@ -2,7 +2,7 @@
 import { mkdirSync, readFileSync } from 'node:fs'
 import { basename } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
-import { updateJsonListShared } from '../runner/state-io'
+import { inboxPathsFor, updateInbox } from '../shared/inbox-store'
 import { emitActivity } from './activity'
 import { HITL_FILE, CFG, readSettings, repo, repoLabel, runId } from './env'
 import { hitlButtons, mirrorHitlToSlack, pingTelegram, slackQuietsTelegram } from './notify'
@@ -45,7 +45,7 @@ export function fileHitl(
     terminalKey: process.env.GT_TERMINAL_SESSION_KEY || '',
     terminalCwd: process.env.GT_TERMINAL_CWD || repo(),
   }
-  updateJsonListShared<HitlItem>(HITL_FILE(), (cur) => [item, ...cur])
+  updateInbox<HitlItem>(inboxPathsFor(HITL_FILE()), (live) => [item, ...live])
   mirrorHitlToSlack(item)
   emitActivity('blocked', `Inbox · ${item.title}`, item.action, { suppressTelegram: true })
   // Without an explicit severity, HITL always pings Telegram (legacy policy).
@@ -128,8 +128,8 @@ export function completionHitl(engine: string): void {
   // The dedup check happens INSIDE the lock: this hook fires from every engine
   // turn, so two overlapping invocations both reading "no such id" is exactly
   // the race that files the same completion twice.
-  const filed = updateJsonListShared<HitlItem>(HITL_FILE(), (cur) =>
-    cur.some((h) => h.id === id) ? undefined : [item, ...cur],
+  const filed = updateInbox<HitlItem>(inboxPathsFor(HITL_FILE()), (live) =>
+    live.some((h) => h.id === id) ? undefined : [item, ...live],
   )
   if (!filed) {
     console.log(id)

@@ -5,7 +5,7 @@
 // cannot decrypt. No sidecar ⇒ that destination is simply off.
 import { existsSync, readFileSync } from 'node:fs'
 import { spawn } from 'node:child_process'
-import { updateJsonListShared } from '../runner/state-io'
+import { inboxPathsFor, updateInbox } from '../shared/inbox-store'
 import { HITL_FILE, LEGACY_TG_SCRIPT, SETTINGS_FILE, SLACK_SIDECAR, TG_SIDECAR } from './env'
 import type { HitlItem } from './types'
 
@@ -155,8 +155,8 @@ export function mirrorHitlToSlack(item: HitlItem): void {
     }
     if (!res?.ok && channel !== fallback) res = await post(`#${fallback}`)
     if (res?.ok && typeof res.channel === 'string' && typeof res.ts === 'string') {
-      updateJsonListShared<HitlItem>(HITL_FILE(), (list) =>
-        list.map((h) =>
+      updateInbox(inboxPathsFor(HITL_FILE()), (live) =>
+        live.map((h) =>
           h.id === item.id ? { ...h, slackChannel: res.channel, slackTs: res.ts } : h,
         ),
       )

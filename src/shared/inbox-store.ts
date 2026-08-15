@@ -42,6 +42,21 @@ import {
 } from 'node:fs'
 import { join } from 'node:path'
 import type { HitlItem } from './types/activity'
+
+/**
+ * The minimum an inbox record must carry for this module to file it.
+ *
+ * Structural, not nominal, and every function here is generic over it: the CLI
+ * bundle carries its own looser `HitlItem` (a plain `string` source), and
+ * forcing the two declarations together would be a type refactor wearing a
+ * storage refactor's clothes. The store only ever reads these four fields.
+ */
+export type InboxRecord = {
+  id: string
+  status?: string
+  readAt?: number
+  category?: string
+}
 import { withFileLockShared, writeJsonAtomicShared } from '../runner/state-io'
 
 export type InboxPaths = {
@@ -102,7 +117,7 @@ export function isInboxLive(h: { readAt?: number; status?: string }): boolean {
 
 const CATEGORY_FALLBACK = 'Uncategorized'
 
-export function inboxCountsOf(live: HitlItem[], archived: number): InboxCounts {
+export function inboxCountsOf(live: InboxRecord[], archived: number): InboxCounts {
   const byCategory: Record<string, { live: number; unread: number }> = {}
   let unread = 0
   for (const h of live) {
@@ -119,7 +134,7 @@ export function inboxCountsOf(live: HitlItem[], archived: number): InboxCounts {
 
 // --- raw file helpers --------------------------------------------------------
 
-function readJsonArray(file: string): HitlItem[] | 'absent' | 'corrupt' {
+function readJsonArray<T>(file: string): T[] | 'absent' | 'corrupt' {
   let raw: string
   try {
     raw = readFileSync(file, 'utf8')
@@ -129,7 +144,7 @@ function readJsonArray(file: string): HitlItem[] | 'absent' | 'corrupt' {
   if (raw.trim() === '') return 'absent'
   try {
     const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? (parsed as HitlItem[]) : 'corrupt'
+    return Array.isArray(parsed) ? (parsed as T[]) : 'corrupt'
   } catch {
     return 'corrupt'
   }
@@ -221,8 +236,8 @@ function splitLines(region: Buffer): Buffer[] {
   return out
 }
 
-export type InboxArchivePage = {
-  items: HitlItem[]
+export type InboxArchivePage<T = HitlItem> = {
+  items: T[]
   /** Opaque cursor for the next (older) page. null when the history is exhausted. */
   cursor: string | null
   done: boolean
@@ -236,10 +251,10 @@ export type InboxArchivePage = {
  * and the hot copy is always the truth. Within a page an id appears once — the
  * newest occurrence wins. Callers accumulating pages should dedup by id too.
  */
-export function readInboxArchive(
+export function readInboxArchive<T extends InboxRecord = HitlItem>(
   p: InboxPaths,
   opts: { cursor?: string | null; limit?: number } = {},
-): InboxArchivePage {
+): InboxArchivePage<T> {
   const limit = Math.max(1, Math.min(500, opts.limit ?? 50))
   let size: number
   try {
@@ -258,7 +273,7 @@ export function readInboxArchive(
       .map((h) => h.id),
   )
   const seen = new Set<string>()
-  const items: HitlItem[] = []
+  const items: T[] = []
 
   while (end > 0 && items.length < limit) {
     const need = limit - items.length
@@ -268,9 +283,9 @@ export function readInboxArchive(
       break
     }
     for (let i = lines.length - 1; i >= 0; i--) {
-      let rec: HitlItem
+      let rec: T
       try {
-        rec = JSON.parse(lines[i]) as HitlItem
+        rec = JSON.parse(lines[i]) as T
       } catch {
         continue // a torn append never costs the rest of the history
       }
@@ -284,27 +299,33 @@ export function readInboxArchive(
   return { items, cursor: end > 0 ? String(end) : null, done: end <= 0 }
 }
 
-function readHotRaw(file: string): HitlItem[] {
-  const raw = readJsonArray(file)
+function readHotRaw(file: string): InboxRecord[] {
+  const raw = readJsonArray<InboxRecord>(file)
   return Array.isArray(raw) ? raw : []
 }
 
 // --- the locked write path ---------------------------------------------------
 
 export class InboxCorruptError extends Error {
-  constructor(readonly file: string) {
-    super(`Refusing to write corrupt inbox state ${file}`)
+  constructor(
+    readonly file: string,
+    readonly quarantinedTo?: string,
+  ) {
+    super(
+      `Refusing to write corrupt inbox state ${file}` +
+        (quarantinedTo ? `; moved aside to ${quarantinedTo}` : ''),
+    )
     this.name = 'InboxCorruptError'
   }
 }
 
-function findArchived(p: InboxPaths, ids: string[]): Map<string, HitlItem> {
-  const out = new Map<string, HitlItem>()
+function findArchived<T extends InboxRecord>(p: InboxPaths, ids: string[]): Map<string, T> {
+  const out = new Map<string, T>()
   if (!ids.length) return out
   const wanted = new Set(ids)
   let cursor: string | null | undefined = undefined
   for (let page = 0; page < 400 && wanted.size; page++) {
-    const res: InboxArchivePage = readInboxArchive(p, { cursor, limit: 500 })
+    const res: InboxArchivePage<T> = readInboxArchive<T>(p, { cursor, limit: 500 })
     for (const item of res.items)
       if (wanted.has(item.id)) {
         out.set(item.id, item)
@@ -326,15 +347,22 @@ function findArchived(p: InboxPaths, ids: string[]): Map<string, HitlItem> {
  *
  * Returning undefined means "no change" and skips every write.
  */
-export function updateInbox(
+export function updateInbox<T extends InboxRecord = HitlItem>(
   p: InboxPaths,
-  fn: (working: HitlItem[]) => HitlItem[] | undefined,
+  fn: (working: T[]) => T[] | undefined,
   opts: { include?: string[] } = {},
 ): boolean {
   return withFileLockShared(p.hot, () => {
     importLegacyDailyArchives(p)
-    const raw = readJsonArray(p.hot)
-    if (raw === 'corrupt') throw new InboxCorruptError(p.hot)
+    const raw = readJsonArray<T>(p.hot)
+    if (raw === 'corrupt') {
+      // Quarantine is a WRITER's decision (reads stay non-destructive). Moving
+      // the torn file aside is what lets the next filing start clean instead of
+      // every writer wedging forever — and the bytes survive for recovery.
+      const dest = `${p.hot}.corrupt-${Date.now()}`
+      renameSync(p.hot, dest)
+      throw new InboxCorruptError(p.hot, dest)
+    }
     const hot = raw === 'absent' ? [] : raw
 
     // Migration is just the split every write already does: anything in the hot
@@ -343,7 +371,7 @@ export function updateInbox(
     const strays = hot.filter((h) => !isInboxLive(h))
 
     const includeIds = (opts.include ?? []).filter((id) => !live.some((h) => h.id === id))
-    const pulled = findArchived(p, includeIds)
+    const pulled = findArchived<T>(p, includeIds)
     const working = [...live, ...pulled.values()]
     const before = new Map(working.map((h) => [h.id, h]))
 
@@ -355,8 +383,8 @@ export function updateInbox(
       return commit(p, live, strays, [], readInboxCounts(p))
     }
 
-    const nextLive: HitlItem[] = []
-    const retiring: HitlItem[] = []
+    const nextLive: T[] = []
+    const retiring: T[] = []
     for (const h of next) (isInboxLive(h) ? nextLive : retiring).push(h)
 
     // An included archived item that came back unchanged and still retired is
@@ -383,8 +411,8 @@ export function updateInbox(
  */
 function commit(
   p: InboxPaths,
-  live: HitlItem[],
-  toArchive: HitlItem[],
+  live: InboxRecord[],
+  toArchive: InboxRecord[],
   dropped: string[],
   prev: InboxCounts,
 ): boolean {
@@ -426,7 +454,7 @@ function importLegacyDailyArchives(p: InboxPaths): void {
   }
   const lines: string[] = []
   for (const name of names) {
-    const parsed = readJsonArray(join(dir, name))
+    const parsed = readJsonArray<InboxRecord>(join(dir, name))
     if (!Array.isArray(parsed)) continue
     for (const item of parsed) if (item?.id) lines.push(`${JSON.stringify(item)}\n`)
   }
@@ -447,7 +475,7 @@ function countArchive(p: InboxPaths): number {
     for (const line of readFileSync(p.archive, 'utf8').split('\n')) {
       if (!line.trim()) continue
       try {
-        const id = (JSON.parse(line) as HitlItem).id
+        const id = (JSON.parse(line) as InboxRecord).id
         if (id && !hidden.has(id)) ids.add(id)
       } catch {
         /* torn line */
@@ -466,13 +494,13 @@ function countArchive(p: InboxPaths): number {
  * something to migrate. The steady-state read is a plain parse of a file
  * holding tens of items.
  */
-export function readInboxLive(p: InboxPaths): HitlItem[] {
-  const raw = readJsonArray(p.hot)
+export function readInboxLive<T extends InboxRecord = HitlItem>(p: InboxPaths): T[] {
+  const raw = readJsonArray<T>(p.hot)
   if (raw === 'corrupt') throw new InboxCorruptError(p.hot)
   const hot = raw === 'absent' ? [] : raw
   if (hot.every(isInboxLive)) return hot
   updateInbox(p, () => undefined)
-  const after = readJsonArray(p.hot)
+  const after = readJsonArray<T>(p.hot)
   return Array.isArray(after) ? after : hot.filter(isInboxLive)
 }
 
@@ -485,7 +513,10 @@ export function inboxCounts(p: InboxPaths): InboxCounts {
 }
 
 /** One item by id, live first then history. Live is the truth when both exist. */
-export function findInboxItem(p: InboxPaths, id: string): HitlItem | undefined {
-  const live = readInboxLive(p).find((h) => h.id === id)
-  return live ?? findArchived(p, [id]).get(id)
+export function findInboxItem<T extends InboxRecord = HitlItem>(
+  p: InboxPaths,
+  id: string,
+): T | undefined {
+  const live = readInboxLive<T>(p).find((h) => h.id === id)
+  return live ?? findArchived<T>(p, [id]).get(id)
 }
