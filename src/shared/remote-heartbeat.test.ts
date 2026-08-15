@@ -21,9 +21,7 @@ describe('heartbeatDecision', () => {
 
   it('counts idle from the LAST activity, not the session start', () => {
     // Busy all night, one message an hour ago: still a live conversation.
-    expect(
-      heartbeatDecision({ now: T0 + 24 * HOUR, lastActivityAt: T0 + 23 * HOUR }),
-    ).toBe('park')
+    expect(heartbeatDecision({ now: T0 + 24 * HOUR, lastActivityAt: T0 + 23 * HOUR })).toBe('park')
   })
 
   it('honours a custom threshold', () => {
@@ -36,9 +34,9 @@ describe('heartbeatDecision', () => {
   })
 
   it('never sleeps a session the app cannot wake', () => {
-    expect(
-      heartbeatDecision({ now: T0 + 999 * HOUR, lastActivityAt: T0, wakeable: false }),
-    ).toBe('park')
+    expect(heartbeatDecision({ now: T0 + 999 * HOUR, lastActivityAt: T0, wakeable: false })).toBe(
+      'park',
+    )
   })
 
   it('clamps clock skew instead of sleeping a session that just acted', () => {

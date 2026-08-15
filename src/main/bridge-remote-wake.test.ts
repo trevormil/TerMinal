@@ -1,6 +1,6 @@
 import { describe, expect, it, mock } from 'bun:test'
 
-mock.module('electron', () => ({
+await mock.module('electron', () => ({
   Notification: class {
     static isSupported() {
       return false
@@ -17,9 +17,8 @@ import type { BridgeDepsCtx } from './bridge-deps'
 import type { RemoteSession } from './remote-sessions'
 
 const { createBridgeDeps } = await import('./bridge-deps')
-const { REMOTE_DIR, readRemoteSession, registerRemoteSession, takeReplies } = await import(
-  './remote-sessions'
-)
+const { REMOTE_DIR, readRemoteSession, registerRemoteSession, takeReplies } =
+  await import('./remote-sessions')
 
 // Ticket 129. A phone-spawned Claude session used to park in the Stop hook
 // forever, spending one model turn per window on a heartbeat. It now sleeps

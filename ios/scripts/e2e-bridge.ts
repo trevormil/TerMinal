@@ -6,6 +6,9 @@
  * registered with `terminal-cli remote register` shows up on the phone without
  * running the desktop app. Prints a scannable pairing QR.
  *
+ * New Session really starts an agent (no desktop tab — see the spawn dep below),
+ * so it spends real tokens; Ctrl-C takes those agents with it.
+ *
  *   bun ios/scripts/e2e-bridge.ts            # run until Ctrl-C
  *   bun ios/scripts/e2e-bridge.ts --selftest # assert the round trip, then exit
  *
@@ -13,9 +16,14 @@
  * a phone already paired with the real app.
  */
 import qrcode from 'qrcode-generator'
+import { spawn, type ChildProcess } from 'node:child_process'
 import { existsSync, mkdtempSync, readdirSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { coerceEffort } from '../../src/shared/engines'
+import { startHeadlessSession } from '../../src/main/headless-spawn'
+import { remoteSpawnPrompt } from '../../src/main/remote-spawn-prompt'
+import { enginePath, readSettings, type EngineId } from '../../src/main/settings'
 import { ensureIdentity, pairingPayload } from '../../src/main/bridge/identity'
 import { startBridge, stopBridge, type BridgeDeps } from '../../src/main/bridge/server'
 import { tailscalePeerAllowed } from '../../src/main/bridge/tailscale'
@@ -34,6 +42,24 @@ import {
 // PORT=8790 to exercise tailnet pairing, which assumes the bridge default.
 const PORT = Number(process.env.PORT) || 8791
 const selftest = process.argv.includes('--selftest')
+
+/** This checkout's terminal-cli — the one the spawn prompt tells the agent to
+ *  use. Built by `bun run build:bin`; the harness is run from a checkout, so it
+ *  is always this path and never the installed app's copy. */
+const CLI_PATH = join(import.meta.dir, '..', '..', 'bin', 'terminal-cli')
+
+/** Agents this harness started, so Ctrl-C takes them with it. */
+const agents = new Set<ChildProcess>()
+function stopAgents(): void {
+  for (const child of agents) {
+    try {
+      child.kill('SIGTERM')
+    } catch {
+      /* already gone */
+    }
+  }
+  agents.clear()
+}
 
 /** Git repos the phone may start a session in — real dirs, so the flow works.
  *  Generic: TERMINAL_PROJECTS_DIR wins, then common code roots, then the parent
@@ -237,28 +263,44 @@ const deps: BridgeDeps = {
       enabled: false,
     },
   ],
-  // The harness can't launch a real desktop tab, so it does what the app's
-  // spawn ultimately does from the phone's side: create the remote thread up
-  // front and return its id, so the phone opens it immediately.
-  spawn: (input) => {
-    const repo = input.cwd.split('/').filter(Boolean).pop() || 'session'
-    const id = `spawn-${Date.now().toString(36)}`
-    registerRemoteSession({
-      id,
-      title: `${input.engine ?? 'claude'} · ${repo}`,
-      repo,
-      engine: input.engine,
-      origin: 'phone',
-    })
-    postMessage(
-      id,
-      'agent',
-      input.task?.trim()
-        ? `Starting on your phone's request:\n\n> ${input.task.trim()}`
-        : 'Session started from your phone. Send me something to do.',
-    )
-    return { id }
-  },
+  // A REAL launch (ticket 128). The harness has no renderer, so it cannot open a
+  // desktop tab the way the app does — but "no tab" is not "no agent": it starts
+  // the engine itself under a pty, in the repo the phone picked, seeded with the
+  // same remote-thread contract the app uses. It used to only register a thread
+  // and post a plausible line, so New Session looked like it worked while
+  // nothing was ever listening.
+  spawn: (input) =>
+    startHeadlessSession(input, {
+      defaultEngine: () => process.env.TERMINAL_HARNESS_ENGINE || readSettings().defaultEngine,
+      // Resolve to something that actually exists: "engine not installed" is a
+      // real answer for the phone, and far better than launching a pty that
+      // dies with 127 and leaves a thread behind.
+      binFor: (engine) => {
+        const p = enginePath(engine as EngineId)
+        if (p.includes('/')) return existsSync(p) ? p : ''
+        return Bun.which(p) ?? ''
+      },
+      coerceEffort,
+      register: ({ title, repo, cwd, engine }) =>
+        registerRemoteSession({ title, repo, cwd, engine, origin: 'phone' }),
+      unregister: (id) => void deleteRemoteSession(id),
+      post: (id, text) => void postMessage(id, 'agent', text),
+      prompt: (remoteId, task) => remoteSpawnPrompt({ cliPath: CLI_PATH, remoteId, task }),
+      launch: ({ file, args, cwd }) => {
+        try {
+          // Kept in the harness's own process group and tracked, so Ctrl-C takes
+          // the agents with it — a test harness must not leave live agents behind.
+          const child = spawn(file, args, { cwd, stdio: 'ignore' })
+          if (!child.pid) return false
+          agents.add(child)
+          child.on('exit', () => agents.delete(child))
+          return true
+        } catch (e) {
+          console.error('[spawn] launch failed:', (e as Error).message)
+          return false
+        }
+      },
+    }),
   tailscalePair: (peer) => {
     const { ok } = tailscalePeerAllowed(peer)
     if (!ok) return null
@@ -324,6 +366,7 @@ if (!selftest) {
   console.log(`\nserving ${listRemoteSessions().length} registered session(s)`)
   console.log(`listening on https://127.0.0.1:${PORT} — Ctrl-C to stop\n`)
   process.on('SIGINT', async () => {
+    stopAgents()
     await stopBridge()
     process.exit(0)
   })
