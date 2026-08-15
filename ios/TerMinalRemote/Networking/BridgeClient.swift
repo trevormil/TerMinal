@@ -348,6 +348,7 @@ actor BridgeClient {
     func setGlobalHook(install: Bool) async throws -> GlobalHookResult {
         let data = try await post("v1/hooks/global", body: ["install": install])
         return try JSONDecoder().decode(GlobalHookResult.self, from: data)
+    }
 
     /// The spawn request body. Split out so the wire contract is unit-testable
     /// without a Mac on the other end: the Mac reads a MISSING key as "use the
