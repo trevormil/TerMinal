@@ -139,17 +139,27 @@ actor BridgeClient {
         return data
     }
 
-    func resolveHitl(id: String, resolved: Bool) async throws {
-        try await post("v1/hitl/\(id)", body: ["resolved": resolved])
+    /// `hostId` is the host the ITEM came from (nil ⇒ the Mac's own inbox). The
+    /// Mac routes the write there; without it a host item is resolved against a
+    /// file that has never seen its id, which 404s.
+    func resolveHitl(id: String, resolved: Bool, hostId: String? = nil) async throws {
+        struct Body: Encodable {
+            let resolved: Bool
+            /// Omitted when nil — the Mac reads a missing key as "local".
+            let hostId: String?
+        }
+        try await post("v1/hitl/\(id)", body: Body(resolved: resolved, hostId: hostId))
     }
 
-    /// Mark inbox items read (viewed) — or unread again with read=false.
-    func markHitlRead(ids: [String], read: Bool = true) async throws {
+    /// Mark inbox items read (viewed) — or unread again with read=false. Every
+    /// id in one call must belong to the SAME host — see `InboxCategories.byHost`.
+    func markHitlRead(ids: [String], read: Bool = true, hostId: String? = nil) async throws {
         struct Body: Encodable {
             let ids: [String]
             let read: Bool
+            let hostId: String?
         }
-        try await post("v1/hitl/read", body: Body(ids: ids, read: read))
+        try await post("v1/hitl/read", body: Body(ids: ids, read: read, hostId: hostId))
     }
 
     /// The session's recent raw terminal output — the read-only peek. The Mac

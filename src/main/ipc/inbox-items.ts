@@ -27,6 +27,7 @@ import {
 } from '../hitl'
 import { collectRemoteHitl } from '../remote-runs'
 import { remoteHitl, type RemoteSessionRef } from '../remote'
+import { createInboxWrites } from '../inbox-writes'
 
 export type InboxItemsIpcDeps = {
   remoteFromHostId(hostId: string, cwd?: string): RemoteSessionRef | null
@@ -47,35 +48,19 @@ export function registerInboxItemsIpc(deps: InboxItemsIpcDeps): void {
     })
   }
 
-  // Resolve/remove route to the item's host when it came from the remote fan-out
-  // (#14) — resolving a host block on the Mac must write on the host that owns it,
-  // not locally. No hostId → local, as before.
-  const resolveItem = (id: string, resolved?: boolean, hostId?: string) => {
-    if (hostId) {
-      const ref = deps.remoteFromHostId(hostId)
-      if (ref) return remoteHitl.resolve(ref, id, resolved ?? true).catch(() => false)
-    }
-    return resolveHitl(id, resolved ?? true)
-  }
-
-  const removeItem = (id: string, hostId?: string) => {
-    if (hostId) {
-      const ref = deps.remoteFromHostId(hostId)
-      if (ref) return remoteHitl.remove(ref, id).catch(() => false)
-    }
-    return removeHitl(id)
-  }
-
-  // Mark-read routes to the owning host like resolve/remove (#14) — a remote
-  // item's readAt must persist where the item lives, or the 15s remote fan-in
-  // flips it back to unread. No hostId → local, as before.
-  const markItemsRead = (ids: string[], hostId?: string, read = true) => {
-    if (hostId) {
-      const ref = deps.remoteFromHostId(hostId)
-      if (ref) return remoteHitl.markRead(ref, ids, read).catch(() => 0)
-    }
-    return markHitlRead(ids, read)
-  }
+  // Resolve/remove/mark-read route to the item's host when it came from the
+  // remote fan-out (#14). The routing itself lives in inbox-writes.ts, so the
+  // phone bridge writes through the SAME policy instead of a second copy of it.
+  const writes = createInboxWrites({
+    remoteFromHostId: deps.remoteFromHostId,
+    remote: remoteHitl,
+    local: { resolve: resolveHitl, remove: removeHitl, markRead: markHitlRead },
+  })
+  const resolveItem = (id: string, resolved?: boolean, hostId?: string) =>
+    writes.resolve(id, resolved ?? true, hostId)
+  const removeItem = (id: string, hostId?: string) => writes.remove(id, hostId)
+  const markItemsRead = (ids: string[], hostId?: string, read = true) =>
+    writes.markRead(ids, hostId, read)
 
   const markAllItemsRead = () => markAllHitlRead()
 

@@ -4,7 +4,9 @@ import { connect, constants, type ClientHttp2Session } from 'node:http2'
 import { join } from 'node:path'
 import { BRIDGE_DIR } from './identity'
 import { blockEffect } from '../effect-guard'
-import { inboxPaths, readInboxCounts } from '../../shared/inbox-store'
+import { inboxPaths, readInboxLive } from '../../shared/inbox-store'
+// Pure fs module (no events.ts) — safe here, unlike hitl.ts. See openHitlCount.
+import { dropSnoozed, snoozeFilePath } from '../hitl-snooze'
 
 // Push notifications, sent straight from this Mac to Apple.
 //
@@ -290,10 +292,21 @@ export async function sendPush(
  * It is now a read of the tiny counts index instead of a parse of the whole
  * inbox — this runs on every push, and used to pay for the entire history.
  */
-export function openHitlCount(): number {
+export function openHitlCount(
+  configDir: string = join(BRIDGE_DIR(), '..'),
+  now = Date.now(),
+): number {
   try {
-    // The badge nags about what you HAVEN'T SEEN, which is exactly the live set.
-    return readInboxCounts(inboxPaths(join(BRIDGE_DIR(), '..'))).unread
+    // The badge nags about what you HAVEN'T SEEN — the live set from the
+    // store — MINUS anything snoozed: dispatchAlert already suppresses a
+    // snoozed item's push (notify-channels.ts), so a badge that counted it
+    // would disagree with the alert that never arrived.
+    const live = readInboxLive(inboxPaths(configDir)).filter((i) => !i.readAt)
+    return dropSnoozed(
+      live.filter((i): i is typeof i & { id: string } => !!i.id),
+      snoozeFilePath(configDir),
+      now,
+    ).length
   } catch {
     return 0
   }

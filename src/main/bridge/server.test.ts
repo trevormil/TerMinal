@@ -440,6 +440,35 @@ describe('hitl + devices', () => {
     expect(seen.resolved).toBe(true)
   })
 
+  it('hands the item hostId to the write path, so a host item resolves on its host', async () => {
+    const seen: { args?: [string, boolean, string | undefined] } = {}
+    const h = await harness({
+      resolveHitl: (id, resolved, hostId) => {
+        seen.args = [id, resolved, hostId]
+        return Promise.resolve(true)
+      },
+    })
+    const res = await fetch(`${h.url}/v1/hitl/tm-9`, {
+      method: 'POST',
+      headers: { ...auth, 'content-type': 'application/json' },
+      body: JSON.stringify({ resolved: true, hostId: 'tm' }),
+    })
+    // Awaited: the host write is an SSH round-trip, and answering before it
+    // lands would report success for a write that failed.
+    expect(res.status).toBe(200)
+    expect(seen.args).toEqual(['tm-9', true, 'tm'])
+  })
+
+  it('404s when the host write fails, rather than claiming success', async () => {
+    const h = await harness({ resolveHitl: () => Promise.resolve(false) })
+    const res = await fetch(`${h.url}/v1/hitl/tm-9`, {
+      method: 'POST',
+      headers: { ...auth, 'content-type': 'application/json' },
+      body: JSON.stringify({ hostId: 'tm' }),
+    })
+    expect(res.status).toBe(404)
+  })
+
   it('registers a push token, defaulting to the sandbox environment', async () => {
     const seen: { args?: [string, string] } = {}
     const h = await harness({
@@ -696,6 +725,23 @@ describe('inbox read-state', () => {
       [['a'], false],
       [['b'], true],
     ])
+  })
+
+  it('routes mark-read to the host that owns the items', async () => {
+    const seen: [string[], boolean | undefined, string | undefined][] = []
+    const h = await harness({
+      markHitlRead: (ids, read, hostId) => {
+        seen.push([ids, read, hostId])
+        return Promise.resolve(ids.length)
+      },
+    })
+    const res = await fetch(`${h.url}/v1/hitl/read`, {
+      method: 'POST',
+      headers: { ...auth, 'content-type': 'application/json' },
+      body: JSON.stringify({ ids: ['tm-1'], hostId: 'tm' }),
+    })
+    expect((await res.json()).marked).toBe(1)
+    expect(seen).toEqual([[['tm-1'], true, 'tm']])
   })
 
   it('501s when read-state is unavailable, and requires auth', async () => {

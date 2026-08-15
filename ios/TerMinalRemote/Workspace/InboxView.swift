@@ -54,12 +54,17 @@ final class InboxViewModel {
     func refresh() async { await feed.refresh() }
 
     /// Mark read — optimistic locally, persisted + badge-synced in the background.
+    ///
+    /// One request per owning host: a host item written locally on the Mac is
+    /// reverted by its next fan-in, so the read would silently come undone.
     @MainActor
     func markRead(_ items: [HitlItem]) {
-        let ids = items.filter(\.isUnread).map(\.id)
-        guard !ids.isEmpty else { return }
-        feed.markHitlRead(ids: ids)
-        Task { try? await client.markHitlRead(ids: ids) }
+        let unread = items.filter(\.isUnread)
+        guard !unread.isEmpty else { return }
+        feed.markHitlRead(ids: unread.map(\.id))
+        for (hostId, ids) in InboxCategories.byHost(unread) {
+            Task { try? await client.markHitlRead(ids: ids, hostId: hostId) }
+        }
     }
 
     /// Back on the unread pile — email "keep this on my plate".
@@ -67,7 +72,7 @@ final class InboxViewModel {
     func markUnread(_ item: HitlItem) {
         guard !item.isUnread else { return }
         feed.markHitlRead(ids: [item.id], read: false)
-        Task { try? await client.markHitlRead(ids: [item.id], read: false) }
+        Task { try? await client.markHitlRead(ids: [item.id], read: false, hostId: item.hostId) }
     }
 
     /// Reads what is ON SCREEN, not the whole inbox. The scoping decision lives
@@ -253,6 +258,17 @@ private struct InboxRow: View {
                         .foregroundStyle(item.isUnread ? GT.text : GT.textMuted)
                         .lineLimit(1)
                     HStack(spacing: 5) {
+                        // Which machine is blocked, as a chip — the Mac used to
+                        // glue it into `repo`, which read as a repo named "tm · x".
+                        if let host = item.hostLabel, !host.isEmpty {
+                            Text(host)
+                                .font(GT.sans(9, .semibold))
+                                .foregroundStyle(GT.accentLight)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1)
+                                .background(GT.accentLight.opacity(0.12))
+                                .clipShape(Capsule())
+                        }
                         Text(item.source).font(GT.mono(10)).foregroundStyle(GT.textFaint)
                         if let repo = item.repo, !repo.isEmpty {
                             Text("· \(repo)").font(GT.mono(10)).foregroundStyle(GT.textFaint)
@@ -293,6 +309,9 @@ private struct InboxDetailView: View {
                     Text(inlineMarkdown(item.title)).font(GT.sans(18, .semibold)).foregroundStyle(GT.text)
                     HStack(spacing: 6) {
                         SeverityTag(severity: item.severity)
+                        if let host = item.hostLabel, !host.isEmpty {
+                            Text(host).font(GT.mono(11)).foregroundStyle(GT.accentLight)
+                        }
                         Text(item.source).font(GT.mono(11)).foregroundStyle(GT.textFaint)
                         if let repo = item.repo, !repo.isEmpty {
                             Text("· \(repo)").font(GT.mono(11)).foregroundStyle(GT.textFaint)

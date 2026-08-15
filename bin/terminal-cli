@@ -1789,6 +1789,28 @@ import {
 } from "fs";
 import { basename as basename4, join as join11 } from "path";
 import { randomUUID as randomUUID5 } from "crypto";
+
+// src/shared/remote-heartbeat.ts
+var DEFAULT_IDLE_SLEEP_MS = 6 * 60 * 60 * 1000;
+function heartbeatDecision(input) {
+  const threshold = input.idleSleepMs && input.idleSleepMs > 0 ? input.idleSleepMs : DEFAULT_IDLE_SLEEP_MS;
+  if (input.wakeable === false)
+    return "park";
+  const idle = Math.max(0, input.now - input.lastActivityAt);
+  return idle >= threshold ? "sleep" : "park";
+}
+function idleSleepMsFromEnv(raw) {
+  if (raw === undefined || raw === "")
+    return;
+  if (raw === "off")
+    return Number.POSITIVE_INFINITY;
+  const secs = Number(raw);
+  if (!Number.isFinite(secs) || secs <= 0)
+    return;
+  return secs * 1000;
+}
+
+// src/cli/remote.ts
 var remoteMeta = (id) => join11(REMOTE_DIR(), `${id}.json`);
 var remoteLog = (id) => join11(REMOTE_DIR(), `${id}.jsonl`);
 var validRemoteId = (id) => typeof id === "string" && /^[\w-]{1,64}$/.test(id);
@@ -1891,10 +1913,15 @@ function takeRemoteReplies(id) {
 ${paths}` : paths;
   });
 }
+function lastActivityAt(session) {
+  const msgs = remoteMessages(session.id);
+  const last = msgs.length ? msgs[msgs.length - 1].at : 0;
+  return Math.max(last, session.registeredAt || 0);
+}
 function waitForReplies(sessionId, timeoutSec) {
   const parked = readRemote(sessionId);
-  if (parked && parked.status === "working")
-    writeRemote({ ...parked, status: "idle", lastSeenAt: Date.now() });
+  if (parked && (parked.status === "working" || parked.dormantAt))
+    writeRemote({ ...parked, status: "idle", dormantAt: undefined, lastSeenAt: Date.now() });
   const deadline = Date.now() + timeoutSec * 1000;
   for (;; ) {
     const session = readRemote(sessionId);
@@ -1907,8 +1934,19 @@ function waitForReplies(sessionId, timeoutSec) {
 `));
       return;
     }
-    if (Date.now() > deadline)
-      process.exit(3);
+    if (Date.now() > deadline) {
+      const decision = heartbeatDecision({
+        now: Date.now(),
+        lastActivityAt: lastActivityAt(session),
+        idleSleepMs: idleSleepMsFromEnv(process.env.TERMINAL_REMOTE_IDLE_SLEEP),
+        wakeable: !!(session.agentSessionId || session.cwd)
+      });
+      if (decision === "park")
+        process.exit(3);
+      writeRemote({ ...session, dormantAt: Date.now(), lastSeenAt: Date.now() });
+      remoteAppend(sessionId, "agent", "Sleeping after a long idle \u2014 no heartbeats while nothing is happening. " + "Send a message and I pick straight up where we left off.", []);
+      return;
+    }
     execSync2("sleep 2");
   }
 }

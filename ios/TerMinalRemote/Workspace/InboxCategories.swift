@@ -169,4 +169,15 @@ enum InboxCategories {
     static func bulkReadTargets(_ items: [HitlItem], _ selected: String) -> [HitlItem] {
         filter(items, selected).filter(\.isUnread)
     }
+
+    /// Split a bulk write by the host that OWNS each item.
+    ///
+    /// The Mac routes an inbox write to the machine the item lives on, and one
+    /// request carries one hostId — so "Read all" over a list mixing local and
+    /// host items is several requests, not one. Sending the mixed set with no
+    /// host would write them all locally: the host items' ids are not in the
+    /// Mac's file, and the next fan-in would flip them back to unread anyway.
+    static func byHost(_ items: [HitlItem]) -> [String?: [String]] {
+        Dictionary(grouping: items, by: \.hostId).mapValues { $0.map(\.id) }
+    }
 }
