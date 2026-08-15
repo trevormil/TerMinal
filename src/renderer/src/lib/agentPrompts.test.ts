@@ -63,14 +63,4 @@ describe('ticketImplementationPrompt', () => {
   test('tells the agent to record findings back onto the ticket', () => {
     expect(ticketImplementationPrompt(ticket())).toContain('comment_ticket')
   })
-
-  // Obsidian tickets used to fall through to the "local backlog" provider
-  // line, sending the agent to a $TERMINAL_BACKLOG_DIR path that doesn't
-  // exist for a vault-backed repo.
-  test('an obsidian ticket points at the vault, not the local backlog', () => {
-    const p = ticketImplementationPrompt(ticket({ provider: 'obsidian' }))
-    expect(p).toContain('$OBSIDIAN_VAULT_PATH')
-    expect(p).toContain('$OBSIDIAN_TICKETS_DIR')
-    expect(p).not.toContain('$TERMINAL_BACKLOG_DIR markdown ticket')
-  })
 })

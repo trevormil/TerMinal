@@ -1,5 +1,11 @@
 import { test, expect, describe } from 'bun:test'
-import { collectRemoteHitl, collectRemoteRuns, type RemoteRunHost } from './remote-runs'
+import {
+  boundedRemoteLog,
+  collectRemoteHitl,
+  collectRemoteRuns,
+  REMOTE_FANOUT_TIMEOUT_MS,
+  type RemoteRunHost,
+} from './remote-runs'
 import type { UnifiedRun } from './cron-runs'
 
 const run = (id: string): UnifiedRun => ({
@@ -93,5 +99,26 @@ describe('collectRemoteHitl', () => {
     expect(items).toHaveLength(1)
     expect(items[0].hostId).toBe('alpha')
     expect(errors[0].error).toMatch(/timed out/i)
+  })
+})
+
+describe('boundedRemoteLog', () => {
+  test('returns the log when the host answers in time', async () => {
+    expect(await boundedRemoteLog(() => Promise.resolve('log text'), 'tm', 50)).toBe('log text')
+  })
+
+  test('gives up on a host that never answers, instead of hanging', async () => {
+    const started = Date.now()
+    const forever = new Promise<string>(() => {})
+    expect(await boundedRemoteLog(() => forever, 'tm', 20)).toBe('')
+    expect(Date.now() - started).toBeLessThan(1000)
+  })
+
+  test('a rejected read is an empty log, not a thrown request', async () => {
+    expect(await boundedRemoteLog(() => Promise.reject(new Error('ssh down')), 'tm', 50)).toBe('')
+  })
+
+  test('defaults to the shared fan-out bound', async () => {
+    expect(REMOTE_FANOUT_TIMEOUT_MS).toBe(8000)
   })
 })

@@ -233,7 +233,13 @@ export type MonitorSaveResult = {
 
 /** Which layer a failing probe failed at — re-exported from the shared flap logic. */
 import type { FailureCategory as MonitorFailureCategory } from '../../../shared/monitor-flap'
+// The Inbox's storage shapes are declared once, next to the store that writes
+// them, so the renderer cannot drift from what main actually returns.
+import type { InboxArchivePage, InboxCounts } from '../../../shared/inbox-store'
+export type { InboxArchivePage, InboxCounts }
 export type { FailureCategory as MonitorFailureCategory } from '../../../shared/monitor-flap'
+import type { ActivityCursor, ActivityPage } from '../../../shared/activity-log'
+export type { ActivityCursor, ActivityPage } from '../../../shared/activity-log'
 /** Daemon verdict on whether THIS machine has connectivity. */
 export type MonitorConnectivity = { offline: boolean; since?: number }
 export type MonitorStatusState = {
@@ -379,12 +385,6 @@ export type GtApi = {
   scaffoldProject: (
     name: string,
     parentDir?: string,
-    ticketProvider?: {
-      kind: 'local' | 'obsidian'
-      vaultLocation?: 'in-repo' | 'sibling' | 'existing'
-      vaultPath?: string
-      vaultName?: string
-    },
   ) => Promise<{ ok: boolean; path?: string; error?: string }>
   remoteDirs: (hostId: string, path?: string) => Promise<RemoteDirList>
   remoteScaffoldProject: (
@@ -673,6 +673,8 @@ export type GtApi = {
     remove: (id: string, hostId?: string) => Promise<boolean>
     markRead: (ids: string[], hostId?: string, read?: boolean) => Promise<number>
     markAllRead: () => Promise<number>
+    counts: () => Promise<InboxCounts>
+    archive: (cursor?: string | null, limit?: number) => Promise<InboxArchivePage>
   }
   agentInsights: {
     scorecard: (agentId: string) => Promise<AgentScorecard | null>
@@ -680,7 +682,9 @@ export type GtApi = {
     setDisabled: (id: string, disabled: boolean, reason?: string) => Promise<DisabledEntry[]>
   }
   activity: {
-    list: () => Promise<ActivityEvent[]>
+    /** One page of the feed, newest first. Pass the previous page's `cursor` for
+     *  the next (older) page; a null cursor back means there is no more. */
+    page: (cursor: ActivityCursor | null, limit?: number) => Promise<ActivityPage>
     /** Count of events newer than `since` with kind in `kinds` — badge polling. */
     unseenCount: (since: number, kinds: string[]) => Promise<number>
     clear: () => Promise<void>
@@ -727,7 +731,6 @@ export type GtApi = {
     providerSave: (cfg: RepoTicketsConfig) => Promise<RepoTicketsConfig | { error: string }>
     providerTest: (cfg: RepoTicketsConfig, smoke?: boolean) => Promise<TicketProviderTestResult>
     linearTeams: (cfg?: RepoTicketsConfig) => Promise<{ id: string; name: string; key?: string }[]>
-    openInObsidian: (slug: string) => Promise<boolean>
     recommendAgent: (input: {
       title?: string
       type?: string
@@ -914,6 +917,12 @@ export type GtApi = {
     remove: (id: string, hostId?: string) => Promise<boolean>
     markRead: (ids: string[], hostId?: string, read?: boolean) => Promise<number>
     markAllRead: () => Promise<number>
+    /** Live + archived totals from the small on-disk index — what a badge
+     *  should poll instead of counting a list it then throws away. */
+    counts: () => Promise<InboxCounts>
+    /** One page of retired items, newest first. Hand `cursor` back from the
+     *  previous page; `done` means the history is exhausted. */
+    archive: (cursor?: string | null, limit?: number) => Promise<InboxArchivePage>
     snoozes: () => Promise<Record<string, number>>
     snooze: (id: string, until: number) => Promise<Record<string, number>>
     unsnooze: (id: string) => Promise<Record<string, number>>

@@ -1516,6 +1516,17 @@ function runStart(root, input) {
 function schedulesFile() {
   return path.join(cfg(), 'schedules.json')
 }
+// hitl.json is the LIVE half of the inbox since the hot/archive split
+// (src/shared/inbox-store.ts): retired items live in hitl-archive.jsonl, which
+// this script deliberately knows nothing about.
+//
+// That is correct rather than a gap. Every operation here is about items that
+// still want a human — list open blockers, resolve one, remove one — and all of
+// those are live by definition. The script keeps taking the SAME advisory lock
+// on hitl.json as the store, so a resolve it writes cannot race a filing. The
+// only difference is that an item it marks read stays in the hot file until the
+// host's own terminal-cron retention pass flushes it to the archive, which is a
+// delay in where an item is filed, never a lost item.
 function hitlFile() {
   return path.join(cfg(), 'hitl.json')
 }

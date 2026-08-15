@@ -1,6 +1,16 @@
 import { existsSync } from 'node:fs'
 import { normalizeCategory } from '../shared/inbox-categories'
-import { readJsonState, updateJsonState } from './atomic-write'
+import {
+  findInboxItem,
+  inboxCounts,
+  inboxPathsFor,
+  readInboxArchive,
+  readInboxLive,
+  updateInbox,
+  type InboxArchivePage,
+  type InboxCounts,
+  type InboxPaths,
+} from '../shared/inbox-store'
 import { configPath } from './config-dir'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
@@ -37,33 +47,64 @@ export { itemSeverity, type HitlSeverity } from './hitl-severity'
 import type { HitlItem } from '../shared/types/activity'
 export type { HitlItem, HitlSource } from '../shared/types/activity'
 
+/** Every inbox file, derived from the one path seam above. */
+export const inboxPaths = (): InboxPaths => inboxPathsFor(hitlFile())
+
+/**
+ * The LIVE inbox — unread, unresolved. Not the whole history.
+ *
+ * It used to be the whole history, and that is what made every surface O(all
+ * items ever filed). Retired items live in the append-only archive and are
+ * reached through `readHitlArchive`, a page at a time.
+ */
 export function readHitl(): HitlItem[] {
-  return readJsonState<HitlItem[]>(hitlFile(), () => [], { accept: Array.isArray }).value
+  try {
+    return readInboxLive(inboxPaths())
+  } catch {
+    // Unchanged from the pre-split reader: a torn inbox degrades this read to
+    // empty rather than throwing through the IPC/bridge/Telegram handlers that
+    // call it. The next WRITE is what quarantines the file and recovers.
+    return []
+  }
+}
+
+/** One page of retired items, newest first. */
+export function readHitlArchive(cursor?: string | null, limit?: number): InboxArchivePage {
+  return readInboxArchive(inboxPaths(), { cursor, limit })
+}
+
+/** Live + archived counts from the small index file — the badge fast path. */
+export function hitlCounts(): InboxCounts {
+  return inboxCounts(inboxPaths())
 }
 
 /**
  * Locked read-modify-write over the inbox.
  *
- * Three independent processes file into hitl.json (the app, terminal-cron,
- * terminal-cli). A cron-filed blocker overlapping a resolve used to silently
- * drop one of the two writes, so `mutate` re-reads inside the lock and every
- * mutation below is expressed as a transform of the CURRENT list, never of a
- * snapshot the caller read earlier. Returning undefined means "no change".
+ * Four independent processes file into hitl.json (the app, terminal-cron,
+ * terminal-cli, the MCP server). A cron-filed blocker overlapping a resolve used
+ * to silently drop one of the two writes, so `mutate` re-reads inside the lock
+ * and every mutation below is expressed as a transform of the CURRENT list,
+ * never of a snapshot the caller read earlier. Returning undefined means "no
+ * change".
  *
- * Throws CorruptStateError if the file is unreadable — refusing to file is far
- * better than replacing the whole inbox with one item.
+ * `include` names archived ids the transform needs to see — reopening or
+ * removing an item that has already been retired.
+ *
+ * Throws if the file is unreadable — refusing to file is far better than
+ * replacing the whole inbox with one item.
  */
-function mutate(fn: (list: HitlItem[]) => HitlItem[] | undefined): void {
-  updateJsonState<HitlItem[]>(hitlFile(), () => [], fn, { accept: Array.isArray })
+function mutate(fn: (list: HitlItem[]) => HitlItem[] | undefined, include?: string[]): void {
+  updateInbox(inboxPaths(), fn, include ? { include } : {})
 }
 
 export function openCount(): number {
-  return readHitl().filter((h) => h.status === 'open').length
+  return hitlCounts().live
 }
 
 /** Open items you haven't seen yet — the badge that should actually nag you. */
 export function unreadCount(): number {
-  return readHitl().filter((h) => h.status === 'open' && !h.readAt).length
+  return hitlCounts().unread
 }
 
 /** Read = readAt is set OR the item was resolved (a resolved item has been
@@ -79,28 +120,31 @@ export function isHitlRead(h: { readAt?: number; status?: string }): boolean {
 export function markHitlRead(ids: string[], read = true): number {
   const set = new Set(ids)
   let changed = 0
-  mutate((list) => {
-    changed = 0
-    const next = list.map((h) => {
-      if (!set.has(h.id)) return h
-      if (read ? isHitlRead(h) : !isHitlRead(h)) return h
-      changed++
-      return read
-        ? { ...h, readAt: Date.now() }
-        : { ...h, readAt: undefined, status: 'open' as const, resolvedAt: undefined }
-    })
-    return changed ? next : undefined
-  })
+  mutate(
+    (list) => {
+      changed = 0
+      const next = list.map((h) => {
+        if (!set.has(h.id)) return h
+        if (read ? isHitlRead(h) : !isHitlRead(h)) return h
+        changed++
+        return read
+          ? { ...h, readAt: Date.now() }
+          : { ...h, readAt: undefined, status: 'open' as const, resolvedAt: undefined }
+      })
+      return changed ? next : undefined
+    },
+    // Marking UNREAD is the one gesture that reaches backwards: the item being
+    // reopened has by definition already left the live set. Marking read never
+    // needs the archive, and asking for it would make every read scan history.
+    read ? undefined : ids,
+  )
   return changed
 }
 
-/** Mark every unread item read (open or resolved) — the "mark all read" sweep. */
+/** Mark every live item read — the "mark all read" sweep. Live means unread, so
+ *  this is the whole hot file and never touches the archive. */
 export function markAllHitlRead(): number {
-  return markHitlRead(
-    readHitl()
-      .filter((h) => !h.readAt)
-      .map((h) => h.id),
-  )
+  return markHitlRead(readHitl().map((h) => h.id))
 }
 
 // HITL usually means "I need attention", but deterministic completion-hook
@@ -272,7 +316,9 @@ function stampSlackRef(id: string, ref: { channelId: string; ts: string }): void
 }
 
 export function resolveHitl(id: string, resolved = true): boolean {
-  const item = readHitl().find((h) => h.id === id)
+  // Live first, then history: reopening asks about an item that has already
+  // been retired, so a live-only lookup would answer "no such item".
+  const item = findInboxItem(inboxPaths(), id)
   if (!item) return false
   const changed = markHitlRead([id], resolved) > 0
   if (changed && resolved) {
@@ -300,10 +346,14 @@ export function resolveHitl(id: string, resolved = true): boolean {
 
 export function removeHitl(id: string): boolean {
   let item: HitlItem | undefined
-  mutate((list) => {
-    item = list.find((h) => h.id === id)
-    return item ? list.filter((h) => h.id !== id) : undefined
-  })
+  // Removal must reach the archive too — most of what you delete is history.
+  mutate(
+    (list) => {
+      item = list.find((h) => h.id === id)
+      return item ? list.filter((h) => h.id !== id) : undefined
+    },
+    [id],
+  )
   const removed = !!item
   if (removed && item) {
     emitActivity(

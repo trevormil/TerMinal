@@ -53,6 +53,10 @@ export type RemoteSession = {
   registeredAt?: number
   lastSeenAt: number
   deliveredUpTo?: number
+  /** Set when a long-idle phone session stopped parking (see
+   *  src/shared/remote-heartbeat.ts). While set, the app wakes it by writing the
+   *  next phone message into its pty; the Stop hook is no longer listening. */
+  dormantAt?: number
 }
 
 export type RemoteMessage = { at: number; from: string; text: string; images?: string[] }

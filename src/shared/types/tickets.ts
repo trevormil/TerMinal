@@ -60,7 +60,7 @@ export type Ticket = {
   body: string
   /** Timestamped log, oldest first. Written by humans and by agent runs. */
   comments: TicketComment[]
-  provider?: 'local' | 'github' | 'linear' | 'obsidian'
+  provider?: 'local' | 'github' | 'linear'
   providerLabel?: string
   /** Linear-native fields — set only when provider === 'linear'. */
   linear?: LinearMeta
@@ -105,18 +105,7 @@ export type NewTicket = {
 /** A comment as callers hand it in — the timestamp is stamped at write time. */
 export type NewTicketComment = Omit<TicketComment, 'at'> & { at?: string }
 
-export type TicketProviderKind = 'local' | 'github' | 'linear' | 'obsidian' | 'webview'
-
-// Obsidian: a per-repo dedicated vault (a filesystem folder). Tickets are the
-// same NNNN-slug.md markdown as the local provider, stored in the vault's
-// `ticketsSubdir` (default `tickets/`). `vaultName` is only for obsidian:// deep
-// links (defaults to the vault folder's basename). The path is a local
-// filesystem path — no secret, stored plainly in the gitignored tickets.json.
-export type ObsidianTicketConfig = {
-  vaultPath: string
-  ticketsSubdir?: string
-  vaultName?: string
-}
+export type TicketProviderKind = 'local' | 'github' | 'linear' | 'webview'
 
 // A repo whose tickets live ENTIRELY in some external platform's own web UI —
 // no schema mapping, no CRUD, just an embedded <webview> as the Tickets tab
@@ -197,7 +186,6 @@ export type RepoTicketsConfig = {
   provider?: TicketProviderKind
   github?: GithubTicketConfig
   linear?: LinearTicketConfig
-  obsidian?: ObsidianTicketConfig
   webview?: WebviewTicketConfig
   views?: TicketView[]
   savedViews?: SavedTicketView[]

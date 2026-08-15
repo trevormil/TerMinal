@@ -53,7 +53,11 @@ struct WsSchedule: Codable, Identifiable, Hashable {
     let title: String
     let describe: String
     let nextRun: Double?
+    /// The user's switch AND the circuit breaker the runner trips — a schedule
+    /// the host gave up on arrives disabled, not healthy.
     let enabled: Bool
+    /// Why the breaker tripped (host-labelled). Absent for a plain manual pause.
+    let disabledReason: String?
 }
 
 // ---- drill-down detail (the full readable content behind a row) ----------
@@ -161,6 +165,8 @@ struct WsScheduleDetail: Codable, Hashable {
     let prompt: String
     let host: String?
     let runtime: String?
+    /// Why the breaker tripped (host-labelled). See WsSchedule.
+    let disabledReason: String?
 }
 
 /// Big text (diff / log), plus whether the Mac cut it short for the wire.

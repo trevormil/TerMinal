@@ -61,6 +61,16 @@ export type BridgeHitl = {
   status?: string
   /** When first seen; absent ⇒ unread. */
   readAt?: number
+  /** Free-form folder path (`Monitoring/Certs`), named by whoever filed the
+   *  item. The phone's category sidebar keys off this alone: without it every
+   *  item buckets to Uncategorized and the picker never renders at all. */
+  category?: string
+  /** The remote host that OWNS this item; absent ⇒ this Mac. The phone must
+   *  hand it back on a write, or the write lands on the wrong machine — and a
+   *  host item's id does not exist in the Mac's own hitl.json at all. */
+  hostId?: string
+  /** That host's display name, as its own field — never glued into `repo`. */
+  hostLabel?: string
 }
 
 export type BridgeDeps = {
@@ -89,10 +99,13 @@ export type BridgeDeps = {
   monitors?(): unknown[]
   /** The global activity feed — recent events across every repo/session. */
   activity?(): unknown[]
-  /** Resolve one HITL item through the app's existing write path. */
-  resolveHitl?(id: string, resolved: boolean): boolean
-  /** Mark HITL items read (viewed on the phone). */
-  markHitlRead?(ids: string[], read?: boolean): number
+  /** Resolve one HITL item through the app's existing write path. `hostId` (as
+   *  served on the item) routes the write to the host that owns it — async,
+   *  because that is an SSH round-trip. */
+  resolveHitl?(id: string, resolved: boolean, hostId?: string): boolean | Promise<boolean>
+  /** Mark HITL items read (viewed on the phone). Host-routed like resolve —
+   *  a host item's readAt written locally is flipped back by the next fan-in. */
+  markHitlRead?(ids: string[], read?: boolean, hostId?: string): number | Promise<number>
   /** Remember a phone's APNs token so alerts can reach it. */
   registerDevice?(token: string, environment: 'sandbox' | 'production'): void
 
@@ -108,6 +121,17 @@ export type BridgeDeps = {
     | { token: string; fp: string; name: string }
     | null
     | Promise<{ token: string; fp: string; name: string } | null>
+
+  /**
+   * The tailnet's machines, so the phone can pick which Mac it drives. Injected
+   * like tailscalePair — the bridge module itself shells out to nothing.
+   */
+  tailnet?(): BridgeTailnet | Promise<BridgeTailnet>
+
+  /** Is the never-die Stop hook registered in the Mac's ~/.claude/settings.json? */
+  globalHookStatus?(): BridgeGlobalHook
+  /** Register (or remove) it. Reports exactly what was written. */
+  setGlobalHook?(install: boolean): BridgeGlobalHookResult
 
   /** Repos the phone may start a session in — also the workspace list. */
   repos?(): BridgeRepo[]
@@ -152,6 +176,47 @@ export type BridgeDeps = {
    */
   spawn?(input: SpawnInput): { id: string } | { error: string }
 }
+
+/** One machine on the tailnet, as the phone's fleet picker lists it. */
+export type BridgeTailnetMachine = {
+  name: string
+  /** MagicDNS name, no trailing dot — what the phone pairs against. */
+  dnsName: string
+  os: string
+  online: boolean
+  /** The Mac answering this request; it is already the selected one. */
+  self: boolean
+}
+
+/**
+ * `unavailable` is an ANSWER, not a failure: Tailscale stopped, signed out, or
+ * not installed is an ordinary state the phone renders as a sentence. Making it
+ * an HTTP error would leave the phone showing "can't reach TerMinal" for a Mac
+ * it is plainly talking to.
+ */
+export type BridgeTailnet =
+  { status: 'ok'; machines: BridgeTailnetMachine[] } | { status: 'unavailable'; reason: string }
+
+/** State of the global never-die Stop hook on the Mac. */
+export type BridgeGlobalHook = {
+  installed: boolean
+  settingsPath: string
+  command: string
+  /** False when the tm plugin hasn't been installed on that Mac yet. */
+  commandExists: boolean
+}
+
+/** Outcome of an install/uninstall — `ok:false` is a reported result, not a 500. */
+export type BridgeGlobalHookResult =
+  | {
+      ok: true
+      changed: boolean
+      installed: boolean
+      settingsPath: string
+      command: string
+      message: string
+    }
+  | { ok: false; error: string }
 
 /** A repo the phone may start a session in. */
 export type BridgeRepo = {
@@ -213,8 +278,12 @@ export type BridgeSchedule = {
   id: string
   title: string
   describe: string
-  nextRun?: number
+  /** The user's switch AND the circuit breaker — a schedule the runner gave up
+   *  on is disabled here, or the phone renders a dead agent as healthy. */
   enabled: boolean
+  nextRun?: number
+  /** Why the breaker tripped (host-labelled), when it did. */
+  disabledReason?: string
 }
 
 // Drill-down payloads. The phone is a READER: these carry the full content
@@ -455,20 +524,28 @@ export function createBridgeHandler(
       }
       readBody(req)
         .then((raw) => {
-          const { ids, read } = (() => {
+          const { ids, read, hostId } = (() => {
             try {
-              const p = JSON.parse(raw || '{}') as { ids?: unknown; read?: unknown }
+              const p = JSON.parse(raw || '{}') as {
+                ids?: unknown
+                read?: unknown
+                hostId?: unknown
+              }
               return {
                 ids: Array.isArray(p.ids)
                   ? p.ids.filter((x): x is string => typeof x === 'string')
                   : [],
                 read: p.read !== false,
+                // The host the ITEM came from, as served on it. Absent ⇒ local.
+                hostId: typeof p.hostId === 'string' && p.hostId ? p.hostId : undefined,
               }
             } catch {
-              return { ids: [], read: true }
+              return { ids: [], read: true, hostId: undefined }
             }
           })()
-          json(res, 200, { marked: deps.markHitlRead!(ids, read) })
+          return Promise.resolve(deps.markHitlRead!(ids, read, hostId)).then((marked) =>
+            json(res, 200, { marked }),
+          )
         })
         .catch((e: Error) => json(res, 413, { error: e.message }))
       return
@@ -615,14 +692,19 @@ export function createBridgeHandler(
       readBody(req)
         .then((raw) => {
           let resolved = true
+          let hostId: string | undefined
           try {
-            const parsed = JSON.parse(raw || '{}') as { resolved?: unknown }
+            const parsed = JSON.parse(raw || '{}') as { resolved?: unknown; hostId?: unknown }
             if (typeof parsed.resolved === 'boolean') resolved = parsed.resolved
+            // The host the ITEM came from. Without it a host item's id is
+            // resolved against the Mac's own file, which has never seen it — a 404.
+            if (typeof parsed.hostId === 'string' && parsed.hostId) hostId = parsed.hostId
           } catch {
             /* an empty or malformed body means the default: resolved */
           }
-          const ok = deps.resolveHitl!(id, resolved)
-          json(res, ok ? 200 : 404, ok ? { ok: true } : { error: 'no such item' })
+          return Promise.resolve(deps.resolveHitl!(id, resolved, hostId)).then((ok) =>
+            json(res, ok ? 200 : 404, ok ? { ok: true } : { error: 'no such item' }),
+          )
         })
         .catch((e: Error) => json(res, 413, { error: e.message }))
       return
@@ -653,6 +735,58 @@ export function createBridgeHandler(
         })
         .catch((e: Error) => json(res, 413, { error: e.message }))
       return
+    }
+
+    // The fleet picker: every machine on this Mac's tailnet. Authenticated like
+    // everything else — an already-paired phone is asking which OTHER Mac to
+    // switch to, which sidesteps the bootstrap problem entirely.
+    if (req.method === 'GET' && url.pathname === '/v1/tailnet') {
+      if (!deps.tailnet) {
+        json(res, 501, { error: 'tailnet listing not available' })
+        return
+      }
+      Promise.resolve(deps.tailnet())
+        .then((fleet) => json(res, 200, fleet))
+        .catch((e: Error) => json(res, 500, { error: e.message }))
+      return
+    }
+
+    // The global never-die Stop hook. GET reports state; POST {install} writes.
+    // A refused write (no plugin on disk, unparseable settings.json) comes back
+    // 200 with ok:false and a sentence — the request succeeded, the operation
+    // did not, and the phone must be able to show WHY.
+    if (url.pathname === '/v1/hooks/global') {
+      if (req.method === 'GET') {
+        if (!deps.globalHookStatus) {
+          json(res, 501, { error: 'hook install not available' })
+          return
+        }
+        try {
+          json(res, 200, deps.globalHookStatus())
+        } catch (e) {
+          json(res, 500, { error: (e as Error).message })
+        }
+        return
+      }
+      if (req.method === 'POST') {
+        if (!deps.setGlobalHook) {
+          json(res, 501, { error: 'hook install not available' })
+          return
+        }
+        readBody(req)
+          .then((raw) => {
+            let install = true
+            try {
+              const parsed = JSON.parse(raw || '{}') as { install?: unknown }
+              if (typeof parsed.install === 'boolean') install = parsed.install
+            } catch {
+              /* an empty or malformed body means the default: install */
+            }
+            json(res, 200, deps.setGlobalHook!(install))
+          })
+          .catch((e: Error) => json(res, 413, { error: e.message }))
+        return
+      }
     }
 
     if (req.method === 'GET' && url.pathname === '/v1/repos') {

@@ -10,9 +10,6 @@
 # a remote host), and it is the ONE place a skill should ask.
 #
 #   dir="$(tm-state-dir reviews)"
-#
-# Obsidian-provider repos keep tickets in a vault: OBSIDIAN_TICKETS_DIR wins
-# for `backlog`, matching the app and terminal-cli.
 set -euo pipefail
 
 area="${1:-}"
@@ -28,16 +25,7 @@ case "$area" in
     ;;
 esac
 
-# 1. Obsidian vault owns tickets when configured. This must beat the generic
-#    env fast-path: the app injects BOTH the vault var and the sidecar vars
-#    into obsidian-provider sessions, and answering with the (empty) sidecar
-#    would hide the vault from every resolver-based lister.
-if [ "$area" = backlog ] && [ -n "${OBSIDIAN_TICKETS_DIR:-}" ]; then
-  printf '%s\n' "$OBSIDIAN_TICKETS_DIR"
-  exit 0
-fi
-
-# 2. Already resolved by the spawning app. Area dirs each carry their own env
+# 1. Already resolved by the spawning app. Area dirs each carry their own env
 #    var; the personal rels hang off TERMINAL_STATE_DIR.
 case "$area" in
   backlog | sessions | reviews | checks | reports)
@@ -57,7 +45,7 @@ if [ -n "$resolved" ]; then
   exit 0
 fi
 
-# 3. Derive it — same rule as src/main/repo-state.ts: key off the origin
+# 2. Derive it — same rule as src/main/repo-state.ts: key off the origin
 #    remote so the answer is stable across machines and worktrees, else hash
 #    the canonical repo root.
 root="$(git rev-parse --show-toplevel 2>/dev/null || true)"

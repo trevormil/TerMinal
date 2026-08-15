@@ -6,7 +6,7 @@ import { basename } from 'node:path'
 import { handle } from '../typed-ipc'
 import { emitActivity } from '../events'
 import { resolvedTemplateRepo } from '../settings'
-import { scaffoldProject, type ScaffoldTicketProvider } from '../scaffold'
+import { scaffoldProject } from '../scaffold'
 import { remoteDirs, remoteProject, type RemoteSessionRef } from '../remote'
 
 export type ProjectsIpcDeps = {
@@ -14,25 +14,22 @@ export type ProjectsIpcDeps = {
 }
 
 export function registerProjectsIpc(deps: ProjectsIpcDeps): void {
-  handle(
-    'project:scaffold',
-    (_e, name: string, parentDir?: string, ticketProvider?: ScaffoldTicketProvider) => {
-      const r = scaffoldProject(name, parentDir, ticketProvider)
-      emitActivity(
-        {
-          kind: r.ok ? 'task-complete' : 'error',
-          title: r.ok
-            ? `Project scaffolded · ${basename(r.path || name)}`
-            : `Project scaffold failed · ${name}`,
-          detail: r.ok ? r.path : r.error,
-          repo: r.ok && r.path ? basename(r.path) : undefined,
-          repoRoot: r.ok ? r.path : undefined,
-        },
-        { notify: !r.ok },
-      )
-      return r
-    },
-  )
+  handle('project:scaffold', (_e, name: string, parentDir?: string) => {
+    const r = scaffoldProject(name, parentDir)
+    emitActivity(
+      {
+        kind: r.ok ? 'task-complete' : 'error',
+        title: r.ok
+          ? `Project scaffolded · ${basename(r.path || name)}`
+          : `Project scaffold failed · ${name}`,
+        detail: r.ok ? r.path : r.error,
+        repo: r.ok && r.path ? basename(r.path) : undefined,
+        repoRoot: r.ok ? r.path : undefined,
+      },
+      { notify: !r.ok },
+    )
+    return r
+  })
   handle('remote:dirs', (_e, hostId: string, path?: string) => {
     const remote = deps.remoteFromHostId(hostId, path)
     if (!remote) return { cwd: path || '', parent: '', entries: [], error: 'remote host not found' }

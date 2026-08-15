@@ -1,11 +1,10 @@
 // Ticket IPC (ticket 0122 index.ts decomposition) — the Tickets tab's reads,
-// the per-repo provider config (local/Linear/Obsidian), and the two write paths
+// the per-repo provider config (local/GitHub/Linear/webview), and the two write paths
 // that emit into the Activity feed. Session context arrives via deps: the
 // active workspace daemon, the caller-scoped daemon that `tickets:spawn` needs
 // to dispatch a remote run, and the focused session id the activity events are
 // stamped with.
 
-import { shell } from 'electron'
 import { handle } from '../typed-ipc'
 import { emitActivity } from '../events'
 import { recommendTicketAgent } from '../backlog'
@@ -15,15 +14,13 @@ import {
   type NewTicketComment,
   readRepoTicketConfig,
   resolveHumanAuthor,
+  retiredProviderWarning,
   saveRepoTicketConfig,
-  scaffoldObsidianVault,
-  obsidianRepoDeepLink,
   testRepoTicketProvider,
   type RepoTicketsConfig,
 } from '../ticket-provider'
 import { runTicketSpawn, type Engine } from '../agents'
 import { remoteRuns, type RemoteSessionRef } from '../remote'
-import { isObsidianDeepLink } from '../../shared/url-safety'
 import { type WorkspaceDaemon } from '../workspace-daemon'
 
 export type TicketsIpcDeps = {
@@ -44,14 +41,24 @@ export function registerTicketsIpc(deps: TicketsIpcDeps): void {
   handle('tickets:provider-get', () => {
     const daemon = deps.activeDaemon()
     if (daemon.kind !== 'local') return { error: 'Ticket provider setup is local-only for now.' }
+    // A repo whose saved config names a retired provider degrades to the local
+    // backlog. Say so once, here, rather than letting the tab quietly show a
+    // different store than the one the config asks for.
+    const retired = retiredProviderWarning(daemon.repoRoot())
+    if (retired)
+      emitActivity({
+        kind: 'blocked',
+        ...retired,
+        repo: daemon.repoLabel(),
+        repoRoot: daemon.repoRoot(),
+        sessionId: deps.sessionId(),
+      })
     return readRepoTicketConfig(daemon.repoRoot())
   })
   handle('tickets:provider-save', (_e, cfg: RepoTicketsConfig) => {
     const daemon = deps.activeDaemon()
     if (daemon.kind !== 'local') return { error: 'Ticket provider setup is local-only for now.' }
     const saved = saveRepoTicketConfig(daemon.repoRoot(), cfg)
-    // Seed the vault's guide/board/template on save (idempotent, best-effort).
-    if (saved.provider === 'obsidian') scaffoldObsidianVault(saved.obsidian)
     emitActivity({
       kind: 'info',
       title: `Ticket provider · ${saved.provider || 'local'}`,
@@ -76,23 +83,6 @@ export function registerTicketsIpc(deps: TicketsIpcDeps): void {
     const daemon = deps.activeDaemon()
     if (daemon.kind !== 'local') return []
     return listLinearTeams(daemon.repoRoot(), cfg)
-  })
-  // Open a ticket in Obsidian via its obsidian:// deep link. No-op (returns false)
-  // when the repo isn't on the obsidian provider or the vault isn't configured.
-  handle('tickets:open-in-obsidian', (_e, slug: string) => {
-    const daemon = deps.activeDaemon()
-    if (daemon.kind !== 'local') return false
-    const link = obsidianRepoDeepLink(daemon.repoRoot(), slug)
-    if (!link) return false
-    // Deep links are minted from repo-controlled config (vault name + subdir), so
-    // validate the result is still an obsidian://open link before handing it to
-    // the OS — a custom-scheme sink is the whole reason url-safety.ts exists.
-    if (!isObsidianDeepLink(link)) {
-      console.error('[gt] refused non-obsidian deep link:', String(link).slice(0, 80))
-      return false
-    }
-    void shell.openExternal(link)
-    return true
   })
   handle('tickets:recommend-agent', (_e, input: TicketAgentRecommendationInput) =>
     recommendTicketAgent(input),

@@ -184,7 +184,6 @@ and no network.
 | `local` (default) | `.TerMinal/backlog/*.md` in the repo | full read/write, works offline |
 | `github` | GitHub Issues | needs `gh` (see §2); labels map to status/priority/type |
 | `linear` | Linear, via its MCP | needs the Linear MCP configured |
-| `obsidian` | a per-repo Obsidian vault | markdown tickets in a `tickets/` subfolder |
 | `webview` | entirely in some other board's web UI | read-only embed; the app writes nothing |
 
 Pick `webview` when a repo's tickets live somewhere TerMinal shouldn't touch — a

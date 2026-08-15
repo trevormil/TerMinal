@@ -110,11 +110,21 @@ struct ScheduleRow: View {
                     .foregroundStyle(s.enabled ? GT.accentLight : GT.textFaint)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(s.title).font(GT.sans(14, .medium)).foregroundStyle(GT.text).lineLimit(1)
-                    Text(s.describe).font(GT.mono(11)).foregroundStyle(GT.textFaint).lineLimit(1)
+                    // When the breaker tripped, its reason replaces the schedule
+                    // line: "every 15m" is not the useful fact about an agent
+                    // the runner has stopped running.
+                    if let reason = s.disabledReason, !reason.isEmpty {
+                        Text(reason).font(GT.mono(11)).foregroundStyle(GT.yellow).lineLimit(1)
+                    } else {
+                        Text(s.describe).font(GT.mono(11)).foregroundStyle(GT.textFaint)
+                            .lineLimit(1)
+                    }
                 }
                 Spacer(minLength: 4)
                 if !s.enabled {
-                    Text("Paused").font(GT.sans(10)).foregroundStyle(GT.textFaint)
+                    Text(s.disabledReason == nil ? "Paused" : "Tripped")
+                        .font(GT.sans(10))
+                        .foregroundStyle(s.disabledReason == nil ? GT.textFaint : GT.yellow)
                 } else if let next = s.nextRun {
                     Text(relativeTime(next)).font(GT.mono(10)).foregroundStyle(GT.textMuted)
                 }

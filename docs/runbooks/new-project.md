@@ -19,25 +19,14 @@ path must not already exist.
    and optionally pick a parent folder. The default parent is the configured
    projects directory; if that setting is blank, TerMinal falls back to the
    home directory.
-3. [RB-new-project#3] Pick a ticket provider for the new repo:
-   - **Local backlog** writes ticket markdown into the repo's `backlog/`.
-   - **Obsidian** writes ticket markdown into a private vault and stores the
-     per-machine pointer in `.TerMinal/tickets.json`.
-4. [RB-new-project#4] If you picked Obsidian, choose where the vault should
-   live:
-   - **Sibling** creates `<parent>/<name>-vault` next to the repo. This is the
-     default.
-   - **In repo** creates a gitignored `tickets-vault/` folder inside the repo.
-   - **Existing** points at an existing vault folder you select.
-5. [RB-new-project#5] Click **Create**. TerMinal copies the template, applies
-   ticket-provider config and gitignore rules, runs `git init` plus the first
-   commit, then opens a session in the new repo.
+3. [RB-new-project#3] Click **Create**. TerMinal copies the template, runs
+   `git init` plus the first commit, then opens a session in the new repo.
 
 If the target folder already exists, scaffolding fails before writing the new
 repo. Pick a new name or parent directory and retry.
 
-GitHub Issues and Linear are not offered during bootstrap. Configure them later
-from **Settings -> Tickets** after the repo exists.
+A new repo starts on the local backlog. Configure GitHub Issues, Linear, or a
+webview board later from **Settings -> Tickets** after the repo exists.
 
 ## Terminal
 

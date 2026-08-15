@@ -30,16 +30,9 @@ esac
 here="$(cd "$(dirname "$0")" && pwd)"
 emit() { [ -d "$1" ] && printf '%s\n' "$1" || true; }
 
-# The write target leads (the sidecar — or the Obsidian vault for backlog,
-# which tm-state-dir answers with before anything else).
+# The write target leads (the sidecar).
 sidecar="$("$here/tm-state-dir" "$area" 2>/dev/null || true)"
 [ -n "$sidecar" ] && emit "$sidecar"
-
-# An Obsidian vault OWNS tickets: its notes are the whole store, and merging a
-# stale in-repo backlog on top would resurrect tickets the vault no longer has.
-if [ "$area" = backlog ] && [ -n "${OBSIDIAN_TICKETS_DIR:-}" ]; then
-  exit 0
-fi
 
 root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 [ -n "$root" ] || exit 0

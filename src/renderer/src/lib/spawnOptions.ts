@@ -14,6 +14,18 @@ export const NO_PROMPT = 'none'
 export const BUILTIN_PROMPT_ID = 'builtin:terminal-agent'
 
 /**
+ * The picker's only state: ×1, no prompt. Nothing is remembered across visits
+ * or across spawns — this is also what the picker resets to right after each
+ * spawn action, so a second spawn in the same visit is just as explicit as the
+ * first.
+ */
+export const DEFAULT_SPAWN: { count: number; promptId: string; text: string } = {
+  count: 1,
+  promptId: NO_PROMPT,
+  text: '',
+}
+
+/**
  * The built-in "TerMinal agent" briefing. Engine-agnostic on purpose: it is
  * prefilled into whichever CLI the session runs, so it names no vendor and
  * assumes no vendor-specific command beyond TerMinal's own `terminal-cli`.

@@ -12,8 +12,8 @@
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-# Resolve the store (Obsidian vault or repo backlog) via the shared helper so id
-# allocation always targets the same dir the ticket file is written to.
+# Resolve the store via the shared helper so id allocation always targets the
+# same dir the ticket file is written to.
 BACKLOG="$("$(dirname "$0")/ticket-dir")"
 COUNTER="$BACKLOG/.next-id"
 LOCK="$BACKLOG/.next-id.lock"

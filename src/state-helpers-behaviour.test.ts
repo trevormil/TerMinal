@@ -37,9 +37,7 @@ const PLUGIN_BIN = join(import.meta.dir, '..', 'plugin', 'bin')
 // they win the helpers' env fast-path and every assertion here resolves to the
 // developer's real sidecar instead of the fixture's.
 const cleanEnv = () =>
-  Object.fromEntries(
-    Object.entries(process.env).filter(([k]) => !/^TERMINAL_/.test(k) && !/^OBSIDIAN_/.test(k)),
-  )
+  Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^TERMINAL_/.test(k)))
 
 const run = (script: string, args: string[] = []) =>
   execFileSync('bash', [script, ...args], {

@@ -8,19 +8,26 @@ import { coerceEffort, engineEffortsOf } from '../shared/engines'
 import { ensureIdentity, pairingPayload } from './bridge/identity'
 import { registerDevice } from './bridge/push'
 import { runLogAuthorized } from './bridge/run-auth'
-import { tailscalePeerAllowed } from './bridge/tailscale'
+import { tailscaleFleet, tailscalePeerAllowed } from './bridge/tailscale'
 import { listCiJobs, listCiRuns } from './ci'
 import { configPath } from './config-dir'
+import { globalHookStatus, installGlobalHook, uninstallGlobalHook } from './global-hook'
 import { describeSpec, nextRun } from './cron'
 import { listAllRuns, readCronRunLog, readSessionRunLog, readSessionRunLogTail } from './cron-runs'
 import { emitActivity, readActivity } from './events'
-import { markHitlRead, readHitl, resolveHitl } from './hitl'
+import { markHitlRead, readHitl, readHitlArchive, removeHitl, resolveHitl } from './hitl'
 import { itemSeverity } from './hitl-severity'
+import { dropSnoozed, snoozeFilePath } from './hitl-snooze'
+import { createInboxWrites } from './inbox-writes'
+import { hostBreakerState } from './host-disabled'
+import { listDisabledDetail } from './agents-disabled'
+import { applyBreaker, type BreakerEntry } from './schedule-breaker'
+import { terminalConfigDir } from './config-dir'
 import { readBgTaskLog } from './bg-tasks'
 import { listRuns, readAgentRunLog } from './agent-run-store'
 import { listMonitorsWithStatus } from './monitors'
 import { remoteHitl, remoteRuns } from './remote'
-import { collectRemoteHitl } from './remote-runs'
+import { boundedRemoteLog, collectRemoteHitl } from './remote-runs'
 import {
   deleteRemoteSession,
   endRemoteSession,
@@ -33,7 +40,9 @@ import {
   registerRemoteSession,
   saveImage,
   stripAnsi,
+  takeReplies,
 } from './remote-sessions'
+import { remoteSpawnPrompt } from './remote-spawn-prompt'
 import { repoForCwd, repoRootOf } from './repo'
 import { getSchedule, readSchedules } from './schedules'
 import { readSettings, resolvedProjectsDir } from './settings'
@@ -65,12 +74,6 @@ export function createBridgeDeps(ctx: BridgeDepsCtx): BridgeDeps {
   // A second transport over the SAME live ptys the desktop drives — never a
   // parallel session store. Terminals only: a phone attached to a live agent can
   // ask it about tickets/PRs/CI itself, so the bridge grows no bespoke endpoints.
-  /**
-   * The first thing a phone-started session is told. It has to do three jobs:
-   * adopt the thread that is already waiting for it, learn the reporting
-   * contract, and get on with the work — with no human at the keyboard to
-   * correct it.
-   */
   /** Cap oversized text for the wire. Logs keep the TAIL (where failures are);
    *  diffs keep the head. */
   function capText(s: string, max: number, opts: { keepTail?: boolean } = {}): BridgeText {
@@ -100,46 +103,53 @@ export function createBridgeDeps(ctx: BridgeDepsCtx): BridgeDeps {
 
   function readRunLogFor(source: string, runId: string, hostId?: string): string | Promise<string> {
     const remote = hostId ? ctx.remoteFromHostId(hostId) : null
-    if (remote) return remoteRuns.log(remote, runId).catch(() => '')
+    // Bounded like every other fan-out read: the iOS client gives up at 10s, so
+    // an unbounded read burns an SSH (and holds this request open) for the full
+    // 60s execFile ceiling after nobody is listening.
+    if (remote) return boundedRemoteLog(() => remoteRuns.log(remote, runId), remote.label)
     if (source === 'cron') return readCronRunLog(runId)
     if (source === 'session') return readSessionRunLog(runId)
     if (source === 'bg') return readBgTaskLog(runId)
     return listRuns().find((r) => r.id === runId)?.output || readAgentRunLog(runId)
   }
 
-  function spawnPrompt(remoteId: string, task?: string): string {
-    // Absolute path to THIS app's terminal-cli, which always has the `remote`
-    // subcommand. Bare `terminal-cli` isn't on an interactive session's PATH, and
-    // the repo's own bin/ may be on a branch that predates `remote` — the agent
-    // otherwise burns several turns guessing. Quote it in case the path has spaces.
-    const cli = `"${ctx.cliSrcPath()}"`
-    const lines = [
-      `You were started from TerMinal Remote on a phone. There is no one at this Mac —`,
-      `report through the phone, not the terminal.`,
-      ``,
-      `A remote thread is already registered for you. Adopt it, then use it`,
-      `(use this exact path — bare terminal-cli is not on PATH):`,
-      ``,
-      `    ${cli} remote register --id ${remoteId} "<short title>"`,
-      `    ${cli} remote post --id ${remoteId} "<update>"`,
-      `    ${cli} remote ask  --id ${remoteId} "<question>"   # blocks for a reply`,
-      ``,
-      `Follow the remote-terminal skill for when to post vs ask. Post at real`,
-      `checkpoints, not every command. Ask only at a genuine fork; otherwise pick`,
-      `the safe default and say so in a post.`,
-      ``,
-      `This session stays live between turns. When you finish a task, post the result`,
-      `and just stop — the human's next phone message is handed to you automatically`,
-      `as your next instruction, so you do NOT need to keep an ask open to stay`,
-      `reachable.`,
+  /** Snoozed items are off your plate on the phone too — the single snooze
+   *  filter (hitl-snooze.ts) the app-icon badge also reads, so the list, the
+   *  badge and the push gate can never disagree. */
+  const visible = <T extends { id: string }>(items: T[]): T[] =>
+    dropSnoozed(items, snoozeFilePath(terminalConfigDir()))
+
+  // The phone writes through the SAME host routing the desktop uses: a host
+  // item's id does not exist in this Mac's hitl.json, so a local write 404s,
+  // and a local readAt is flipped back by the next 15s remote fan-in.
+  const inboxWrites = createInboxWrites({
+    remoteFromHostId: ctx.remoteFromHostId,
+    remote: remoteHitl,
+    local: { resolve: resolveHitl, remove: removeHitl, markRead: markHitlRead },
+  })
+
+  /** Breaker entries for the schedules of one repo: the local disabled.json
+   *  plus every assigned host's, the same merge ipc/schedules.ts does. */
+  async function breakerEntries(hostIds: string[]): Promise<BreakerEntry[]> {
+    const local: BreakerEntry[] = listDisabledDetail().map((e) => ({ id: e.id, reason: e.reason }))
+    const refs = [...new Set(hostIds)].flatMap((hostId) => {
+      const ref = ctx.remoteFromHostId(hostId)
+      return ref ? [ref] : []
+    })
+    if (!refs.length) return local
+    // Best-effort: an unreachable host contributes nothing. It is already
+    // reported as an error on the desktop's Schedules tab.
+    const snap = await hostBreakerState(refs).catch(() => null)
+    return [
+      ...local,
+      ...(snap?.entries ?? []).map((e) => ({ id: e.id, reason: e.reason, hostLabel: e.hostLabel })),
     ]
-    if (task) lines.push(``, `Your task:`, ``, task)
-    else
-      lines.push(
-        ``,
-        `No task was given — post that you are ready and stop; wait for the first message.`,
-      )
-    return lines.join('\n')
+  }
+
+  function spawnPrompt(remoteId: string, task?: string): string {
+    // One prompt, shared with the e2e harness (remote-spawn-prompt.ts) so the
+    // app and harness cannot drift.
+    return remoteSpawnPrompt({ cliPath: ctx.cliSrcPath(), remoteId, task })
   }
 
   // Harness-agnostic listener. Claude keeps its remote-check.sh Stop hook, which
@@ -152,7 +162,13 @@ export function createBridgeDeps(ctx: BridgeDepsCtx): BridgeDeps {
   function deliverReplyToPty(remoteId: string, text: string, images: string[]): void {
     try {
       const remote = readRemoteSession(remoteId)
-      if (!remote || remote.engine === 'claude') return // claude: the Stop hook delivers
+      if (!remote) return
+      // Claude normally has the Stop hook parked and listening — injecting then
+      // would deliver the message twice. Except when the session went DORMANT:
+      // it stopped parking after a long idle (so it stops burning a heartbeat
+      // turn an hour), and the app now owns the wake, exactly like every other
+      // engine.
+      if (remote.engine === 'claude' && !remote.dormantAt) return
       const live = ctx.liveSessions()
       // Exact match on the app's own session id (agentSessionId === pinned.sessionId,
       // set for every engine now). cwd is ambiguous — two sessions can share a repo —
@@ -177,6 +193,11 @@ export function createBridgeDeps(ctx: BridgeDepsCtx): BridgeDeps {
         `terminal-cli remote post --id ${remoteId} "<your reply>"]\n\n${text}${imageNote}`
       match.write(`\x1b[200~${body}\x1b[201~`)
       setTimeout(() => match.write('\r'), 80)
+      // A woken Claude session parks again when its turn ends, and that park
+      // drains the queue — so without advancing the cursor here the same message
+      // would be handed over a second time. takeReplies IS the cursor, and it
+      // also flips the session back to working.
+      if (remote.engine === 'claude') takeReplies(remoteId)
     } catch {
       /* best-effort — the log-collect path remains */
     }
@@ -230,9 +251,15 @@ export function createBridgeDeps(ctx: BridgeDepsCtx): BridgeDeps {
     // Local items plus every configured host's. An agent blocked on `tm` pages
     // nobody otherwise, which defeats the whole point of an AFK remote.
     hitl: async () => {
-      // ALL local items (open + resolved), so the phone can show read/unread and
-      // filter — capped newest-first so a long resolved history stays wire-cheap.
-      const local = readHitl()
+      // Live items plus one page of history, so the phone can still show
+      // read/unread and filter — capped newest-first so a long resolved history
+      // stays wire-cheap. The history page is a tail read of the append-only
+      // archive, never a parse of everything ever filed.
+      const live = readHitl()
+      const recent = readHitlArchive(null, Math.max(0, 200 - live.length)).items
+      // Snoozed items are dropped BEFORE the cap, exactly as the Mac drawer
+      // hides them: "later" said on the Mac has to mean later on the phone too.
+      const local = visible([...live, ...recent])
         .sort((a, b) => b.createdAt - a.createdAt)
         .slice(0, 200)
         .map((h) => ({
@@ -246,6 +273,10 @@ export function createBridgeDeps(ctx: BridgeDepsCtx): BridgeDeps {
           severity: itemSeverity(h),
           status: h.status,
           readAt: h.readAt,
+          // The phone's category sidebar keys off this alone; it used to stop
+          // at the bridge, so every item arrived Uncategorized and the sidebar
+          // never rendered.
+          category: h.category,
         }))
       const hosts = readSettings().remoteHosts.map((h) => ({ id: h.id, label: h.label }))
       if (!hosts.length) return local
@@ -254,26 +285,30 @@ export function createBridgeDeps(ctx: BridgeDepsCtx): BridgeDeps {
         const ref = ctx.remoteFromHostId(h.id)
         return ref ? remoteHitl.list(ref) : []
       }).catch(() => null)
-      const mapped = (remote?.items ?? [])
+      const mapped = visible(remote?.items ?? [])
         .filter((h) => h.status === 'open')
         .map((h) => ({
           id: h.id,
           title: h.title,
           detail: h.detail,
           action: h.action,
-          // Label which machine is blocked, or the queue is ambiguous.
-          repo: h.hostLabel ? `${h.hostLabel} · ${h.repo || ''}`.trim() : h.repo,
+          repo: h.repo,
           source: h.source,
           createdAt: h.createdAt,
           // Host blocks are always "look at me"; host read-state isn't tracked here.
           severity: itemSeverity(h),
           status: h.status ?? 'open',
           readAt: h.readAt,
+          category: h.category,
+          // Which machine is blocked — as fields, so the phone can chip it and,
+          // more importantly, hand the hostId back when you act on the row.
+          hostId: h.hostId,
+          hostLabel: h.hostLabel,
         }))
       return [...local, ...mapped].sort((a, b) => b.createdAt - a.createdAt)
     },
-    resolveHitl: (id, resolved) => resolveHitl(id, resolved),
-    markHitlRead: (ids, read) => markHitlRead(ids, read),
+    resolveHitl: (id, resolved, hostId) => inboxWrites.resolve(id, resolved, hostId),
+    markHitlRead: (ids, read, hostId) => inboxWrites.markRead(ids, hostId, read),
     repos: () => {
       // Most recent activity per repo, so the phone can surface what you actually
       // work in instead of an alphabetical wall. Desktop pins/recents live in
@@ -538,7 +573,7 @@ export function createBridgeDeps(ctx: BridgeDepsCtx): BridgeDeps {
         return { text: '', truncated: false }
       }
     },
-    workspaceSchedule: (repoPath, id) => {
+    workspaceSchedule: async (repoPath, id) => {
       const s = getSchedule(id)
       const root = repoRootOf(repoPath) || repoPath
       // server.ts already fenced repoPath to the advertised set; also require the
@@ -546,7 +581,7 @@ export function createBridgeDeps(ctx: BridgeDepsCtx): BridgeDeps {
       // another repo's schedule prompt by guessing its id.
       if (!s || !(s.repoRoot === root || s.repoLabel === basename(repoPath))) return null
       const now = Date.now()
-      return {
+      const row = {
         id: s.id,
         title: s.agentTitle,
         describe: describeSpec(s.spec),
@@ -560,19 +595,24 @@ export function createBridgeDeps(ctx: BridgeDepsCtx): BridgeDeps {
         host: s.host,
         runtime: s.runtime,
       }
+      // `enabled` is only the user's switch. A schedule the runner tripped its
+      // breaker on is dead, and reads as healthy without this merge.
+      return applyBreaker([row], await breakerEntries(s.host ? [s.host] : []))[0]
     },
-    workspaceSchedules: (repoPath) => {
+    workspaceSchedules: async (repoPath) => {
       const root = repoRootOf(repoPath) || repoPath
       const now = Date.now()
-      return readSchedules(now)
-        .filter((s) => s.repoRoot === root || s.repoLabel === basename(repoPath))
-        .map((s) => ({
-          id: s.id,
-          title: s.agentTitle,
-          describe: describeSpec(s.spec),
-          nextRun: nextRun(s.spec, now) ?? undefined,
-          enabled: s.enabled,
-        }))
+      const mine = readSchedules(now).filter(
+        (s) => s.repoRoot === root || s.repoLabel === basename(repoPath),
+      )
+      const rows = mine.map((s) => ({
+        id: s.id,
+        title: s.agentTitle,
+        describe: describeSpec(s.spec),
+        nextRun: nextRun(s.spec, now) ?? undefined,
+        enabled: s.enabled,
+      }))
+      return applyBreaker(rows, await breakerEntries(mine.flatMap((s) => (s.host ? [s.host] : []))))
     },
     // Native CI for the phone's per-workspace CI tab — the same run/job data the
     // desktop CI tab's Runs view uses.
@@ -641,6 +681,26 @@ export function createBridgeDeps(ctx: BridgeDepsCtx): BridgeDeps {
         detail: peer?.node || peer?.login || 'tailnet peer',
       })
       return { token: payload.t, fp: payload.fp, name: payload.n }
+    },
+
+    // The fleet picker's data. Already-paired phones only (the route is behind
+    // the token), so this reveals the tailnet to someone who can already drive
+    // this Mac.
+    tailnet: () => tailscaleFleet(),
+
+    // The global never-die Stop hook. Explicitly requested, never automatic —
+    // the app does not write to ~/.claude on its own (see global-hook.ts).
+    globalHookStatus: () => globalHookStatus(),
+    setGlobalHook: (install) => {
+      const result = install ? installGlobalHook() : uninstallGlobalHook()
+      if (result.ok && result.changed) {
+        emitActivity({
+          kind: 'info',
+          title: install ? 'Global listener hook installed' : 'Global listener hook removed',
+          detail: result.message,
+        })
+      }
+      return result
     },
   }
 }

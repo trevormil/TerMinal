@@ -1,8 +1,8 @@
 import { execFile } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { lstat, readdir, rm } from 'node:fs/promises'
-import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
-import { readJsonState, updateJsonState, writeFileAtomic, writeJsonAtomic } from './atomic-write'
+import { basename, isAbsolute, join, relative, resolve } from 'node:path'
+import { writeFileAtomic } from './atomic-write'
 import { resolvedWorktreesDir } from './settings'
 import { promisify } from 'node:util'
 import { terminalConfigDir } from './config-dir'
@@ -334,62 +334,10 @@ export function rotateLogFile(file: string, maxBytes: number): LogRotateResult {
   return { path: file, rotated: true, bytes: bytes - Buffer.byteLength(tail) }
 }
 
-// --- hitl archival -----------------------------------------------------------
-
-export type HitlArchiveResult = { archived: number; kept: number; archivePath: string | null }
-
-/**
- * Move long-settled HITL items out of the live inbox into a dated archive.
- *
- * hitl.json is read and rewritten whole on every filing, so it has to stay
- * small — 3.2 MB / 53k lines was already the shape of the freeze fixed in #195.
- * Only READ items past the window move; an open item is somebody's outstanding
- * blocker and is never archived, however old. A corrupt inbox throws rather than
- * being "archived" into oblivion.
- */
-export function archiveResolvedHitl(
-  file: string,
-  opts: { olderThanMs: number; now?: number },
-): HitlArchiveResult {
-  const now = opts.now ?? Date.now()
-  const cutoff = now - opts.olderThanMs
-  let result: HitlArchiveResult = { archived: 0, kept: 0, archivePath: null }
-
-  updateJsonState<HitlArchiveRecord[]>(
-    file,
-    () => [],
-    (list) => {
-      const settled = (h: HitlArchiveRecord): boolean =>
-        (!!h.readAt || h.status === 'resolved') &&
-        (h.resolvedAt ?? h.readAt ?? h.createdAt ?? now) < cutoff
-      const stale = list.filter(settled)
-      const keep = list.filter((h) => !settled(h))
-      if (!stale.length) {
-        result = { archived: 0, kept: list.length, archivePath: null }
-        return undefined
-      }
-      const day = new Date(now).toISOString().slice(0, 10)
-      const dest = join(dirname(file), 'hitl-archive', `hitl-${day}.json`)
-      // Append to the day's archive rather than replacing it — a second sweep on
-      // the same day must not drop the first sweep's items.
-      const existing = readJsonState<HitlArchiveRecord[]>(dest, () => [], {
-        accept: Array.isArray,
-      })
-      writeJsonAtomic(dest, [...existing.value, ...stale])
-      result = { archived: stale.length, kept: keep.length, archivePath: dest }
-      return keep
-    },
-    { accept: Array.isArray },
-  )
-  return result
-}
-
-type HitlArchiveRecord = {
-  status?: string
-  readAt?: number
-  resolvedAt?: number
-  createdAt?: number
-}
+// hitl archival used to live here. It is gone on purpose: settled items now
+// leave the live inbox inside the same locked write that retires them
+// (src/shared/inbox-store.ts), so there is no window and nothing to sweep. A
+// second archiver writing a second format would only be a way to disagree.
 
 async function findCheckpointTmpObjects(dir: string): Promise<StorageEntry[]> {
   const out: StorageEntry[] = []

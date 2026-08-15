@@ -4,19 +4,13 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
-  readdirSync,
   rmSync,
   utimesSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import {
-  archiveResolvedHitl,
-  rotateLogFile,
-  sweepTerminalState,
-  type TerminalStateSweepOptions,
-} from './run-retention'
+import { rotateLogFile, sweepTerminalState, type TerminalStateSweepOptions } from './run-retention'
 
 // Retention deletes user data, so every case here pins the SAFETY property as
 // hard as the reclaim property: what must survive, not just what goes away.
@@ -302,78 +296,10 @@ describe('log rotation', () => {
   })
 })
 
-describe('hitl archival', () => {
-  const item = (id: string, over: Record<string, unknown> = {}) => ({
-    id,
-    title: id,
-    source: 'manual',
-    status: 'open',
-    createdAt: Date.now(),
-    ...over,
-  })
-
-  test('read items older than the window move to a dated archive; the live file shrinks', () => {
-    const root = tempRoot()
-    const file = join(root, 'hitl.json')
-    const old = Date.now() - 120 * DAY
-    writeFileSync(
-      file,
-      JSON.stringify([
-        item('open-now'),
-        item('read-old', { readAt: old, status: 'resolved', resolvedAt: old, createdAt: old }),
-        item('read-recent', { readAt: Date.now(), status: 'resolved' }),
-      ]),
-    )
-
-    const res = archiveResolvedHitl(file, { olderThanMs: 30 * DAY })
-    expect(res.archived).toBe(1)
-    const live = JSON.parse(readFileSync(file, 'utf8')) as { id: string }[]
-    expect(live.map((h) => h.id).sort()).toEqual(['open-now', 'read-recent'])
-
-    const archives = readdirSync(join(root, 'hitl-archive'))
-    expect(archives).toHaveLength(1)
-    const archived = JSON.parse(readFileSync(join(root, 'hitl-archive', archives[0]), 'utf8'))
-    expect(archived.map((h: { id: string }) => h.id)).toEqual(['read-old'])
-  })
-
-  test('an OPEN item is never archived, however old', () => {
-    const root = tempRoot()
-    const file = join(root, 'hitl.json')
-    const old = Date.now() - 999 * DAY
-    writeFileSync(file, JSON.stringify([item('ancient-blocker', { createdAt: old })]))
-
-    expect(archiveResolvedHitl(file, { olderThanMs: DAY }).archived).toBe(0)
-    expect(JSON.parse(readFileSync(file, 'utf8'))).toHaveLength(1)
-  })
-
-  test('a corrupt hitl.json is not archived and not rewritten', () => {
-    const root = tempRoot()
-    const file = join(root, 'hitl.json')
-    writeFileSync(file, '[{"id":"real"},{"id"')
-    expect(() => archiveResolvedHitl(file, { olderThanMs: DAY })).toThrow()
-    expect(existsSync(join(root, 'hitl-archive'))).toBe(false)
-  })
-
-  test('archiving twice does not lose the first archive', () => {
-    const root = tempRoot()
-    const file = join(root, 'hitl.json')
-    // A fixed `now` so both sweeps land in the same dated archive file.
-    const now = 1_700_000_000_000
-    const old = now - 120 * DAY
-    const mk = (id: string) =>
-      item(id, { readAt: old, status: 'resolved', resolvedAt: old, createdAt: old })
-    writeFileSync(file, JSON.stringify([mk('a')]))
-    archiveResolvedHitl(file, { olderThanMs: 30 * DAY, now })
-    writeFileSync(file, JSON.stringify([mk('b')]))
-    archiveResolvedHitl(file, { olderThanMs: 30 * DAY, now })
-
-    const dir = join(root, 'hitl-archive')
-    const all = readdirSync(dir).flatMap(
-      (f) => JSON.parse(readFileSync(join(dir, f), 'utf8')) as { id: string }[],
-    )
-    expect(all.map((h) => h.id).sort()).toEqual(['a', 'b'])
-  })
-})
+// The `hitl archival` suite that lived here is gone with the sweep it tested:
+// settled items now leave the live inbox inside the write that retires them.
+// Its replacement is src/shared/inbox-store.test.ts, which drives the split,
+// the migration of a legacy oversized hitl.json, and the dated-archive import.
 
 describe('report totals', () => {
   test('reclaimableBytes counts every store, and a dry run deletes nothing', async () => {

@@ -34,6 +34,11 @@ export type RemoteStatus =
   | 'working'
   /** Agent is blocked in `ask` and waiting on your reply. */
   | 'awaiting'
+  /** Parked between turns in the never-die Stop hook — waiting for YOU, not
+   *  working. Written by `terminal-cli remote check --wait`, and read by the
+   *  phone (RemoteModels.isIdle); it was missing from this union, so the type
+   *  disagreed with what is actually on disk. */
+  | 'idle'
   /** Session finished or was ended. */
   | 'ended'
 
@@ -63,6 +68,13 @@ export type RemoteSession = {
    * than being lost.
    */
   deliveredUpTo: number
+  /**
+   * Set when a long-idle phone session stopped parking in the Stop hook (see
+   * src/shared/remote-heartbeat.ts). It is asleep, not gone: while this is set
+   * the APP owns the wake — the next phone message is pushed into its live pty
+   * — and the hook clears it as soon as it parks again.
+   */
+  dormantAt?: number
 }
 
 export type RemoteMessage = {

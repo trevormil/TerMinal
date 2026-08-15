@@ -9,11 +9,56 @@ import XCTest
 /// notices. Keeping the names parallel is deliberate, so a diff of the two
 /// files is readable.
 final class InboxCategoriesTests: XCTestCase {
-    private func item(_ id: String, category: String? = nil, unread: Bool = true) -> HitlItem {
+    private func item(
+        _ id: String, category: String? = nil, unread: Bool = true, hostId: String? = nil
+    ) -> HitlItem {
         HitlItem(
             id: id, title: id, detail: nil, action: nil, repo: nil, source: "test",
             createdAt: 0, severity: "normal", status: "open",
-            readAt: unread ? nil : 1, category: category)
+            readAt: unread ? nil : 1, category: category,
+            hostId: hostId, hostLabel: hostId?.uppercased())
+    }
+
+    // MARK: writes are routed by the host that owns the item
+
+    func testByHostSplitsABulkWriteByOwningHost() {
+        // One request carries one hostId. Sending the mixed set with no host
+        // would write host items into the Mac's own inbox, which has never seen
+        // their ids — the resolve 404s and the mark-read is reverted by the
+        // Mac's next fan-in.
+        let groups = InboxCategories.byHost([
+            item("a"), item("tm-1", hostId: "tm"), item("b"), item("tm-2", hostId: "tm"),
+        ])
+        XCTAssertEqual(groups[nil]?.sorted(), ["a", "b"])
+        XCTAssertEqual(groups["tm"]?.sorted(), ["tm-1", "tm-2"])
+        XCTAssertEqual(groups.count, 2)
+    }
+
+    func testByHostKeepsLocalItemsUnderTheNilHost() {
+        XCTAssertEqual(InboxCategories.byHost([item("a")]), [nil: ["a"]])
+    }
+
+    // MARK: the host fields cross the wire
+
+    func testHostIdAndLabelDecodeFromTheBridgePayload() throws {
+        let json = """
+        {"id":"tm-1","title":"blocked","source":"agent","createdAt":1,
+         "repo":"TerMinal","hostId":"tm","hostLabel":"tm mini"}
+        """.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(HitlItem.self, from: json)
+        XCTAssertEqual(decoded.hostId, "tm")
+        XCTAssertEqual(decoded.hostLabel, "tm mini")
+        // repo stays a repo — the Mac used to glue "hostLabel · repo" in here.
+        XCTAssertEqual(decoded.repo, "TerMinal")
+    }
+
+    func testALocalItemDecodesWithNoHost() throws {
+        let json = """
+        {"id":"a","title":"blocked","source":"agent","createdAt":1}
+        """.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(HitlItem.self, from: json)
+        XCTAssertNil(decoded.hostId)
+        XCTAssertNil(decoded.hostLabel)
     }
 
     // MARK: a brand-new category needs no code change

@@ -98,105 +98,26 @@ function repoBacklogFiles(repo: string): string[] {
   return out
 }
 
-describe('terminal-mcp-server ticket tools — obsidian provider routing', () => {
-  test('file_ticket writes to the vault; list_tickets and update_ticket see only the vault', () => {
+describe('terminal-mcp-server ticket tools — provider routing', () => {
+  // The obsidian provider was retired: its vault backend is gone, but a repo
+  // whose saved config still names it must keep working. It degrades to the
+  // local sidecar backlog — and the user's vault folder is never touched.
+  test('a retired obsidian config degrades to the sidecar backlog, vault untouched', () => {
     const { home, repo, vault, repoName } = setup()
     writeTicketsConfig(repo, { provider: 'obsidian', obsidian: { vaultPath: vault } })
-    // Adversarial decoy in the repo backlog: must be invisible to every tool
-    // and must not influence vault id allocation.
-    mkdirSync(join(repo, 'backlog'), { recursive: true })
-    writeFileSync(
-      join(repo, 'backlog', '0042-repo-decoy.md'),
-      '---\nid: 42\ntitle: "Repo decoy"\nstatus: open\n---\n',
-    )
+    mkdirSync(join(vault, 'tickets'), { recursive: true })
 
-    const [filed] = callTools(home, [
-      {
-        name: 'file_ticket',
-        arguments: { repo: repoName, title: 'Vault MCP ticket', type: 'testing' },
-      },
+    const [filed, listed] = callTools(home, [
+      { name: 'file_ticket', arguments: { repo: repoName, title: 'Degraded ticket' } },
+      { name: 'list_tickets', arguments: { repo: repoName } },
     ])
     const ticket = toolJson(filed)
-    expect(ticket.slug).toBe('0001-vault-mcp-ticket')
-    expect(ticket.path).toBe(join(vault, 'tickets', '0001-vault-mcp-ticket.md'))
-    expect(readFileSync(ticket.path, 'utf8')).toContain('title: "Vault MCP ticket"')
-
-    const [listed, updated, after, got] = callTools(home, [
-      { name: 'list_tickets', arguments: { repo: repoName } },
-      {
-        name: 'update_ticket',
-        arguments: { slug: '0001-vault-mcp-ticket', status: 'closed', priority: 'high' },
-      },
-      { name: 'list_tickets', arguments: { repo: repoName, status: 'all' } },
-      { name: 'get_ticket', arguments: { slug: '0001-vault-mcp-ticket' } },
-    ])
-    // The decoy never shows up — vault is the only read source.
-    expect(toolJson(listed).map((t: { slug: string }) => t.slug)).toEqual(['0001-vault-mcp-ticket'])
-    expect(toolJson(updated)).toMatchObject({
-      ok: true,
-      path: join(vault, 'tickets', '0001-vault-mcp-ticket.md'),
-    })
-    expect(toolJson(after)).toEqual([
-      expect.objectContaining({
-        slug: '0001-vault-mcp-ticket',
-        status: 'closed',
-        priority: 'high',
-      }),
-    ])
-    expect(toolJson(got)).toMatchObject({ slug: '0001-vault-mcp-ticket', repoRoot: repo })
-    // The vault file changed; the repo backlog decoy did not, and no new
-    // repo-local files appeared.
-    expect(readFileSync(join(vault, 'tickets', '0001-vault-mcp-ticket.md'), 'utf8')).toContain(
-      'status: closed',
-    )
-    expect(repoBacklogFiles(repo)).toEqual([join(repo, 'backlog', '0042-repo-decoy.md')])
-    expect(readFileSync(join(repo, 'backlog', '0042-repo-decoy.md'), 'utf8')).toContain(
-      'status: open',
-    )
-  })
-
-  test('file_ticket honors a custom ticketsSubdir', () => {
-    const { home, repo, vault, repoName } = setup()
-    writeTicketsConfig(repo, {
-      provider: 'obsidian',
-      obsidian: { vaultPath: vault, ticketsSubdir: 'issues' },
-    })
-
-    const [filed] = callTools(home, [
-      { name: 'file_ticket', arguments: { repo: repoName, title: 'Subdir ticket' } },
-    ])
-    expect(toolJson(filed).path).toBe(join(vault, 'issues', '0001-subdir-ticket.md'))
-    expect(existsSync(join(vault, 'tickets'))).toBe(false)
+    expect(ticket.path).toEndWith(join('backlog', '0001-degraded-ticket.md'))
+    expect(sidecarBacklogFiles(home)).toEqual([ticket.path])
+    expect(toolJson(listed).map((t: { slug: string }) => t.slug)).toEqual(['0001-degraded-ticket'])
+    // Nothing was written into the repo, and nothing into the old vault.
     expect(repoBacklogFiles(repo)).toEqual([])
-  })
-
-  test('provider obsidian without a vault path errors and never falls back to the repo backlog', () => {
-    const { home, repo, repoName } = setup()
-    writeTicketsConfig(repo, { provider: 'obsidian' })
-    mkdirSync(join(repo, 'backlog'), { recursive: true })
-    writeFileSync(
-      join(repo, 'backlog', '0042-repo-decoy.md'),
-      '---\nid: 42\ntitle: "Repo decoy"\nstatus: open\n---\n',
-    )
-
-    const [filed, listed, updated] = callTools(home, [
-      { name: 'file_ticket', arguments: { repo: repoName, title: 'Nowhere to go' } },
-      { name: 'list_tickets', arguments: { repo: repoName, status: 'all' } },
-      { name: 'update_ticket', arguments: { slug: '0042-repo-decoy', status: 'closed' } },
-    ])
-    // Create fails loudly instead of silently writing into the repo.
-    expect(filed.error?.message).toMatch(/obsidian/i)
-    expect(filed.error?.message).toMatch(/vault/i)
-    // Reads are vault-only: a misconfigured obsidian repo exposes nothing,
-    // rather than leaking the repo backlog.
-    expect(toolJson(listed)).toEqual([])
-    // Updates cannot reach repo backlog files either.
-    expect(updated.error?.message).toMatch(/not found/i)
-    // Nothing was created or modified locally.
-    expect(repoBacklogFiles(repo)).toEqual([join(repo, 'backlog', '0042-repo-decoy.md')])
-    expect(readFileSync(join(repo, 'backlog', '0042-repo-decoy.md'), 'utf8')).toContain(
-      'status: open',
-    )
+    expect(readdirSync(join(vault, 'tickets'))).toEqual([])
   })
 
   test('no provider config writes to the sidecar, never the repo', () => {

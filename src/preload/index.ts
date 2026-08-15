@@ -4,6 +4,7 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron'
 // narrowed engine union, a renamed argument, a method the renderer expects and
 // the bridge never grew) fails the build here instead of at runtime.
 import type {
+  ActivityCursor,
   ActivityEvent,
   AgentRun,
   CheapMessage,
@@ -27,8 +28,8 @@ const gt: GtApi = {
   pickDir: () => ipcRenderer.invoke('dialog:pickDir'),
   detectEnv: () => ipcRenderer.invoke('env:detect'),
   installGtNotify: () => ipcRenderer.invoke('env:install-gt-notify'),
-  scaffoldProject: (name: string, parentDir?: string, ticketProvider?: unknown) =>
-    ipcRenderer.invoke('project:scaffold', name, parentDir, ticketProvider),
+  scaffoldProject: (name: string, parentDir?: string) =>
+    ipcRenderer.invoke('project:scaffold', name, parentDir),
   remoteDirs: (hostId: string, path?: string) => ipcRenderer.invoke('remote:dirs', hostId, path),
   remoteScaffoldProject: (hostId: string, name: string, parentDir?: string) =>
     ipcRenderer.invoke('remote:scaffold', hostId, name, parentDir),
@@ -281,6 +282,9 @@ const gt: GtApi = {
     markRead: (ids: string[], hostId?: string, read?: boolean) =>
       ipcRenderer.invoke('hitl:mark-read', ids, hostId, read),
     markAllRead: () => ipcRenderer.invoke('hitl:mark-all-read'),
+    counts: () => ipcRenderer.invoke('hitl:counts'),
+    archive: (cursor?: string | null, limit?: number) =>
+      ipcRenderer.invoke('hitl:archive', cursor, limit),
   },
   // Agent reliability: scorecards computed from the existing run stores, the
   // disabled roster with its reasons, and persistent-agent memory compaction.
@@ -293,7 +297,8 @@ const gt: GtApi = {
 
   // activity feed + notifications
   activity: {
-    list: () => ipcRenderer.invoke('activity:list'),
+    page: (cursor: ActivityCursor | null, limit?: number) =>
+      ipcRenderer.invoke('activity:page', cursor, limit),
     unseenCount: (since: number, kinds: string[]) =>
       ipcRenderer.invoke('activity:unseen-count', since, kinds),
     clear: () => ipcRenderer.invoke('activity:clear'),
@@ -369,7 +374,6 @@ const gt: GtApi = {
     providerTest: (cfg: unknown, smoke?: boolean) =>
       ipcRenderer.invoke('tickets:provider-test', cfg, smoke),
     linearTeams: (cfg?: unknown) => ipcRenderer.invoke('tickets:linear-teams', cfg),
-    openInObsidian: (slug: string) => ipcRenderer.invoke('tickets:open-in-obsidian', slug),
     recommendAgent: (input: unknown) => ipcRenderer.invoke('tickets:recommend-agent', input),
     update: (slug: string, patch: unknown) => ipcRenderer.invoke('tickets:update', slug, patch),
     comment: (slug: string, comment: unknown) =>
@@ -516,6 +520,12 @@ const gt: GtApi = {
     markRead: (ids: string[], hostId?: string, read?: boolean) =>
       ipcRenderer.invoke('inbox:mark-read', ids, hostId, read),
     markAllRead: () => ipcRenderer.invoke('inbox:mark-all-read'),
+    // Badge fast path: the small counts index, never the item list.
+    counts: () => ipcRenderer.invoke('inbox:counts'),
+    // History, a page at a time, newest first. `cursor` is opaque — hand back
+    // whatever the previous page returned.
+    archive: (cursor?: string | null, limit?: number) =>
+      ipcRenderer.invoke('inbox:archive', cursor, limit),
     snoozes: () => ipcRenderer.invoke('inbox:snoozes'),
     snooze: (id: string, until: number) => ipcRenderer.invoke('inbox:snooze', id, until),
     unsnooze: (id: string) => ipcRenderer.invoke('inbox:unsnooze', id),

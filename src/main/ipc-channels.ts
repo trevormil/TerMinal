@@ -12,7 +12,7 @@ type Of<F> = F extends (...args: infer A) => infer R ? { args: A; result: Awaite
 
 export type ChannelMap = {
   'activity:clear': Of<GtApi['activity']['clear']>
-  'activity:list': Of<GtApi['activity']['list']>
+  'activity:page': Of<GtApi['activity']['page']>
   'activity:unseen-count': Of<GtApi['activity']['unseenCount']>
   'agents:cancel': Of<GtApi['agents']['cancel']>
   'agents:definitions': Of<GtApi['agents']['definitions']>
@@ -106,6 +106,8 @@ export type ChannelMap = {
   'github-review:reply': Of<GtApi['githubReview']['reply']>
   'github-review:submit': Of<GtApi['githubReview']['submit']>
   'harness:status': Of<GtApi['harnessStatus']>
+  'hitl:archive': Of<GtApi['hitl']['archive']>
+  'hitl:counts': Of<GtApi['hitl']['counts']>
   'hitl:list': Of<GtApi['hitl']['list']>
   'hitl:mark-all-read': Of<GtApi['hitl']['markAllRead']>
   'hitl:mark-read': Of<GtApi['hitl']['markRead']>
@@ -114,6 +116,8 @@ export type ChannelMap = {
   'hitl:resolve': Of<GtApi['hitl']['resolve']>
   'hosts:health': Of<GtApi['healthCheckHost']>
   'hosts:provision': Of<GtApi['provisionHost']>
+  'inbox:archive': Of<GtApi['inbox']['archive']>
+  'inbox:counts': Of<GtApi['inbox']['counts']>
   'inbox:delivery-log': Of<GtApi['inbox']['deliveryLog']>
   'inbox:list': Of<GtApi['inbox']['list']>
   'inbox:mark-all-read': Of<GtApi['inbox']['markAllRead']>
@@ -250,7 +254,6 @@ export type ChannelMap = {
   'tickets:get': Of<GtApi['tickets']['get']>
   'tickets:linear-teams': Of<GtApi['tickets']['linearTeams']>
   'tickets:list': Of<GtApi['tickets']['list']>
-  'tickets:open-in-obsidian': Of<GtApi['tickets']['openInObsidian']>
   'tickets:provider-get': Of<GtApi['tickets']['providerGet']>
   'tickets:provider-save': Of<GtApi['tickets']['providerSave']>
   'tickets:provider-test': Of<GtApi['tickets']['providerTest']>

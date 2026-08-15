@@ -27,7 +27,7 @@ import { activityTone } from '../../lib/badges'
 import { badgeClasses, Empty } from '../../components/ui'
 import { navigateTo } from '../../lib/nav'
 import { InlineMd, Markdown } from '../../components/Markdown'
-import type { Tab, TabContext, ActivityEvent, ActivityKind } from '../../lib/types'
+import type { Tab, TabContext, ActivityCursor, ActivityEvent, ActivityKind } from '../../lib/types'
 import { relativeTime } from '../../lib/time'
 import { usePolled } from '../../lib/usePolled'
 import { getPref, setPref } from '../../lib/prefs'
@@ -201,20 +201,40 @@ export function ActivityTab({
   // two-line clamp on hover.
   const [reading, setReading] = useState<string | null>(null)
   const newest = useRef<string>('') // id of the most recent event, for the live flash
+  // Where the loaded window ends. The feed used to arrive whole on every open;
+  // now one page lands, and older ones are pulled on demand. `undefined` means
+  // "not loaded yet", null means "the oldest kept event is already on screen".
+  const [older, setOlder] = useState<ActivityCursor | null | undefined>(undefined)
+  const [loadingOlder, setLoadingOlder] = useState(false)
 
   useEffect(() => {
     // viewing the feed clears the unseen-high-signal tab badge
     setPref('activityLastSeen', Date.now())
-    window.gt.activity.list().then((e) => {
-      setEvents(e)
-      newest.current = e[0]?.id || ''
+    window.gt.activity.page(null, FEED_PAGE_SIZE).then((p) => {
+      setEvents(p.events)
+      setOlder(p.cursor)
+      newest.current = p.events[0]?.id || ''
     })
+    // Live appends arrive pushed from the main process's tail (a byte-delta
+    // read of the log), so staying current costs no re-read of the feed.
     const off = window.gt.activity.onEvent((ev) => {
       newest.current = ev.id
-      setEvents((prev) => [ev, ...prev].slice(0, 1000))
+      setEvents((prev) => [ev, ...prev])
     })
     return () => off()
   }, [])
+
+  const loadOlder = async () => {
+    if (loadingOlder || !older) return
+    setLoadingOlder(true)
+    try {
+      const p = await window.gt.activity.page(older, FEED_PAGE_SIZE)
+      setEvents((prev) => [...prev, ...p.events])
+      setOlder(p.cursor)
+    } finally {
+      setLoadingOlder(false)
+    }
+  }
   // Re-tick the relative "Nm ago" labels. Nothing is fetched — the poll just
   // re-renders, and gets the hidden-window pause for free.
   usePolled(async () => Date.now(), { intervalMs: 30_000 })
@@ -255,6 +275,7 @@ export function ActivityTab({
   const clear = async () => {
     await window.gt.activity.clear()
     setEvents([])
+    setOlder(null)
   }
 
   // ---- detail view ---------------------------------------------------------
@@ -533,13 +554,25 @@ export function ActivityTab({
             </div>
           ))
         )}
-        {hiddenCount > 0 && (
+        {hiddenCount > 0 ? (
           <button
             onClick={() => setVisibleCount((v) => v + FEED_PAGE_SIZE)}
             className="w-full px-4 py-2 text-center text-[11px] text-[var(--gt-accent-2)] hover:bg-white/5"
           >
             Show {Math.min(hiddenCount, FEED_PAGE_SIZE)} more ({hiddenCount} hidden)
           </button>
+        ) : (
+          // Everything loaded is on screen — the next click has to go back to
+          // disk for an older page.
+          older && (
+            <button
+              onClick={loadOlder}
+              disabled={loadingOlder}
+              className="w-full px-4 py-2 text-center text-[11px] text-[var(--gt-accent-2)] hover:bg-white/5 disabled:opacity-50"
+            >
+              {loadingOlder ? 'Loading…' : 'Load older events'}
+            </button>
+          )
         )}
       </div>
     </div>

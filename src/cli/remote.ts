@@ -14,6 +14,7 @@ import {
 import { basename, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { REMOTE_DIR } from './env'
+import { heartbeatDecision, idleSleepMsFromEnv } from '../shared/remote-heartbeat'
 import type { RemoteMessage, RemoteSession } from './types'
 
 const remoteMeta = (id: string): string => join(REMOTE_DIR(), `${id}.json`)
@@ -160,6 +161,15 @@ function takeRemoteReplies(id: string): string[] {
   })
 }
 
+/** When this session last had real news, for the heartbeat decision. Message
+ *  timestamps only: `lastSeenAt` is touched by parking itself, so it would
+ *  reset the idle span every window and never let a session sleep. */
+function lastActivityAt(session: RemoteSession): number {
+  const msgs = remoteMessages(session.id)
+  const last = msgs.length ? msgs[msgs.length - 1].at : 0
+  return Math.max(last, session.registeredAt || 0)
+}
+
 /**
  * Park until the phone sends something for THIS session, it ends, or we time
  * out. Only ever called with a session id matched exactly to the host agent's
@@ -167,14 +177,20 @@ function takeRemoteReplies(id: string): string[] {
  * session can't be made to block here.
  *   reply  → print it, exit 0 (hook blocks the stop and hands it over)
  *   ended  → exit 0 (hook lets the turn stop)
- *   timeout→ exit 3 (hook re-parks with a heartbeat)
+ *   timeout→ exit 3 (hook re-parks with a heartbeat) while the idle span is
+ *            short; once it is long, exit 0 and SLEEP instead — parking forever
+ *            costs one model turn per window, which is what made an overnight
+ *            idle accumulate heartbeat turns. A sleeping session is woken by the
+ *            app pushing the next phone message into its live pty.
  */
 function waitForReplies(sessionId: string, timeoutSec: number): void {
   // Parked between turns = idle: the phone can tell "waiting for you" apart
   // from "actively working". Draining a reply flips it back to working.
+  // Parking also clears any previous sleep, so the app stops treating the
+  // session as pty-wakeable while the hook itself is listening.
   const parked = readRemote(sessionId)
-  if (parked && parked.status === 'working')
-    writeRemote({ ...parked, status: 'idle', lastSeenAt: Date.now() })
+  if (parked && (parked.status === 'working' || parked.dormantAt))
+    writeRemote({ ...parked, status: 'idle', dormantAt: undefined, lastSeenAt: Date.now() })
   const deadline = Date.now() + timeoutSec * 1000
   for (;;) {
     const session = readRemote(sessionId)
@@ -185,7 +201,29 @@ function waitForReplies(sessionId: string, timeoutSec: number): void {
       console.log(replies.join('\n\n'))
       return
     }
-    if (Date.now() > deadline) process.exit(3)
+    if (Date.now() > deadline) {
+      const decision = heartbeatDecision({
+        now: Date.now(),
+        lastActivityAt: lastActivityAt(session),
+        idleSleepMs: idleSleepMsFromEnv(process.env.TERMINAL_REMOTE_IDLE_SLEEP),
+        // The app wakes a sleeping session by writing into the pty it can
+        // correlate. With neither routing key it could never find this one, so
+        // sleeping would be silence, not thrift — keep parking.
+        wakeable: !!(session.agentSessionId || session.cwd),
+      })
+      if (decision === 'park') process.exit(3)
+      // Say so in the thread: on the phone this reads as "asleep, send anything
+      // to wake it", instead of a session that mysteriously stopped answering.
+      writeRemote({ ...session, dormantAt: Date.now(), lastSeenAt: Date.now() })
+      remoteAppend(
+        sessionId,
+        'agent',
+        'Sleeping after a long idle — no heartbeats while nothing is happening. ' +
+          'Send a message and I pick straight up where we left off.',
+        [],
+      )
+      return
+    }
     execSync('sleep 2')
   }
 }

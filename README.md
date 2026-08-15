@@ -71,9 +71,8 @@ machine that renders offline.
 
 ### A software factory around it
 
-- **Tickets** agents can own. Markdown backlog by default; GitHub Issues,
-  Linear, or a private per-repo **Obsidian vault** as drop-in providers; team
-  boards embed read-only. Every ticket has an owner agent, acceptance criteria,
+- **Tickets** agents can own. Markdown backlog by default; GitHub Issues or
+  Linear as drop-in providers; team boards embed read-only. Every ticket has an owner agent, acceptance criteria,
   and links to the runs and PRs it produced.
 - **Agents** are the unit of work — a roster of classic (prompt/script) and
   persistent (memory-backed) agents with model policy, deterministic checks,
@@ -210,7 +209,7 @@ Settings → Tabs.
 | Surface | What it's for |
 | --- | --- |
 | **Terminal** | The engine CLI plus the per-session cockpit. |
-| **Tickets** | Browse/filter/create; inline status edits write back to markdown. Provider per repo: local, GitHub, Linear, Obsidian. |
+| **Tickets** | Browse/filter/create; inline status edits write back to markdown. Provider per repo: local, GitHub, Linear, webview. |
 | **MRs / PRs** | Live forge requests with diff, findings, CI state, and the merge button. |
 | **Agents** | The roster: definitions, model policy, contracts, run history, one-click ticket implementation. |
 | **Runs** | Every run with log, lineage, evaluation, and cost. |
@@ -313,8 +312,8 @@ per-project sidecar, so neither is copied per repo.
 
 - **From the picker:** "New project from template" — name it, pick a parent,
   Create. Fresh directory, `git init`, first commit, session opened, per-repo
-  orientation shown. Ticket-provider choices (including the Obsidian vault
-  path): [`docs/runbooks/new-project.md`](docs/runbooks/new-project.md).
+  orientation shown. Details:
+  [`docs/runbooks/new-project.md`](docs/runbooks/new-project.md).
 - **From the shell:** `bin/new-project my-app [parent-dir]`.
 
 Existing repos adopt the same workflow via the in-app Bootstrap banner (or the

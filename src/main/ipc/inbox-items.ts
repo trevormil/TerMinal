@@ -16,9 +16,18 @@
 
 import { handle } from '../typed-ipc'
 import { readSettings } from '../settings'
-import { readHitl, resolveHitl, removeHitl, markHitlRead, markAllHitlRead } from '../hitl'
+import {
+  hitlCounts,
+  readHitl,
+  readHitlArchive,
+  resolveHitl,
+  removeHitl,
+  markHitlRead,
+  markAllHitlRead,
+} from '../hitl'
 import { collectRemoteHitl } from '../remote-runs'
 import { remoteHitl, type RemoteSessionRef } from '../remote'
+import { createInboxWrites } from '../inbox-writes'
 
 export type InboxItemsIpcDeps = {
   remoteFromHostId(hostId: string, cwd?: string): RemoteSessionRef | null
@@ -39,37 +48,27 @@ export function registerInboxItemsIpc(deps: InboxItemsIpcDeps): void {
     })
   }
 
-  // Resolve/remove route to the item's host when it came from the remote fan-out
-  // (#14) — resolving a host block on the Mac must write on the host that owns it,
-  // not locally. No hostId → local, as before.
-  const resolveItem = (id: string, resolved?: boolean, hostId?: string) => {
-    if (hostId) {
-      const ref = deps.remoteFromHostId(hostId)
-      if (ref) return remoteHitl.resolve(ref, id, resolved ?? true).catch(() => false)
-    }
-    return resolveHitl(id, resolved ?? true)
-  }
-
-  const removeItem = (id: string, hostId?: string) => {
-    if (hostId) {
-      const ref = deps.remoteFromHostId(hostId)
-      if (ref) return remoteHitl.remove(ref, id).catch(() => false)
-    }
-    return removeHitl(id)
-  }
-
-  // Mark-read routes to the owning host like resolve/remove (#14) — a remote
-  // item's readAt must persist where the item lives, or the 15s remote fan-in
-  // flips it back to unread. No hostId → local, as before.
-  const markItemsRead = (ids: string[], hostId?: string, read = true) => {
-    if (hostId) {
-      const ref = deps.remoteFromHostId(hostId)
-      if (ref) return remoteHitl.markRead(ref, ids, read).catch(() => 0)
-    }
-    return markHitlRead(ids, read)
-  }
+  // Resolve/remove/mark-read route to the item's host when it came from the
+  // remote fan-out (#14). The routing itself lives in inbox-writes.ts, so the
+  // phone bridge writes through the SAME policy instead of a second copy of it.
+  const writes = createInboxWrites({
+    remoteFromHostId: deps.remoteFromHostId,
+    remote: remoteHitl,
+    local: { resolve: resolveHitl, remove: removeHitl, markRead: markHitlRead },
+  })
+  const resolveItem = (id: string, resolved?: boolean, hostId?: string) =>
+    writes.resolve(id, resolved ?? true, hostId)
+  const removeItem = (id: string, hostId?: string) => writes.remove(id, hostId)
+  const markItemsRead = (ids: string[], hostId?: string, read = true) =>
+    writes.markRead(ids, hostId, read)
 
   const markAllItemsRead = () => markAllHitlRead()
+
+  // `list` returns the LIVE items only — tens, not thousands. The two reads
+  // below are what the rest of the inbox needs: a badge that costs one tiny
+  // file, and history paged out of the append-only archive on demand.
+  const counts = () => hitlCounts()
+  const archive = (cursor?: string | null, limit?: number) => readHitlArchive(cursor, limit)
 
   // Canonical spelling.
   handle('inbox:list', () => listItems())
@@ -82,6 +81,8 @@ export function registerInboxItemsIpc(deps: InboxItemsIpcDeps): void {
     markItemsRead(ids, hostId, read),
   )
   handle('inbox:mark-all-read', () => markAllItemsRead())
+  handle('inbox:counts', () => counts())
+  handle('inbox:archive', (_e, cursor?: string | null, limit?: number) => archive(cursor, limit))
 
   // Permanent aliases — the pre-rename spelling, same implementations.
   handle('hitl:list', () => listItems())
@@ -94,4 +95,6 @@ export function registerInboxItemsIpc(deps: InboxItemsIpcDeps): void {
     markItemsRead(ids, hostId, read),
   )
   handle('hitl:mark-all-read', () => markAllItemsRead())
+  handle('hitl:counts', () => counts())
+  handle('hitl:archive', (_e, cursor?: string | null, limit?: number) => archive(cursor, limit))
 }

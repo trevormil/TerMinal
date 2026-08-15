@@ -1,6 +1,7 @@
 import { test, expect, describe } from 'bun:test'
 import {
   BUILTIN_PROMPT_ID,
+  DEFAULT_SPAWN,
   NO_PROMPT,
   SPAWN_COUNT_MAX,
   TERMINAL_AGENT_PROMPT,
@@ -104,6 +105,16 @@ describe('spawnSummary', () => {
   })
   test('an unresolvable prompt id summarizes as the count alone', () => {
     expect(spawnSummary(2, 'custom:gone', opts)).toBe('×2')
+  })
+})
+
+describe('DEFAULT_SPAWN', () => {
+  test('is ×1 / None — the reset target for both first mount and every post-spawn reset', () => {
+    // The New session screen deliberately keeps no memory of the last pick:
+    // it seeds initial state from this constant AND resets back to it after
+    // each spawn, so a second spawn in the same visit is just as explicit as
+    // the first. Pinning the shape here protects both call sites at once.
+    expect(DEFAULT_SPAWN).toEqual({ count: 1, promptId: NO_PROMPT, text: '' })
   })
 })
 

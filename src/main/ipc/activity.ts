@@ -4,7 +4,8 @@
 // None of these are session-scoped, so the module has no deps.
 
 import { handle } from '../typed-ipc'
-import { readActivity, clearActivity, testDesktopAlert } from '../events'
+import { readActivityPageAt, unseenActivityCount, clearActivity, testDesktopAlert } from '../events'
+import type { ActivityCursor } from '../../shared/activity-log'
 import { detectEnv, installGtNotify } from '../env'
 import { testTelegram } from '../telegram'
 import { testSlack } from '../slack-mirror'
@@ -13,14 +14,20 @@ import { readSettings } from '../settings'
 import { readListenerStatus } from '../listeners'
 
 export function registerActivityIpc(): void {
-  handle('activity:list', () => readActivity())
+  // One page of the feed, newest first, plus the cursor for the next (older)
+  // one. The tab opens on a single page and pulls older ones on demand, so
+  // first paint no longer costs the whole history.
+  handle('activity:page', (_e, cursor: ActivityCursor | null, limit?: number) =>
+    readActivityPageAt(cursor, limit),
+  )
   // Count-only badge endpoints — the tab badges poll ~1/s while a terminal
   // streams; shipping the full lists over IPC just to count them was ~1MB/s of
-  // renderer-side JSON deserialization.
-  handle('activity:unseen-count', (_e, since: number, kinds: string[]) => {
-    const hi = new Set(kinds)
-    return readActivity().filter((ev) => ev.ts > since && hi.has(ev.kind)).length
-  })
+  // renderer-side JSON deserialization. The count itself never parses the log
+  // in the steady state: it early-exits at the first event older than `since`
+  // and is memoized against the log's size.
+  handle('activity:unseen-count', (_e, since: number, kinds: string[]) =>
+    unseenActivityCount(since, kinds),
+  )
   handle('activity:clear', () => clearActivity())
   handle('env:detect', () => detectEnv())
   handle('env:install-gt-notify', () => installGtNotify())

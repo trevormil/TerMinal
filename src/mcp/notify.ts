@@ -7,7 +7,7 @@
 // change one side's behaviour, which is not what a port may do.
 import { spawn } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
-import { updateJsonListShared } from '../runner/state-io'
+import { inboxPathsFor, updateInbox } from '../shared/inbox-store'
 import { LEGACY_TG_SCRIPT, SLACK_SIDECAR, TG_SIDECAR, readSettings } from './env'
 
 // ── slack inbox destination ──────────────────────────────────────────────
@@ -110,8 +110,8 @@ export function mirrorHitlToSlack(item: Record<string, any>, hitlFile: string): 
       }
       if (!res?.ok && channel !== fallback) res = await post(`#${fallback}`)
       if (res?.ok && typeof res.channel === 'string' && typeof res.ts === 'string') {
-        updateJsonListShared<Record<string, any>>(hitlFile, (list) =>
-          list.map((h) =>
+        updateInbox(inboxPathsFor(hitlFile), (live) =>
+          live.map((h) =>
             h.id === item.id ? { ...h, slackChannel: res.channel, slackTs: res.ts } : h,
           ),
         )

@@ -139,17 +139,27 @@ actor BridgeClient {
         return data
     }
 
-    func resolveHitl(id: String, resolved: Bool) async throws {
-        try await post("v1/hitl/\(id)", body: ["resolved": resolved])
+    /// `hostId` is the host the ITEM came from (nil ⇒ the Mac's own inbox). The
+    /// Mac routes the write there; without it a host item is resolved against a
+    /// file that has never seen its id, which 404s.
+    func resolveHitl(id: String, resolved: Bool, hostId: String? = nil) async throws {
+        struct Body: Encodable {
+            let resolved: Bool
+            /// Omitted when nil — the Mac reads a missing key as "local".
+            let hostId: String?
+        }
+        try await post("v1/hitl/\(id)", body: Body(resolved: resolved, hostId: hostId))
     }
 
-    /// Mark inbox items read (viewed) — or unread again with read=false.
-    func markHitlRead(ids: [String], read: Bool = true) async throws {
+    /// Mark inbox items read (viewed) — or unread again with read=false. Every
+    /// id in one call must belong to the SAME host — see `InboxCategories.byHost`.
+    func markHitlRead(ids: [String], read: Bool = true, hostId: String? = nil) async throws {
         struct Body: Encodable {
             let ids: [String]
             let read: Bool
+            let hostId: String?
         }
-        try await post("v1/hitl/read", body: Body(ids: ids, read: read))
+        try await post("v1/hitl/read", body: Body(ids: ids, read: read, hostId: hostId))
     }
 
     /// The session's recent raw terminal output — the read-only peek. The Mac
@@ -316,12 +326,42 @@ actor BridgeClient {
         -> String
     {
         struct Started: Decodable { let id: String }
-        var body: [String: String] = ["cwd": cwd]
-        if let engine { body["engine"] = engine }
-        if let effort, !effort.isEmpty { body["effort"] = effort }
-        if let task, !task.isEmpty { body["task"] = task }
+        let body = Self.spawnBody(cwd: cwd, engine: engine, effort: effort, task: task)
         let data = try await post("v1/remote/new", body: body)
         return try JSONDecoder().decode(Started.self, from: data).id
+    }
+
+    // ---- the fleet, and Mac-side setup ----------------------------------
+
+    /// Every machine on this Mac's tailnet, online first. Asking the Mac you
+    /// are already paired with sidesteps the pairing bootstrap entirely.
+    func tailnet() async throws -> TailnetFleet {
+        try TailnetFleet.decode(try await get("v1/tailnet"))
+    }
+
+    /// Is the never-die Stop hook registered globally on that Mac?
+    func globalHook() async throws -> GlobalHookStatus {
+        try JSONDecoder().decode(GlobalHookStatus.self, from: try await get("v1/hooks/global"))
+    }
+
+    /// Install (or remove) it. The Mac reports exactly what it wrote.
+    func setGlobalHook(install: Bool) async throws -> GlobalHookResult {
+        let data = try await post("v1/hooks/global", body: ["install": install])
+        return try JSONDecoder().decode(GlobalHookResult.self, from: data)
+    }
+
+    /// The spawn request body. Split out so the wire contract is unit-testable
+    /// without a Mac on the other end: the Mac reads a MISSING key as "use the
+    /// default", so an empty engine, effort or task must be omitted rather than
+    /// sent blank — a blank engine would resolve to no engine at all.
+    static func spawnBody(cwd: String, engine: String?, effort: String?, task: String?)
+        -> [String: String]
+    {
+        var body: [String: String] = ["cwd": cwd]
+        if let engine, !engine.isEmpty { body["engine"] = engine }
+        if let effort, !effort.isEmpty { body["effort"] = effort }
+        if let task, !task.isEmpty { body["task"] = task }
+        return body
     }
 
     /// Hand this device's APNs token to the Mac so alerts can reach it.

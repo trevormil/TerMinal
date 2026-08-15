@@ -179,7 +179,11 @@ private struct MonitorRow: View {
                     .frame(width: 9, height: 9)
                 Text(monitor.name)
                     .font(GT.sans(14, .medium)).foregroundStyle(GT.text).lineLimit(1)
-                if isStale(monitor) { pill("stale", tint: GT.yellow) }
+                if monitor.state?.isPaused == true {
+                    pill("paused", tint: GT.textFaint)
+                } else if isStale(monitor) {
+                    pill("stale", tint: GT.yellow)
+                }
                 Spacer(minLength: 6)
                 // Certs lead with time-to-expiry (the thing you actually watch);
                 // everything else shows a friendly verdict only when unhealthy.
@@ -261,7 +265,11 @@ struct MonitorDetailView: View {
                     Text((monitor.state?.status ?? "pending").uppercased())
                         .font(GT.sans(12, .semibold))
                         .foregroundStyle(monitor.state == nil ? GT.textFaint : statusColor(monitor.state?.status))
-                    if isStale(monitor) { pill("stale", tint: GT.textFaint) }
+                    if monitor.state?.isPaused == true {
+                        pill("paused", tint: GT.textFaint)
+                    } else if isStale(monitor) {
+                        pill("stale", tint: GT.textFaint)
+                    }
                     Spacer()
                     if let checkedAt = monitor.state?.lastCheckedAt {
                         Text("Checked \(relativeTime(checkedAt))")
@@ -270,6 +278,13 @@ struct MonitorDetailView: View {
                 }
                 Text(monitor.state?.summary ?? "No checks reported yet.")
                     .font(GT.sans(13)).foregroundStyle(GT.textSoft)
+                // Say WHY it stopped: the status above is the last result from
+                // before the Mac went offline, not a live verdict about this
+                // target. Without this a stale red reads as a real outage.
+                if monitor.state?.isPaused == true {
+                    Text("Checks paused — the Mac lost connectivity. This is the last result, not a live verdict.")
+                        .font(GT.sans(12)).foregroundStyle(GT.textFaint)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }

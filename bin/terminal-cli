@@ -463,12 +463,310 @@ function classifyCommand(kind, args) {
 }
 
 // src/cli/hitl.ts
-import { mkdirSync as mkdirSync4, readFileSync as readFileSync6 } from "fs";
+import { mkdirSync as mkdirSync4, readFileSync as readFileSync7 } from "fs";
 import { basename as basename2 } from "path";
 import { createHash, randomUUID as randomUUID3 } from "crypto";
 
+// src/shared/inbox-store.ts
+import {
+  appendFileSync as appendFileSync2,
+  closeSync as closeSync2,
+  openSync as openSync2,
+  readFileSync as readFileSync5,
+  readSync,
+  readdirSync,
+  renameSync as renameSync2,
+  statSync
+} from "fs";
+import { join as join4 } from "path";
+function inboxPaths(cfgDir) {
+  return {
+    hot: join4(cfgDir, "hitl.json"),
+    archive: join4(cfgDir, "hitl-archive.jsonl"),
+    counts: join4(cfgDir, "hitl-counts.json"),
+    hidden: join4(cfgDir, "hitl-archive-hidden.json")
+  };
+}
+function inboxPathsFor(hotFile) {
+  return inboxPaths(hotFile.replace(/\/?hitl\.json$/, ""));
+}
+var EMPTY_COUNTS = {
+  live: 0,
+  unread: 0,
+  archived: 0,
+  byCategory: {},
+  updatedAt: 0
+};
+function isInboxLive(h) {
+  return !h.readAt && h.status !== "resolved";
+}
+var CATEGORY_FALLBACK = "Uncategorized";
+function inboxCountsOf(live, archived) {
+  const byCategory = {};
+  let unread = 0;
+  for (const h of live) {
+    const cat = h.category || CATEGORY_FALLBACK;
+    const slot = byCategory[cat] ??= { live: 0, unread: 0 };
+    slot.live++;
+    if (!h.readAt) {
+      slot.unread++;
+      unread++;
+    }
+  }
+  return { live: live.length, unread, archived, byCategory, updatedAt: Date.now() };
+}
+function readJsonArray(file) {
+  let raw;
+  try {
+    raw = readFileSync5(file, "utf8");
+  } catch {
+    return "absent";
+  }
+  if (raw.trim() === "")
+    return "absent";
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : "corrupt";
+  } catch {
+    return "corrupt";
+  }
+}
+function readHidden(file) {
+  try {
+    const parsed = JSON.parse(readFileSync5(file, "utf8"));
+    return new Set(Array.isArray(parsed?.ids) ? parsed.ids.filter((i) => typeof i === "string") : []);
+  } catch {
+    return new Set;
+  }
+}
+function readInboxCounts(p) {
+  try {
+    const parsed = JSON.parse(readFileSync5(p.counts, "utf8"));
+    if (typeof parsed?.live !== "number" || typeof parsed?.archived !== "number")
+      return { ...EMPTY_COUNTS };
+    return { ...EMPTY_COUNTS, ...parsed, byCategory: parsed.byCategory ?? {} };
+  } catch {
+    return { ...EMPTY_COUNTS };
+  }
+}
+var BLOCK = 64 * 1024;
+function readLinesBackward(file, end, want) {
+  if (end <= 0 || want <= 0)
+    return { lines: [], offset: Math.max(0, end) };
+  const fd = openSync2(file, "r");
+  try {
+    let start = end;
+    let region = Buffer.alloc(0);
+    for (;; ) {
+      const size = Math.min(BLOCK, start);
+      if (size > 0) {
+        const block = Buffer.alloc(size);
+        readSync(fd, block, 0, size, start - size);
+        start -= size;
+        region = Buffer.concat([block, region]);
+      }
+      const parts = splitLines(region);
+      const complete = parts.slice(start > 0 ? 1 : 0, -1);
+      if (complete.length >= want || start === 0) {
+        const kept = complete.slice(Math.max(0, complete.length - want));
+        let bytes = 0;
+        for (const line of kept)
+          bytes += line.length + 1;
+        return { lines: kept.map((b) => b.toString("utf8")), offset: end - bytes };
+      }
+    }
+  } finally {
+    closeSync2(fd);
+  }
+}
+function splitLines(region) {
+  const out = [];
+  let from = 0;
+  for (;; ) {
+    const nl = region.indexOf(10, from);
+    if (nl < 0)
+      break;
+    out.push(region.subarray(from, nl));
+    from = nl + 1;
+  }
+  out.push(region.subarray(from));
+  return out;
+}
+function readInboxArchive(p, opts = {}) {
+  const limit = Math.max(1, Math.min(500, opts.limit ?? 50));
+  let size;
+  try {
+    size = statSync(p.archive).size;
+  } catch {
+    return { items: [], cursor: null, done: true };
+  }
+  const parsedCursor = opts.cursor == null ? size : Number(opts.cursor);
+  let end = Number.isFinite(parsedCursor) ? Math.min(Math.max(0, parsedCursor), size) : size;
+  if (end <= 0)
+    return { items: [], cursor: null, done: true };
+  const hidden = readHidden(p.hidden);
+  const liveIds = new Set(readHotRaw(p.hot).filter(isInboxLive).map((h) => h.id));
+  const seen = new Set;
+  const items = [];
+  while (end > 0 && items.length < limit) {
+    const need = limit - items.length;
+    const { lines, offset } = readLinesBackward(p.archive, end, need);
+    if (!lines.length) {
+      end = offset;
+      break;
+    }
+    for (let i = lines.length - 1;i >= 0; i--) {
+      let rec;
+      try {
+        rec = JSON.parse(lines[i]);
+      } catch {
+        continue;
+      }
+      if (!rec?.id || seen.has(rec.id))
+        continue;
+      seen.add(rec.id);
+      if (hidden.has(rec.id) || liveIds.has(rec.id))
+        continue;
+      items.push(rec);
+    }
+    end = offset;
+  }
+  return { items, cursor: end > 0 ? String(end) : null, done: end <= 0 };
+}
+function readHotRaw(file) {
+  const raw = readJsonArray(file);
+  return Array.isArray(raw) ? raw : [];
+}
+
+class InboxCorruptError extends Error {
+  file;
+  quarantinedTo;
+  constructor(file, quarantinedTo) {
+    super(`Refusing to write corrupt inbox state ${file}` + (quarantinedTo ? `; moved aside to ${quarantinedTo}` : ""));
+    this.file = file;
+    this.quarantinedTo = quarantinedTo;
+    this.name = "InboxCorruptError";
+  }
+}
+function findArchived(p, ids) {
+  const out = new Map;
+  if (!ids.length)
+    return out;
+  const wanted = new Set(ids);
+  let cursor = undefined;
+  for (let page = 0;page < 400 && wanted.size; page++) {
+    const res = readInboxArchive(p, { cursor, limit: 500 });
+    for (const item of res.items)
+      if (wanted.has(item.id)) {
+        out.set(item.id, item);
+        wanted.delete(item.id);
+      }
+    if (res.done)
+      break;
+    cursor = res.cursor;
+  }
+  return out;
+}
+function updateInbox(p, fn, opts = {}) {
+  return withFileLockShared(p.hot, () => {
+    importLegacyDailyArchives(p);
+    const raw = readJsonArray(p.hot);
+    if (raw === "corrupt") {
+      const dest = `${p.hot}.corrupt-${Date.now()}`;
+      renameSync2(p.hot, dest);
+      throw new InboxCorruptError(p.hot, dest);
+    }
+    const hot = raw === "absent" ? [] : raw;
+    const live = hot.filter(isInboxLive);
+    const strays = hot.filter((h) => !isInboxLive(h));
+    const includeIds = (opts.include ?? []).filter((id) => !live.some((h) => h.id === id));
+    const pulled = findArchived(p, includeIds);
+    const working = [...live, ...pulled.values()];
+    const before = new Map(working.map((h) => [h.id, h]));
+    const next = fn(working);
+    if (next === undefined) {
+      if (!strays.length)
+        return false;
+      return commit(p, live, strays, [], readInboxCounts(p));
+    }
+    const nextLive = [];
+    const retiring = [];
+    for (const h of next)
+      (isInboxLive(h) ? nextLive : retiring).push(h);
+    const toArchive = [
+      ...strays,
+      ...retiring.filter((h) => {
+        const prior = pulled.get(h.id);
+        return !prior || JSON.stringify(prior) !== JSON.stringify(h);
+      })
+    ];
+    const nextIds = new Set(next.map((h) => h.id));
+    const dropped = [...before.keys()].filter((id) => !nextIds.has(id));
+    return commit(p, nextLive, toArchive, dropped, readInboxCounts(p));
+  });
+}
+function commit(p, live, toArchive, dropped, prev) {
+  const base = prev.updatedAt ? prev.archived : countArchive(p);
+  if (toArchive.length)
+    appendFileSync2(p.archive, toArchive.map((h) => `${JSON.stringify(h)}
+`).join(""));
+  if (dropped.length) {
+    const hidden = readHidden(p.hidden);
+    for (const id of dropped)
+      hidden.add(id);
+    writeJsonAtomicShared(p.hidden, { ids: [...hidden] });
+  }
+  writeJsonAtomicShared(p.hot, live);
+  const archived = Math.max(0, base + toArchive.length - dropped.length);
+  writeJsonAtomicShared(p.counts, inboxCountsOf(live, archived));
+  return true;
+}
+function importLegacyDailyArchives(p) {
+  const dir = p.archive.replace(/\.jsonl$/, "");
+  let names;
+  try {
+    names = readdirSync(dir).filter((n) => n.endsWith(".json")).sort();
+  } catch {
+    return;
+  }
+  const lines = [];
+  for (const name of names) {
+    const parsed = readJsonArray(join4(dir, name));
+    if (!Array.isArray(parsed))
+      continue;
+    for (const item of parsed)
+      if (item?.id)
+        lines.push(`${JSON.stringify(item)}
+`);
+  }
+  if (lines.length)
+    appendFileSync2(p.archive, lines.join(""));
+  try {
+    renameSync2(dir, `${dir}.imported-${Date.now()}`);
+  } catch {}
+}
+function countArchive(p) {
+  try {
+    const hidden = readHidden(p.hidden);
+    const ids = new Set;
+    for (const line of readFileSync5(p.archive, "utf8").split(`
+`)) {
+      if (!line.trim())
+        continue;
+      try {
+        const id = JSON.parse(line).id;
+        if (id && !hidden.has(id))
+          ids.add(id);
+      } catch {}
+    }
+    return ids.size;
+  } catch {
+    return 0;
+  }
+}
+
 // src/cli/notify.ts
-import { existsSync, readFileSync as readFileSync5 } from "fs";
+import { existsSync, readFileSync as readFileSync6 } from "fs";
 import { spawn } from "child_process";
 function tgCreds() {
   const pick = (o) => {
@@ -479,10 +777,10 @@ function tgCreds() {
   let sc = null;
   let st = null;
   try {
-    sc = JSON.parse(readFileSync5(TG_SIDECAR(), "utf8"));
+    sc = JSON.parse(readFileSync6(TG_SIDECAR(), "utf8"));
   } catch {}
   try {
-    st = JSON.parse(readFileSync5(SETTINGS_FILE(), "utf8"))?.telegram;
+    st = JSON.parse(readFileSync6(SETTINGS_FILE(), "utf8"))?.telegram;
   } catch {}
   return pick(sc) ?? pick(st);
 }
@@ -517,7 +815,7 @@ function hitlButtons(item) {
 }
 function slackCfg() {
   try {
-    const c = JSON.parse(readFileSync5(SLACK_SIDECAR(), "utf8"));
+    const c = JSON.parse(readFileSync6(SLACK_SIDECAR(), "utf8"));
     return typeof c?.botToken === "string" && c.botToken ? c : null;
   } catch {
     return null;
@@ -573,7 +871,7 @@ function mirrorHitlToSlack(item) {
     if (!res?.ok && channel !== fallback)
       res = await post(`#${fallback}`);
     if (res?.ok && typeof res.channel === "string" && typeof res.ts === "string") {
-      updateJsonListShared(HITL_FILE(), (list) => list.map((h) => h.id === item.id ? { ...h, slackChannel: res.channel, slackTs: res.ts } : h));
+      updateInbox(inboxPathsFor(HITL_FILE()), (live) => live.map((h) => h.id === item.id ? { ...h, slackChannel: res.channel, slackTs: res.ts } : h));
     }
   })().catch(() => {});
 }
@@ -605,7 +903,7 @@ function fileHitl(title, action, opts = {}) {
     terminalKey: process.env.GT_TERMINAL_SESSION_KEY || "",
     terminalCwd: process.env.GT_TERMINAL_CWD || repo()
   };
-  updateJsonListShared(HITL_FILE(), (cur) => [item, ...cur]);
+  updateInbox(inboxPathsFor(HITL_FILE()), (live) => [item, ...live]);
   mirrorHitlToSlack(item);
   emitActivity("blocked", `Inbox \xB7 ${item.title}`, item.action, { suppressTelegram: true });
   const threshold = readSettings()?.inbox?.notifyThreshold;
@@ -626,7 +924,7 @@ function safeBasename(path) {
   }
 }
 function completionHitl(engine) {
-  const input = readFileSync6(0, "utf8");
+  const input = readFileSync7(0, "utf8");
   if (!completionHookEnabled())
     return;
   let payload = {};
@@ -666,7 +964,7 @@ function completionHitl(engine) {
     ...transcript ? { transcriptPath: transcript } : {}
   };
   mkdirSync4(CFG(), { recursive: true });
-  const filed = updateJsonListShared(HITL_FILE(), (cur) => cur.some((h) => h.id === id) ? undefined : [item, ...cur]);
+  const filed = updateInbox(inboxPathsFor(HITL_FILE()), (live) => live.some((h) => h.id === id) ? undefined : [item, ...live]);
   if (!filed) {
     console.log(id);
     return;
@@ -679,8 +977,8 @@ function completionHitl(engine) {
 }
 
 // src/cli/listener.ts
-import { mkdirSync as mkdirSync5, readFileSync as readFileSync7, readdirSync, writeFileSync as writeFileSync2 } from "fs";
-import { join as join4 } from "path";
+import { mkdirSync as mkdirSync5, readFileSync as readFileSync8, readdirSync as readdirSync2, writeFileSync as writeFileSync2 } from "fs";
+import { join as join5 } from "path";
 import { randomUUID as randomUUID4 } from "crypto";
 function safeFileName(name) {
   return String(name || "").replace(/[^a-zA-Z0-9._-]/g, "-").replace(/^-+|-+$/g, "") || randomUUID4();
@@ -759,7 +1057,7 @@ function readListenerEvent(args) {
     }
     return event;
   }
-  return raw ? JSON.parse(raw) : JSON.parse(readFileSync7(0, "utf8"));
+  return raw ? JSON.parse(raw) : JSON.parse(readFileSync8(0, "utf8"));
 }
 function listenerDirs() {
   return ["new", "processing", "done", "failed", "dead-letter"];
@@ -769,7 +1067,7 @@ function listenerStatus() {
     try {
       return [
         dir,
-        readdirSync(join4(LISTENER_ROOT(), dir)).filter((f) => f.endsWith(".json")).length
+        readdirSync2(join5(LISTENER_ROOT(), dir)).filter((f) => f.endsWith(".json")).length
       ];
     } catch {
       return [dir, 0];
@@ -821,27 +1119,27 @@ function listenerCommand(sub, args) {
     console.error("terminal-cli inbox enqueue: source and type are required");
     process.exit(2);
   }
-  mkdirSync5(join4(LISTENER_ROOT(), "new"), { recursive: true });
+  mkdirSync5(join5(LISTENER_ROOT(), "new"), { recursive: true });
   const id = event.id || randomUUID4();
-  const path = join4(LISTENER_ROOT(), "new", `${safeFileName(id)}.json`);
+  const path = join5(LISTENER_ROOT(), "new", `${safeFileName(id)}.json`);
   writeFileSync2(path, JSON.stringify({ ...event, id, createdAt: event.createdAt || new Date().toISOString() }, null, 2));
   console.log(path);
 }
 
 // src/cli/loop.ts
 import { execFileSync as execFileSync3 } from "child_process";
-import { appendFileSync as appendFileSync2, existsSync as existsSync5, mkdirSync as mkdirSync7, readFileSync as readFileSync9 } from "fs";
-import { join as join8 } from "path";
+import { appendFileSync as appendFileSync3, existsSync as existsSync5, mkdirSync as mkdirSync7, readFileSync as readFileSync10 } from "fs";
+import { join as join9 } from "path";
 
 // src/runner/repo-state.ts
 import { existsSync as existsSync3 } from "fs";
-import { join as join6 } from "path";
+import { join as join7 } from "path";
 
 // src/runner/repo-state-block.js
 import { execFileSync } from "child_process";
 import { createHash as createHash2 } from "crypto";
-import { existsSync as existsSync2, readdirSync as readdirSync2 } from "fs";
-import { basename as basename3, join as join5 } from "path";
+import { existsSync as existsSync2, readdirSync as readdirSync3 } from "fs";
+import { basename as basename3, join as join6 } from "path";
 function makeRepoState(CFG2) {
   const SIDECAR_AREAS = ["backlog", "sessions", "reviews", "checks", "reports"];
   const repoStateKeyCache = new Map;
@@ -850,7 +1148,7 @@ function makeRepoState(CFG2) {
     return Date.now() < MIGRATION_SUNSET_MS;
   }
   function repoStateDir() {
-    return process.env.TERMINAL_REPO_STATE_DIR?.trim() || join5(CFG2, "repos");
+    return process.env.TERMINAL_REPO_STATE_DIR?.trim() || join6(CFG2, "repos");
   }
   function gitOut(root, args) {
     try {
@@ -899,7 +1197,7 @@ function makeRepoState(CFG2) {
     if (!root || !SIDECAR_AREAS.includes(area))
       return "";
     const key = repoStateKey(root);
-    return key ? join5(repoStateDir(), key, area) : "";
+    return key ? join6(repoStateDir(), key, area) : "";
   }
   function areaPathsFor(root, area, candidates) {
     const out = [];
@@ -908,7 +1206,7 @@ function makeRepoState(CFG2) {
       out.push(sidecar);
     if (migrationWindowOpen())
       for (const rel of candidates) {
-        const p = join5(root, rel);
+        const p = join6(root, rel);
         if (existsSync2(p))
           out.push(p);
       }
@@ -921,7 +1219,7 @@ function makeRepoState(CFG2) {
     const existing = areaPathsFor(root, area, candidates);
     if (existing.length)
       return existing[0];
-    return join5(root, isV2 ? candidates[0] : candidates[1] || candidates[0]);
+    return join6(root, isV2 ? candidates[0] : candidates[1] || candidates[0]);
   }
   function maxAreaId(dirs) {
     let max = 0;
@@ -930,7 +1228,7 @@ function makeRepoState(CFG2) {
         continue;
       let entries = [];
       try {
-        entries = readdirSync2(dir);
+        entries = readdirSync3(dir);
       } catch {
         continue;
       }
@@ -946,19 +1244,19 @@ function makeRepoState(CFG2) {
     if (!root)
       return "";
     const key = repoStateKey(root);
-    return key ? join5(repoStateDir(), key, rel) : "";
+    return key ? join6(repoStateDir(), key, rel) : "";
   }
   function statePathForRead(root, rel) {
     const sidecar = statePathForWrite(root, rel);
     if (sidecar && existsSync2(sidecar))
       return sidecar;
-    const legacy = join5(root, ".TerMinal", rel);
+    const legacy = join6(root, ".TerMinal", rel);
     if (migrationWindowOpen() && existsSync2(legacy))
       return legacy;
     return sidecar || legacy;
   }
   function statePathSticky(root, rel) {
-    const legacy = join5(root, ".TerMinal", rel);
+    const legacy = join6(root, ".TerMinal", rel);
     if (migrationWindowOpen() && existsSync2(legacy))
       return legacy;
     return statePathForWrite(root, rel) || legacy;
@@ -970,10 +1268,10 @@ function makeRepoState(CFG2) {
     const key = repoStateKey(root);
     if (!key)
       return out;
-    const base = join5(repoStateDir(), key);
+    const base = join6(repoStateDir(), key);
     out.TERMINAL_STATE_DIR = base;
     for (const area of SIDECAR_AREAS) {
-      out["TERMINAL_" + area.toUpperCase() + "_DIR"] = join5(base, area);
+      out["TERMINAL_" + area.toUpperCase() + "_DIR"] = join6(base, area);
     }
     return out;
   }
@@ -1010,13 +1308,13 @@ function areaCandidates(area) {
 }
 function hasV2Layout(root) {
   const areas = ["backlog", "sessions", "reviews", "checks", "reports"];
-  if (existsSync3(join6(root, ".TerMinal", "template.json")))
+  if (existsSync3(join7(root, ".TerMinal", "template.json")))
     return true;
-  if (areas.some((area) => existsSync3(join6(root, areaCandidates(area)[0]))))
+  if (areas.some((area) => existsSync3(join7(root, areaCandidates(area)[0]))))
     return true;
   return !areas.some((area) => {
     const rels = areaCandidates(area);
-    return rels.length > 1 && existsSync3(join6(root, rels[1]));
+    return rels.length > 1 && existsSync3(join7(root, rels[1]));
   });
 }
 function areaPath(root, area) {
@@ -1037,8 +1335,8 @@ function maxAreaId(dirs) {
 
 // src/cli/tickets.ts
 import { execFileSync as execFileSync2 } from "child_process";
-import { existsSync as existsSync4, mkdirSync as mkdirSync6, readFileSync as readFileSync8, writeFileSync as writeFileSync3 } from "fs";
-import { join as join7 } from "path";
+import { existsSync as existsSync4, mkdirSync as mkdirSync6, readFileSync as readFileSync9, writeFileSync as writeFileSync3 } from "fs";
+import { join as join8 } from "path";
 var localDay = (at = new Date) => `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(at.getDate()).padStart(2, "0")}`;
 var MODEL_TIERS = ["auto", "top", "cheap-agentic", "cheap-raw"];
 var normalizeModelTier = (value) => MODEL_TIERS.includes(value) ? value : "auto";
@@ -1047,17 +1345,11 @@ function readTicketConfig() {
     const p = statePathForRead(repo(), "tickets.json");
     if (!existsSync4(p))
       return {};
-    const parsed = JSON.parse(readFileSync8(p, "utf8"));
+    const parsed = JSON.parse(readFileSync9(p, "utf8"));
     return parsed && typeof parsed === "object" ? parsed : {};
   } catch {
     return {};
   }
-}
-function obsidianTicketsDir(cfg) {
-  if (cfg.provider !== "obsidian" || !cfg.obsidian || !cfg.obsidian.vaultPath)
-    return null;
-  const sub = String(cfg.obsidian.ticketsSubdir || "tickets").replace(/^\/+|\/+$/g, "") || "tickets";
-  return join7(cfg.obsidian.vaultPath, sub);
 }
 var areaReadPaths = (root, area) => areaPathsFor(root, area);
 function fileTicket(title, body, modelTier) {
@@ -1076,14 +1368,9 @@ function fileTicket(title, body, modelTier) {
     console.error("terminal-cli ticket: this repo has no ticket store \u2014 its Tickets tab is a webview, not a queryable backlog");
     process.exit(2);
   }
-  if (cfg.provider === "obsidian" && !obsidianTicketsDir(cfg)) {
-    console.error("terminal-cli ticket: Obsidian vault path is not configured for this repo (.TerMinal/tickets.json)");
-    process.exit(2);
-  }
-  const vault = obsidianTicketsDir(cfg);
-  const backlog = vault || areaPath(repo(), "backlog");
+  const backlog = areaPath(repo(), "backlog");
   mkdirSync6(backlog, { recursive: true });
-  const maxId = maxAreaId(vault ? [vault] : areaReadPaths(repo(), "backlog").concat(backlog));
+  const maxId = maxAreaId(areaReadPaths(repo(), "backlog").concat(backlog));
   const id = String(maxId + 1).padStart(4, "0");
   const slug = (title || "untitled").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 50) || "untitled";
   const today = localDay();
@@ -1105,7 +1392,7 @@ agent_kind: classic
 
 ${body || ""}
 `;
-  const path = join7(backlog, `${id}-${slug}.md`);
+  const path = join8(backlog, `${id}-${slug}.md`);
   writeFileSync3(path, fm);
   emitActivity("ticket-filed", `Ticket filed \xB7 #${id}`, title || "");
   console.log(path);
@@ -1129,16 +1416,15 @@ function commentOnTicket(slug, body) {
     console.error("terminal-cli ticket comment: this repo has no ticket store \u2014 its Tickets tab is a webview, not a queryable backlog");
     process.exit(2);
   }
-  const vault = obsidianTicketsDir(cfg);
-  const dirs = vault ? [vault] : areaReadPaths(repo(), "backlog");
-  const writeDir = vault || areaPath(repo(), "backlog");
+  const dirs = areaReadPaths(repo(), "backlog");
+  const writeDir = areaPath(repo(), "backlog");
   const safe = String(slug || "").replace(/[^\w-]/g, "");
-  const path = safe ? dirs.map((d) => join7(d, `${safe}.md`)).find((p) => existsSync4(p)) : "";
+  const path = safe ? dirs.map((d) => join8(d, `${safe}.md`)).find((p) => existsSync4(p)) : "";
   if (!path) {
     console.error(`terminal-cli ticket comment: no such ticket "${slug}" in ${dirs.join(", ") || writeDir}`);
     process.exit(2);
   }
-  const md = readFileSync8(path, "utf8");
+  const md = readFileSync9(path, "utf8");
   const m = md.match(/^(---\n[\s\S]*?\n---\n?)([\s\S]*)$/);
   if (!m) {
     console.error(`terminal-cli ticket comment: ${safe}.md has no frontmatter block`);
@@ -1242,7 +1528,7 @@ function gitOut(root, args) {
 }
 function loopCommand(sub, rest) {
   const loopRoot = process.env.TERMINAL_REPO || gitOut(process.cwd(), ["rev-parse", "--show-toplevel"]) || process.cwd();
-  const loopDir = (id2) => statePathSticky(loopRoot, join8("loops", id2));
+  const loopDir = (id2) => statePathSticky(loopRoot, join9("loops", id2));
   const usage = () => {
     console.error("usage: terminal-cli loop <list | event <id> <role> <kind> [summary] [detail] | log <id> <line> | state <id>>");
     process.exit(2);
@@ -1251,7 +1537,7 @@ function loopCommand(sub, rest) {
     let loops = [];
     if (existsSync5(LOOPS_FILE())) {
       try {
-        loops = JSON.parse(readFileSync9(LOOPS_FILE(), "utf8"));
+        loops = JSON.parse(readFileSync10(LOOPS_FILE(), "utf8"));
       } catch {}
     }
     if (!loops.length)
@@ -1277,9 +1563,9 @@ function loopCommand(sub, rest) {
       ...detail ? { detail } : {},
       createdAt: new Date().toISOString()
     };
-    appendFileSync2(join8(dir, "events.jsonl"), JSON.stringify(ev) + `
+    appendFileSync3(join9(dir, "events.jsonl"), JSON.stringify(ev) + `
 `);
-    console.log(join8(dir, "events.jsonl"));
+    console.log(join9(dir, "events.jsonl"));
     return;
   }
   if (sub === "log") {
@@ -1287,13 +1573,13 @@ function loopCommand(sub, rest) {
     if (!line)
       usage();
     mkdirSync7(dir, { recursive: true });
-    appendFileSync2(join8(dir, "log.md"), `## [${localDay()}] ${line}
+    appendFileSync3(join9(dir, "log.md"), `## [${localDay()}] ${line}
 `);
     return;
   }
   if (sub === "state") {
-    const p = join8(dir, "progress.md");
-    console.log(existsSync5(p) ? readFileSync9(p, "utf8") : "(no progress.md)");
+    const p = join9(dir, "progress.md");
+    console.log(existsSync5(p) ? readFileSync10(p, "utf8") : "(no progress.md)");
     return;
   }
   usage();
@@ -1373,12 +1659,12 @@ function mcpCommand(tool, kvArgs) {
 
 // src/cli/monitor.ts
 import { execFileSync as execFileSync4 } from "child_process";
-import { existsSync as existsSync7, mkdirSync as mkdirSync8, readFileSync as readFileSync10, writeFileSync as writeFileSync4 } from "fs";
-import { join as join9 } from "path";
+import { existsSync as existsSync7, mkdirSync as mkdirSync8, readFileSync as readFileSync11, writeFileSync as writeFileSync4 } from "fs";
+import { join as join10 } from "path";
 var MONITOR_TYPES = ["http", "tls-cert", "tcp", "dns", "command"];
 function readMonitors() {
   try {
-    const a = JSON.parse(readFileSync10(MONITORS_FILE(), "utf8"));
+    const a = JSON.parse(readFileSync11(MONITORS_FILE(), "utf8"));
     return Array.isArray(a) ? a : [];
   } catch {
     return [];
@@ -1396,7 +1682,7 @@ function monitorCli(args) {
     for (const m of list) {
       let st = "";
       try {
-        st = JSON.parse(readFileSync10(join9(MONITOR_STATE_DIR(), `${m.id}.json`), "utf8")).status;
+        st = JSON.parse(readFileSync11(join10(MONITOR_STATE_DIR(), `${m.id}.json`), "utf8")).status;
       } catch {}
       console.log(`${m.enabled === false ? "\u25CB" : "\u25CF"} ${m.id}  [${m.type}]  ${st || "\u2014"}  ${m.name}`);
     }
@@ -1405,7 +1691,7 @@ function monitorCli(args) {
   if (sub === "status") {
     for (const m of list) {
       try {
-        const s = JSON.parse(readFileSync10(join9(MONITOR_STATE_DIR(), `${m.id}.json`), "utf8"));
+        const s = JSON.parse(readFileSync11(join10(MONITOR_STATE_DIR(), `${m.id}.json`), "utf8"));
         console.log(`${m.id}: ${s.status} \u2014 ${s.summary}`);
       } catch {
         console.log(`${m.id}: (no data yet)`);
@@ -1460,7 +1746,7 @@ function monitorCli(args) {
   if (sub === "remove") {
     writeMonitors(list.filter((m) => m.id !== id));
     try {
-      const p = join9(MONITOR_STATE_DIR(), `${id}.json`);
+      const p = join10(MONITOR_STATE_DIR(), `${id}.json`);
       if (existsSync7(p))
         writeFileSync4(p, "");
     } catch {}
@@ -1494,23 +1780,45 @@ function monitorCli(args) {
 // src/cli/remote.ts
 import { execSync as execSync2 } from "child_process";
 import {
-  appendFileSync as appendFileSync3,
+  appendFileSync as appendFileSync4,
   existsSync as existsSync8,
   mkdirSync as mkdirSync9,
-  readFileSync as readFileSync11,
-  readdirSync as readdirSync3,
+  readFileSync as readFileSync12,
+  readdirSync as readdirSync4,
   writeFileSync as writeFileSync5
 } from "fs";
-import { basename as basename4, join as join10 } from "path";
+import { basename as basename4, join as join11 } from "path";
 import { randomUUID as randomUUID5 } from "crypto";
-var remoteMeta = (id) => join10(REMOTE_DIR(), `${id}.json`);
-var remoteLog = (id) => join10(REMOTE_DIR(), `${id}.jsonl`);
+
+// src/shared/remote-heartbeat.ts
+var DEFAULT_IDLE_SLEEP_MS = 6 * 60 * 60 * 1000;
+function heartbeatDecision(input) {
+  const threshold = input.idleSleepMs && input.idleSleepMs > 0 ? input.idleSleepMs : DEFAULT_IDLE_SLEEP_MS;
+  if (input.wakeable === false)
+    return "park";
+  const idle = Math.max(0, input.now - input.lastActivityAt);
+  return idle >= threshold ? "sleep" : "park";
+}
+function idleSleepMsFromEnv(raw) {
+  if (raw === undefined || raw === "")
+    return;
+  if (raw === "off")
+    return Number.POSITIVE_INFINITY;
+  const secs = Number(raw);
+  if (!Number.isFinite(secs) || secs <= 0)
+    return;
+  return secs * 1000;
+}
+
+// src/cli/remote.ts
+var remoteMeta = (id) => join11(REMOTE_DIR(), `${id}.json`);
+var remoteLog = (id) => join11(REMOTE_DIR(), `${id}.jsonl`);
 var validRemoteId = (id) => typeof id === "string" && /^[\w-]{1,64}$/.test(id);
 function readRemote(id) {
   if (!validRemoteId(id))
     return null;
   try {
-    return JSON.parse(readFileSync11(remoteMeta(id), "utf8"));
+    return JSON.parse(readFileSync12(remoteMeta(id), "utf8"));
   } catch {
     return null;
   }
@@ -1521,7 +1829,7 @@ function writeRemote(session) {
 }
 function remoteMessages(id) {
   try {
-    return readFileSync11(remoteLog(id), "utf8").split(`
+    return readFileSync12(remoteLog(id), "utf8").split(`
 `).filter((l) => l.trim()).map((l) => {
       try {
         return JSON.parse(l);
@@ -1538,22 +1846,22 @@ function remoteAppend(id, from, text, images) {
   const msg = { at: Date.now(), from, text };
   if (images && images.length)
     msg.images = images;
-  appendFileSync3(remoteLog(id), JSON.stringify(msg) + `
+  appendFileSync4(remoteLog(id), JSON.stringify(msg) + `
 `, { mode: 384 });
 }
 function remoteSaveImage(id, srcPath) {
   const ext = (srcPath.split(".").pop() || "png").toLowerCase();
   const safeExt = /^(png|jpg|jpeg|gif|webp|heic)$/.test(ext) ? ext : "png";
-  const fdir = join10(REMOTE_DIR(), `${id}.files`);
+  const fdir = join11(REMOTE_DIR(), `${id}.files`);
   mkdirSync9(fdir, { recursive: true, mode: 448 });
   const name = `${Date.now().toString(36)}-${randomUUID5().slice(0, 6)}.${safeExt}`;
-  writeFileSync5(join10(fdir, name), readFileSync11(srcPath), { mode: 384 });
+  writeFileSync5(join11(fdir, name), readFileSync12(srcPath), { mode: 384 });
   return name;
 }
 function remoteList() {
   if (!existsSync8(REMOTE_DIR()))
     return [];
-  return readdirSync3(REMOTE_DIR()).filter((f) => f.endsWith(".json")).map((f) => readRemote(f.slice(0, -5))).filter(Boolean).sort((a, b) => b.lastSeenAt - a.lastSeenAt);
+  return readdirSync4(REMOTE_DIR()).filter((f) => f.endsWith(".json")).map((f) => readRemote(f.slice(0, -5))).filter(Boolean).sort((a, b) => b.lastSeenAt - a.lastSeenAt);
 }
 function resolveRemoteId(flagId, cwd, {
   quiet = false,
@@ -1600,15 +1908,20 @@ function takeRemoteReplies(id) {
   return fresh.map((m) => {
     if (!m.images || !m.images.length)
       return m.text;
-    const paths = m.images.map((n) => `[image: ${join10(REMOTE_DIR(), `${id}.files`, n)}]`).join(" ");
+    const paths = m.images.map((n) => `[image: ${join11(REMOTE_DIR(), `${id}.files`, n)}]`).join(" ");
     return m.text ? `${m.text}
 ${paths}` : paths;
   });
 }
+function lastActivityAt(session) {
+  const msgs = remoteMessages(session.id);
+  const last = msgs.length ? msgs[msgs.length - 1].at : 0;
+  return Math.max(last, session.registeredAt || 0);
+}
 function waitForReplies(sessionId, timeoutSec) {
   const parked = readRemote(sessionId);
-  if (parked && parked.status === "working")
-    writeRemote({ ...parked, status: "idle", lastSeenAt: Date.now() });
+  if (parked && (parked.status === "working" || parked.dormantAt))
+    writeRemote({ ...parked, status: "idle", dormantAt: undefined, lastSeenAt: Date.now() });
   const deadline = Date.now() + timeoutSec * 1000;
   for (;; ) {
     const session = readRemote(sessionId);
@@ -1621,8 +1934,19 @@ function waitForReplies(sessionId, timeoutSec) {
 `));
       return;
     }
-    if (Date.now() > deadline)
-      process.exit(3);
+    if (Date.now() > deadline) {
+      const decision = heartbeatDecision({
+        now: Date.now(),
+        lastActivityAt: lastActivityAt(session),
+        idleSleepMs: idleSleepMsFromEnv(process.env.TERMINAL_REMOTE_IDLE_SLEEP),
+        wakeable: !!(session.agentSessionId || session.cwd)
+      });
+      if (decision === "park")
+        process.exit(3);
+      writeRemote({ ...session, dormantAt: Date.now(), lastSeenAt: Date.now() });
+      remoteAppend(sessionId, "agent", "Sleeping after a long idle \u2014 no heartbeats while nothing is happening. " + "Send a message and I pick straight up where we left off.", []);
+      return;
+    }
     execSync2("sleep 2");
   }
 }

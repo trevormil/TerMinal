@@ -34,6 +34,10 @@ const aliases = registrations('hitl')
 describe('inbox:* is the canonical family (ticket 0123)', () => {
   test('it covers every item operation', () => {
     expect([...canonical.keys()].sort()).toEqual([
+      // `list` is the LIVE items; `archive` pages history; `counts` is the
+      // badge index. All three are inbox reads and all three need the alias.
+      'archive',
+      'counts',
       'list',
       'mark-all-read',
       'mark-read',
@@ -57,7 +61,16 @@ describe('inbox:* is the canonical family (ticket 0123)', () => {
     // untypeable, so this is what keeps `inbox:*` a first-class family rather
     // than a second spelling nobody can call.
     const inboxBlock = TYPES.slice(TYPES.indexOf('  inbox: {'), TYPES.indexOf('  agentview: {'))
-    for (const name of ['list', 'remoteAll', 'resolve', 'remove', 'markRead', 'markAllRead']) {
+    for (const name of [
+      'list',
+      'remoteAll',
+      'resolve',
+      'remove',
+      'markRead',
+      'markAllRead',
+      'counts',
+      'archive',
+    ]) {
       expect(inboxBlock, `GtApi.inbox.${name} is missing`).toContain(`${name}:`)
     }
   })

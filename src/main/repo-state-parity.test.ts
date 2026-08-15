@@ -14,7 +14,7 @@ import {
 // The standalone processes cannot import from the app bundle, so a copy of the
 // sidecar resolver is generated from src/main/repo-state-inline.ts and pinned
 // here. Three separate bugs have already shipped from hand-copied logic
-// drifting (the remote-host bootstrap markers, the Obsidian gap, this resolver).
+// drifting (the remote-host bootstrap markers, this resolver).
 //
 // Every BUNDLED script (bin/terminal-cron, bin/terminal-cli,
 // bin/terminal-mcp-server) now IMPORTS one module —
