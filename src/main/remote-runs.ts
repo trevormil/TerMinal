@@ -97,3 +97,20 @@ export async function collectRemoteHitl(
   })
   return { items, errors }
 }
+
+/**
+ * One host's run log, bounded like every other fan-out read.
+ *
+ * The 60s execFile ceiling in remote.ts is not a bound the caller can live with:
+ * the phone's BridgeClient gives up at 10s, so an unbounded read burns an SSH
+ * for up to a minute after nobody is listening — and the bridge request behind
+ * it stays open just as long. Empty string is the same "no log" answer every
+ * other failure produces.
+ */
+export function boundedRemoteLog(
+  fetch: () => Promise<string>,
+  label: string,
+  ms: number = REMOTE_FANOUT_TIMEOUT_MS,
+): Promise<string> {
+  return withTimeout(fetch(), label, ms).catch(() => '')
+}

@@ -92,6 +92,20 @@ let hitlQueue = [
     severity: 'normal',
     status: 'open',
   },
+  {
+    // A HOST item: the phone must show the host chip and hand hostId back on
+    // every write, or the write lands on the wrong machine.
+    id: 'tm-1',
+    title: 'Host agent is blocked on credentials',
+    detail: 'A run on tm needs a token before it can continue.',
+    repo: 'TerMinal',
+    source: 'agent',
+    createdAt: 1_784_000_003_000,
+    severity: 'push',
+    status: 'open',
+    hostId: 'tm',
+    hostLabel: 'tm mini',
+  },
 ]
 
 const deps: BridgeDeps = {
@@ -234,7 +248,9 @@ const deps: BridgeDeps = {
       title: 'ticket-sweep',
       describe: 'every 4 hours',
       nextRun: 1_784_010_000_000,
+      // Tripped by the host's breaker, not paused by hand.
       enabled: false,
+      disabledReason: 'tm mini · 3 consecutive failures',
     },
   ],
   // The harness can't launch a real desktop tab, so it does what the app's

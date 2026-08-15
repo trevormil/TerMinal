@@ -14,13 +14,19 @@ import { configPath } from './config-dir'
 import { describeSpec, nextRun } from './cron'
 import { listAllRuns, readCronRunLog, readSessionRunLog, readSessionRunLogTail } from './cron-runs'
 import { emitActivity, readActivity } from './events'
-import { markHitlRead, readHitl, resolveHitl } from './hitl'
+import { markHitlRead, readHitl, removeHitl, resolveHitl } from './hitl'
 import { itemSeverity } from './hitl-severity'
+import { dropSnoozed, snoozeFilePath } from './hitl-snooze'
+import { createInboxWrites } from './inbox-writes'
+import { hostBreakerState } from './host-disabled'
+import { listDisabledDetail } from './agents-disabled'
+import { applyBreaker, type BreakerEntry } from './schedule-breaker'
+import { terminalConfigDir } from './config-dir'
 import { readBgTaskLog } from './bg-tasks'
 import { listRuns, readAgentRunLog } from './agent-run-store'
 import { listMonitorsWithStatus } from './monitors'
 import { remoteHitl, remoteRuns } from './remote'
-import { collectRemoteHitl } from './remote-runs'
+import { boundedRemoteLog, collectRemoteHitl } from './remote-runs'
 import {
   deleteRemoteSession,
   endRemoteSession,
@@ -100,11 +106,47 @@ export function createBridgeDeps(ctx: BridgeDepsCtx): BridgeDeps {
 
   function readRunLogFor(source: string, runId: string, hostId?: string): string | Promise<string> {
     const remote = hostId ? ctx.remoteFromHostId(hostId) : null
-    if (remote) return remoteRuns.log(remote, runId).catch(() => '')
+    // Bounded like every other fan-out read: the iOS client gives up at 10s, so
+    // an unbounded read burns an SSH (and holds this request open) for the full
+    // 60s execFile ceiling after nobody is listening.
+    if (remote) return boundedRemoteLog(() => remoteRuns.log(remote, runId), remote.label)
     if (source === 'cron') return readCronRunLog(runId)
     if (source === 'session') return readSessionRunLog(runId)
     if (source === 'bg') return readBgTaskLog(runId)
     return listRuns().find((r) => r.id === runId)?.output || readAgentRunLog(runId)
+  }
+
+  /** Snoozed items are off your plate on the phone too — the single snooze
+   *  filter (hitl-snooze.ts) the app-icon badge also reads, so the list, the
+   *  badge and the push gate can never disagree. */
+  const visible = <T extends { id: string }>(items: T[]): T[] =>
+    dropSnoozed(items, snoozeFilePath(terminalConfigDir()))
+
+  // The phone writes through the SAME host routing the desktop uses: a host
+  // item's id does not exist in this Mac's hitl.json, so a local write 404s,
+  // and a local readAt is flipped back by the next 15s remote fan-in.
+  const inboxWrites = createInboxWrites({
+    remoteFromHostId: ctx.remoteFromHostId,
+    remote: remoteHitl,
+    local: { resolve: resolveHitl, remove: removeHitl, markRead: markHitlRead },
+  })
+
+  /** Breaker entries for the schedules of one repo: the local disabled.json
+   *  plus every assigned host's, the same merge ipc/schedules.ts does. */
+  async function breakerEntries(hostIds: string[]): Promise<BreakerEntry[]> {
+    const local: BreakerEntry[] = listDisabledDetail().map((e) => ({ id: e.id, reason: e.reason }))
+    const refs = [...new Set(hostIds)].flatMap((hostId) => {
+      const ref = ctx.remoteFromHostId(hostId)
+      return ref ? [ref] : []
+    })
+    if (!refs.length) return local
+    // Best-effort: an unreachable host contributes nothing. It is already
+    // reported as an error on the desktop's Schedules tab.
+    const snap = await hostBreakerState(refs).catch(() => null)
+    return [
+      ...local,
+      ...(snap?.entries ?? []).map((e) => ({ id: e.id, reason: e.reason, hostLabel: e.hostLabel })),
+    ]
   }
 
   function spawnPrompt(remoteId: string, task?: string): string {
@@ -232,7 +274,9 @@ export function createBridgeDeps(ctx: BridgeDepsCtx): BridgeDeps {
     hitl: async () => {
       // ALL local items (open + resolved), so the phone can show read/unread and
       // filter — capped newest-first so a long resolved history stays wire-cheap.
-      const local = readHitl()
+      // Snoozed items are dropped BEFORE the cap, exactly as the Mac drawer
+      // hides them: "later" said on the Mac has to mean later on the phone too.
+      const local = visible(readHitl())
         .sort((a, b) => b.createdAt - a.createdAt)
         .slice(0, 200)
         .map((h) => ({
@@ -254,26 +298,29 @@ export function createBridgeDeps(ctx: BridgeDepsCtx): BridgeDeps {
         const ref = ctx.remoteFromHostId(h.id)
         return ref ? remoteHitl.list(ref) : []
       }).catch(() => null)
-      const mapped = (remote?.items ?? [])
+      const mapped = visible(remote?.items ?? [])
         .filter((h) => h.status === 'open')
         .map((h) => ({
           id: h.id,
           title: h.title,
           detail: h.detail,
           action: h.action,
-          // Label which machine is blocked, or the queue is ambiguous.
-          repo: h.hostLabel ? `${h.hostLabel} · ${h.repo || ''}`.trim() : h.repo,
+          repo: h.repo,
           source: h.source,
           createdAt: h.createdAt,
           // Host blocks are always "look at me"; host read-state isn't tracked here.
           severity: itemSeverity(h),
           status: h.status ?? 'open',
           readAt: h.readAt,
+          // Which machine is blocked — as fields, so the phone can chip it and,
+          // more importantly, hand the hostId back when you act on the row.
+          hostId: h.hostId,
+          hostLabel: h.hostLabel,
         }))
       return [...local, ...mapped].sort((a, b) => b.createdAt - a.createdAt)
     },
-    resolveHitl: (id, resolved) => resolveHitl(id, resolved),
-    markHitlRead: (ids, read) => markHitlRead(ids, read),
+    resolveHitl: (id, resolved, hostId) => inboxWrites.resolve(id, resolved, hostId),
+    markHitlRead: (ids, read, hostId) => inboxWrites.markRead(ids, hostId, read),
     repos: () => {
       // Most recent activity per repo, so the phone can surface what you actually
       // work in instead of an alphabetical wall. Desktop pins/recents live in
@@ -538,7 +585,7 @@ export function createBridgeDeps(ctx: BridgeDepsCtx): BridgeDeps {
         return { text: '', truncated: false }
       }
     },
-    workspaceSchedule: (repoPath, id) => {
+    workspaceSchedule: async (repoPath, id) => {
       const s = getSchedule(id)
       const root = repoRootOf(repoPath) || repoPath
       // server.ts already fenced repoPath to the advertised set; also require the
@@ -546,7 +593,7 @@ export function createBridgeDeps(ctx: BridgeDepsCtx): BridgeDeps {
       // another repo's schedule prompt by guessing its id.
       if (!s || !(s.repoRoot === root || s.repoLabel === basename(repoPath))) return null
       const now = Date.now()
-      return {
+      const row = {
         id: s.id,
         title: s.agentTitle,
         describe: describeSpec(s.spec),
@@ -560,19 +607,24 @@ export function createBridgeDeps(ctx: BridgeDepsCtx): BridgeDeps {
         host: s.host,
         runtime: s.runtime,
       }
+      // `enabled` is only the user's switch. A schedule the runner tripped its
+      // breaker on is dead, and reads as healthy without this merge.
+      return applyBreaker([row], await breakerEntries(s.host ? [s.host] : []))[0]
     },
-    workspaceSchedules: (repoPath) => {
+    workspaceSchedules: async (repoPath) => {
       const root = repoRootOf(repoPath) || repoPath
       const now = Date.now()
-      return readSchedules(now)
-        .filter((s) => s.repoRoot === root || s.repoLabel === basename(repoPath))
-        .map((s) => ({
-          id: s.id,
-          title: s.agentTitle,
-          describe: describeSpec(s.spec),
-          nextRun: nextRun(s.spec, now) ?? undefined,
-          enabled: s.enabled,
-        }))
+      const mine = readSchedules(now).filter(
+        (s) => s.repoRoot === root || s.repoLabel === basename(repoPath),
+      )
+      const rows = mine.map((s) => ({
+        id: s.id,
+        title: s.agentTitle,
+        describe: describeSpec(s.spec),
+        nextRun: nextRun(s.spec, now) ?? undefined,
+        enabled: s.enabled,
+      }))
+      return applyBreaker(rows, await breakerEntries(mine.flatMap((s) => (s.host ? [s.host] : []))))
     },
     // Native CI for the phone's per-workspace CI tab — the same run/job data the
     // desktop CI tab's Runs view uses.
