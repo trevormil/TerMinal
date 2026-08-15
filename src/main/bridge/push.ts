@@ -4,6 +4,8 @@ import { connect, constants, type ClientHttp2Session } from 'node:http2'
 import { join } from 'node:path'
 import { BRIDGE_DIR } from './identity'
 import { blockEffect } from '../effect-guard'
+// Pure fs module (no events.ts) — safe here, unlike hitl.ts. See openHitlCount.
+import { dropSnoozed, snoozeFilePath } from '../hitl-snooze'
 
 // Push notifications, sent straight from this Mac to Apple.
 //
@@ -285,14 +287,25 @@ export async function sendPush(
  * emitActivity from events.ts, and events.ts is where the push channel is
  * registered — going through it would create an import cycle.
  */
-export function openHitlCount(): number {
+export function openHitlCount(
+  configDir: string = join(BRIDGE_DIR(), '..'),
+  now = Date.now(),
+): number {
   try {
-    const raw = JSON.parse(readFileSync(join(BRIDGE_DIR(), '..', 'hitl.json'), 'utf8')) as unknown
+    const raw = JSON.parse(readFileSync(join(configDir, 'hitl.json'), 'utf8')) as unknown
     if (!Array.isArray(raw)) return 0
     // The app badge should nag about what you HAVEN'T SEEN, not everything open —
     // a read-but-unresolved item shouldn't keep the red dot burning.
-    return raw.filter(
-      (h) => (h as { status?: string })?.status === 'open' && !(h as { readAt?: number })?.readAt,
+    const unread = (raw as { id?: string; status?: string; readAt?: number }[]).filter(
+      (h) => h?.status === 'open' && !h?.readAt,
+    )
+    // …and a snoozed item is not something you haven't seen — you said "later".
+    // dispatchAlert already suppresses its push (notify-channels.ts), so a badge
+    // that counted it would disagree with the alert that never arrived.
+    return dropSnoozed(
+      unread.filter((h): h is { id: string; status?: string; readAt?: number } => !!h.id),
+      snoozeFilePath(configDir),
+      now,
     ).length
   } catch {
     return 0

@@ -4,6 +4,7 @@ import { createVerify } from 'node:crypto'
 import { mkdtempSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { isSnoozedAt, readSnoozes } from '../hitl-snooze'
 import {
   apnsJwt,
   forgetDevice,
@@ -13,6 +14,7 @@ import {
   readDevices,
   registerDevice,
   sendPush,
+  openHitlCount,
 } from './push'
 
 const tmp = () => mkdtempSync(join(tmpdir(), 'gt-push-'))
@@ -165,5 +167,50 @@ describe('sendPush', () => {
     configure(dir)
     registerDevice('AABB1122', 'sandbox', dir)
     expect(pushStatus(dir)).toEqual({ configured: true, devices: 1 })
+  })
+})
+
+describe('openHitlCount (the app-icon badge)', () => {
+  const NOW = 1_800_000_000_000
+  const item = (id: string, extra: Record<string, unknown> = {}) => ({
+    id,
+    title: id,
+    source: 'test',
+    createdAt: NOW - 1000,
+    status: 'open',
+    ...extra,
+  })
+
+  function state(dir: string, items: unknown[], snoozes: Record<string, number> = {}): void {
+    writeFileSync(join(dir, 'hitl.json'), JSON.stringify(items))
+    writeFileSync(join(dir, 'hitl-snooze.json'), JSON.stringify(snoozes))
+  }
+
+  it('counts only what you have not seen', () => {
+    const dir = tmp()
+    state(dir, [item('a'), item('b', { readAt: NOW }), item('c', { status: 'resolved' })])
+    expect(openHitlCount(dir, NOW)).toBe(1)
+  })
+
+  it('agrees with the push gate: a snoozed item is neither pushed nor badged', () => {
+    const dir = tmp()
+    state(dir, [item('a'), item('b')], { b: NOW + 3_600_000 })
+    // The gate dispatchAlert consults (notify-channels.ts wires isSnoozedAt).
+    const snoozes = readSnoozes(join(dir, 'hitl-snooze.json'))
+    expect(isSnoozedAt(snoozes, 'b', NOW)).toBe(true)
+    expect(openHitlCount(dir, NOW)).toBe(1)
+  })
+
+  it('counts an item again once its snooze comes due', () => {
+    const dir = tmp()
+    state(dir, [item('a'), item('b')], { b: NOW + 60_000 })
+    expect(openHitlCount(dir, NOW)).toBe(1)
+    expect(openHitlCount(dir, NOW + 120_000)).toBe(2)
+  })
+
+  it('degrades to "nothing is snoozed" when the sidecar is missing', () => {
+    const dir = tmp()
+    writeFileSync(join(dir, 'hitl.json'), JSON.stringify([item('a'), item('b')]))
+    expect(openHitlCount(dir, NOW)).toBe(2)
   })
 })

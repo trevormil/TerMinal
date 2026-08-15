@@ -6,7 +6,7 @@
 // snoozed" and never loses an actual inbox item.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { dirname, join } from 'node:path'
 
 // Presets live in shared/ so the renderer can recompute them at click time
 // without pulling this node:fs module into the browser bundle.
@@ -59,4 +59,26 @@ export function clearSnooze(file: string, id: string, now = Date.now()): SnoozeM
 export function isSnoozedAt(map: SnoozeMap, id: string, now = Date.now()): boolean {
   const until = map[id]
   return typeof until === 'number' && until > now
+}
+
+/** Where the snooze sidecar lives, given the TerMinal config dir. One spelling,
+ *  so a reader and a writer can never point at different files. */
+export function snoozeFilePath(configDir: string): string {
+  return join(configDir, 'hitl-snooze.json')
+}
+
+/**
+ * "A snoozed item is off your plate" — the ONE definition outside the renderer.
+ *
+ * Read by the app-icon badge (bridge/push.ts) and by the phone's inbox list
+ * (bridge-deps.ts), so the badge, the push gate (notify-channels.ts) and the
+ * list can never disagree about what is currently on the pile.
+ */
+export function dropSnoozed<T extends { id: string }>(
+  items: T[],
+  file: string,
+  now = Date.now(),
+): T[] {
+  const map = readSnoozes(file)
+  return items.filter((i) => !isSnoozedAt(map, i.id, now))
 }
