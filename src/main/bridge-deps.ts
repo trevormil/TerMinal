@@ -34,7 +34,9 @@ import {
   registerRemoteSession,
   saveImage,
   stripAnsi,
+  takeReplies,
 } from './remote-sessions'
+import { remoteSpawnPrompt } from './remote-spawn-prompt'
 import { repoForCwd, repoRootOf } from './repo'
 import { getSchedule, readSchedules } from './schedules'
 import { readSettings, resolvedProjectsDir } from './settings'
@@ -66,12 +68,6 @@ export function createBridgeDeps(ctx: BridgeDepsCtx): BridgeDeps {
   // A second transport over the SAME live ptys the desktop drives — never a
   // parallel session store. Terminals only: a phone attached to a live agent can
   // ask it about tickets/PRs/CI itself, so the bridge grows no bespoke endpoints.
-  /**
-   * The first thing a phone-started session is told. It has to do three jobs:
-   * adopt the thread that is already waiting for it, learn the reporting
-   * contract, and get on with the work — with no human at the keyboard to
-   * correct it.
-   */
   /** Cap oversized text for the wire. Logs keep the TAIL (where failures are);
    *  diffs keep the head. */
   function capText(s: string, max: number, opts: { keepTail?: boolean } = {}): BridgeText {
@@ -108,40 +104,8 @@ export function createBridgeDeps(ctx: BridgeDepsCtx): BridgeDeps {
     return listRuns().find((r) => r.id === runId)?.output || readAgentRunLog(runId)
   }
 
-  function spawnPrompt(remoteId: string, task?: string): string {
-    // Absolute path to THIS app's terminal-cli, which always has the `remote`
-    // subcommand. Bare `terminal-cli` isn't on an interactive session's PATH, and
-    // the repo's own bin/ may be on a branch that predates `remote` — the agent
-    // otherwise burns several turns guessing. Quote it in case the path has spaces.
-    const cli = `"${ctx.cliSrcPath()}"`
-    const lines = [
-      `You were started from TerMinal Remote on a phone. There is no one at this Mac —`,
-      `report through the phone, not the terminal.`,
-      ``,
-      `A remote thread is already registered for you. Adopt it, then use it`,
-      `(use this exact path — bare terminal-cli is not on PATH):`,
-      ``,
-      `    ${cli} remote register --id ${remoteId} "<short title>"`,
-      `    ${cli} remote post --id ${remoteId} "<update>"`,
-      `    ${cli} remote ask  --id ${remoteId} "<question>"   # blocks for a reply`,
-      ``,
-      `Follow the remote-terminal skill for when to post vs ask. Post at real`,
-      `checkpoints, not every command. Ask only at a genuine fork; otherwise pick`,
-      `the safe default and say so in a post.`,
-      ``,
-      `This session stays live between turns. When you finish a task, post the result`,
-      `and just stop — the human's next phone message is handed to you automatically`,
-      `as your next instruction, so you do NOT need to keep an ask open to stay`,
-      `reachable.`,
-    ]
-    if (task) lines.push(``, `Your task:`, ``, task)
-    else
-      lines.push(
-        ``,
-        `No task was given — post that you are ready and stop; wait for the first message.`,
-      )
-    return lines.join('\n')
-  }
+  const spawnPrompt = (remoteId: string, task?: string): string =>
+    remoteSpawnPrompt({ cliPath: ctx.cliSrcPath(), remoteId, task })
 
   // Harness-agnostic listener. Claude keeps its remote-check.sh Stop hook, which
   // parks INSIDE a turn and hands the phone message back as the block reason — but
@@ -153,7 +117,13 @@ export function createBridgeDeps(ctx: BridgeDepsCtx): BridgeDeps {
   function deliverReplyToPty(remoteId: string, text: string, images: string[]): void {
     try {
       const remote = readRemoteSession(remoteId)
-      if (!remote || remote.engine === 'claude') return // claude: the Stop hook delivers
+      if (!remote) return
+      // Claude normally has the Stop hook parked and listening — injecting then
+      // would deliver the message twice. Except when the session went DORMANT:
+      // it stopped parking after a long idle (so it stops burning a heartbeat
+      // turn an hour), and the app now owns the wake, exactly like every other
+      // engine.
+      if (remote.engine === 'claude' && !remote.dormantAt) return
       const live = ctx.liveSessions()
       // Exact match on the app's own session id (agentSessionId === pinned.sessionId,
       // set for every engine now). cwd is ambiguous — two sessions can share a repo —
@@ -178,6 +148,11 @@ export function createBridgeDeps(ctx: BridgeDepsCtx): BridgeDeps {
         `terminal-cli remote post --id ${remoteId} "<your reply>"]\n\n${text}${imageNote}`
       match.write(`\x1b[200~${body}\x1b[201~`)
       setTimeout(() => match.write('\r'), 80)
+      // A woken Claude session parks again when its turn ends, and that park
+      // drains the queue — so without advancing the cursor here the same message
+      // would be handed over a second time. takeReplies IS the cursor, and it
+      // also flips the session back to working.
+      if (remote.engine === 'claude') takeReplies(remoteId)
     } catch {
       /* best-effort — the log-collect path remains */
     }
@@ -251,6 +226,10 @@ export function createBridgeDeps(ctx: BridgeDepsCtx): BridgeDeps {
           severity: itemSeverity(h),
           status: h.status,
           readAt: h.readAt,
+          // The phone's category sidebar keys off this alone; it used to stop
+          // at the bridge, so every item arrived Uncategorized and the sidebar
+          // never rendered.
+          category: h.category,
         }))
       const hosts = readSettings().remoteHosts.map((h) => ({ id: h.id, label: h.label }))
       if (!hosts.length) return local
@@ -274,6 +253,7 @@ export function createBridgeDeps(ctx: BridgeDepsCtx): BridgeDeps {
           severity: itemSeverity(h),
           status: h.status ?? 'open',
           readAt: h.readAt,
+          category: h.category,
         }))
       return [...local, ...mapped].sort((a, b) => b.createdAt - a.createdAt)
     },

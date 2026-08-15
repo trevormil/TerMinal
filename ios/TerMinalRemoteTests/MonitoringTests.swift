@@ -176,6 +176,56 @@ final class MonitoringTests: XCTestCase {
         XCTAssertFalse(isStale(monitor("a", status: nil), now: Date()))
     }
 
+    // ---- connectivity pause ---------------------------------------------
+
+    /// The daemon pauses probing when THIS Mac loses connectivity, keeping the
+    /// last status. The phone dropped `paused` on decode, so a monitor that
+    /// happened to be failing when the uplink went showed as a live hard
+    /// failure with no explanation.
+    func testDecodesThePausedFlag() throws {
+        let json = """
+            {
+              "status": "fail",
+              "summary": "connection refused",
+              "lastCheckedAt": 1000,
+              "since": 0,
+              "paused": true,
+              "pausedSince": 900
+            }
+            """
+        let state = try JSONDecoder().decode(
+            MonitorRuntimeState.self, from: Data(json.utf8))
+        XCTAssertTrue(state.isPaused)
+        XCTAssertEqual(state.pausedSince, 900)
+    }
+
+    func testNotPausedWhenTheFlagIsAbsent() throws {
+        let json = """
+            { "status": "ok", "summary": "fine", "lastCheckedAt": 1000, "since": 0 }
+            """
+        let state = try JSONDecoder().decode(
+            MonitorRuntimeState.self, from: Data(json.utf8))
+        XCTAssertFalse(state.isPaused)
+        XCTAssertNil(state.pausedSince)
+    }
+
+    /// A paused monitor keeps getting `lastCheckedAt` bumped, so it would never
+    /// have gone stale anyway — but blaming the target for this Mac being
+    /// offline is wrong in both directions, so it is stated outright.
+    func testPausedIsNeverAlsoStale() {
+        let now = Date(timeIntervalSince1970: 10_000_000)
+        let notify = MonitorNotify(
+            onFailure: "urgent", onRecovery: true, renotifyAfterSec: 0,
+            dailyDigest: false, digestHour: 9)
+        let state = MonitorRuntimeState(
+            status: "fail", summary: "connection refused", lastCheckedAt: 0, since: 0,
+            paused: true, pausedSince: 0)
+        let m = MonitorWithState(
+            id: "a", name: "a", type: "http", target: "https://x", intervalSec: 60,
+            enabled: true, group: nil, notify: notify, state: state)
+        XCTAssertFalse(isStale(m, now: now))
+    }
+
     // ---- grouping / ranking ---------------------------------------------
 
     func testGroupPutsWorstGroupAndWorstMonitorFirst() {

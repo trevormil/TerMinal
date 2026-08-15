@@ -81,6 +81,14 @@ bun ios/scripts/e2e-bridge.ts --selftest   # assert the round trip, then exit
 It advertises the tailnet address first, then the LAN one, then 127.0.0.1 for
 the Simulator. Port 8791, never 8790, so it cannot collide with a real TerMinal.
 
+**New Session starts a real agent.** With no renderer the harness cannot open a
+desktop tab, but it launches the engine itself under a pty, in the repo you
+picked, seeded with the same remote-thread prompt the app uses — so the thread on
+your phone has something behind it. That means it spends real tokens. The engine
+defaults to your TerMinal setting; `TERMINAL_HARNESS_ENGINE=<id>` overrides it,
+and an engine whose binary isn't installed is refused rather than launched. The
+agents it starts are killed with the harness on Ctrl-C.
+
 `ios/scripts/e2e-app.sh` runs the app in a Simulator against that harness.
 
 ## Pairing in the Simulator

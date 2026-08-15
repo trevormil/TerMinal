@@ -316,10 +316,7 @@ actor BridgeClient {
         -> String
     {
         struct Started: Decodable { let id: String }
-        var body: [String: String] = ["cwd": cwd]
-        if let engine { body["engine"] = engine }
-        if let effort, !effort.isEmpty { body["effort"] = effort }
-        if let task, !task.isEmpty { body["task"] = task }
+        let body = Self.spawnBody(cwd: cwd, engine: engine, effort: effort, task: task)
         let data = try await post("v1/remote/new", body: body)
         return try JSONDecoder().decode(Started.self, from: data).id
     }
@@ -341,6 +338,19 @@ actor BridgeClient {
     func setGlobalHook(install: Bool) async throws -> GlobalHookResult {
         let data = try await post("v1/hooks/global", body: ["install": install])
         return try JSONDecoder().decode(GlobalHookResult.self, from: data)
+
+    /// The spawn request body. Split out so the wire contract is unit-testable
+    /// without a Mac on the other end: the Mac reads a MISSING key as "use the
+    /// default", so an empty engine, effort or task must be omitted rather than
+    /// sent blank — a blank engine would resolve to no engine at all.
+    static func spawnBody(cwd: String, engine: String?, effort: String?, task: String?)
+        -> [String: String]
+    {
+        var body: [String: String] = ["cwd": cwd]
+        if let engine, !engine.isEmpty { body["engine"] = engine }
+        if let effort, !effort.isEmpty { body["effort"] = effort }
+        if let task, !task.isEmpty { body["task"] = task }
+        return body
     }
 
     /// Hand this device's APNs token to the Mac so alerts can reach it.

@@ -61,6 +61,10 @@ export type BridgeHitl = {
   status?: string
   /** When first seen; absent ⇒ unread. */
   readAt?: number
+  /** Free-form folder path (`Monitoring/Certs`), named by whoever filed the
+   *  item. The phone's category sidebar keys off this alone: without it every
+   *  item buckets to Uncategorized and the picker never renders at all. */
+  category?: string
 }
 
 export type BridgeDeps = {
