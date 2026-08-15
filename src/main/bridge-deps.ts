@@ -221,6 +221,10 @@ export function createBridgeDeps(ctx: BridgeDepsCtx): BridgeDeps {
           severity: itemSeverity(h),
           status: h.status,
           readAt: h.readAt,
+          // The phone's category sidebar keys off this alone; it used to stop
+          // at the bridge, so every item arrived Uncategorized and the sidebar
+          // never rendered.
+          category: h.category,
         }))
       const hosts = readSettings().remoteHosts.map((h) => ({ id: h.id, label: h.label }))
       if (!hosts.length) return local
@@ -244,6 +248,7 @@ export function createBridgeDeps(ctx: BridgeDepsCtx): BridgeDeps {
           severity: itemSeverity(h),
           status: h.status ?? 'open',
           readAt: h.readAt,
+          category: h.category,
         }))
       return [...local, ...mapped].sort((a, b) => b.createdAt - a.createdAt)
     },

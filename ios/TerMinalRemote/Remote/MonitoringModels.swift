@@ -77,11 +77,21 @@ struct MonitorRuntimeState: Decodable, Hashable {
     let since: Double
     let lastTransition: MonitorTransition?
     let history: [MonitorHistoryPoint]?
+    /// The daemon stopped probing because THIS Mac lost connectivity — not a
+    /// verdict about the target. `status` keeps its last value while paused, so
+    /// without this a monitor that happened to be failing when the uplink
+    /// dropped reads as a live hard failure, and `isStale` never fires (the
+    /// daemon keeps bumping `lastCheckedAt`). Mirrors src/monitor/run.ts.
+    let paused: Bool?
+    let pausedSince: Double?
+
+    var isPaused: Bool { paused == true }
 
     init(
         status: String, summary: String, metrics: [String: String]? = nil,
         detail: MonitorDetail? = nil, lastCheckedAt: Double, since: Double,
-        lastTransition: MonitorTransition? = nil, history: [MonitorHistoryPoint]? = nil
+        lastTransition: MonitorTransition? = nil, history: [MonitorHistoryPoint]? = nil,
+        paused: Bool? = nil, pausedSince: Double? = nil
     ) {
         self.status = status
         self.summary = summary
@@ -91,6 +101,8 @@ struct MonitorRuntimeState: Decodable, Hashable {
         self.since = since
         self.lastTransition = lastTransition
         self.history = history
+        self.paused = paused
+        self.pausedSince = pausedSince
     }
 
     init(from decoder: Decoder) throws {
@@ -104,10 +116,13 @@ struct MonitorRuntimeState: Decodable, Hashable {
         since = try c.decode(Double.self, forKey: .since)
         lastTransition = try c.decodeIfPresent(MonitorTransition.self, forKey: .lastTransition)
         history = try c.decodeIfPresent([MonitorHistoryPoint].self, forKey: .history)
+        paused = try c.decodeIfPresent(Bool.self, forKey: .paused)
+        pausedSince = try c.decodeIfPresent(Double.self, forKey: .pausedSince)
     }
 
     private enum CodingKeys: String, CodingKey {
         case status, summary, metrics, detail, lastCheckedAt, since, lastTransition, history
+        case paused, pausedSince
     }
 }
 
@@ -187,6 +202,9 @@ func overallStatus(_ monitors: [MonitorWithState]) -> String {
 /// A monitor that has never reported (nil state) is not "stale" — it's pending.
 func isStale(_ monitor: MonitorWithState, now: Date = Date()) -> Bool {
     guard let state = monitor.state else { return false }
+    // A paused monitor is deliberately not being probed; "stale" would blame the
+    // target for this Mac being offline.
+    if state.isPaused { return false }
     let staleMs = 3 * Double(monitor.intervalSec) * 1000
     return now.timeIntervalSince1970 * 1000 - state.lastCheckedAt > staleMs
 }
