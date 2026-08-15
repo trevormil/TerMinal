@@ -4,6 +4,7 @@ import { connect, constants, type ClientHttp2Session } from 'node:http2'
 import { join } from 'node:path'
 import { BRIDGE_DIR } from './identity'
 import { blockEffect } from '../effect-guard'
+import { inboxPaths, readInboxCounts } from '../../shared/inbox-store'
 
 // Push notifications, sent straight from this Mac to Apple.
 //
@@ -281,19 +282,18 @@ export async function sendPush(
 /**
  * Open HITL count, for the app-icon badge.
  *
- * Reads hitl.json directly rather than importing hitl.ts: that module imports
+ * Reads the inbox store rather than importing hitl.ts: that module imports
  * emitActivity from events.ts, and events.ts is where the push channel is
- * registered — going through it would create an import cycle.
+ * registered — going through it would create an import cycle. The store carries
+ * no such dependency.
+ *
+ * It is now a read of the tiny counts index instead of a parse of the whole
+ * inbox — this runs on every push, and used to pay for the entire history.
  */
 export function openHitlCount(): number {
   try {
-    const raw = JSON.parse(readFileSync(join(BRIDGE_DIR(), '..', 'hitl.json'), 'utf8')) as unknown
-    if (!Array.isArray(raw)) return 0
-    // The app badge should nag about what you HAVEN'T SEEN, not everything open —
-    // a read-but-unresolved item shouldn't keep the red dot burning.
-    return raw.filter(
-      (h) => (h as { status?: string })?.status === 'open' && !(h as { readAt?: number })?.readAt,
-    ).length
+    // The badge nags about what you HAVEN'T SEEN, which is exactly the live set.
+    return readInboxCounts(inboxPaths(join(BRIDGE_DIR(), '..'))).unread
   } catch {
     return 0
   }

@@ -38,6 +38,7 @@ function sourceFiles(): string[] {
     }
   }
   walk(join(ROOT, 'src/main'))
+  walk(join(ROOT, 'src/shared'))
   for (const dir of new Set(Object.values(BUILT))) walk(join(ROOT, 'src', dir))
   for (const name of readdirSync(join(ROOT, 'bin'))) {
     // The BUILT artifacts are bundles of the src/ dirs walked above; scanning
@@ -60,11 +61,15 @@ const touchers = (file: SharedFile): string[] =>
  */
 const EXPECTED: Record<
   SharedFile,
-  Record<string, 'updateJsonState' | 'updateJsonListShared' | 'read-only'>
+  Record<string, 'updateJsonState' | 'updateJsonListShared' | 'updateInbox' | 'read-only'>
 > = {
   'hitl.json': {
-    'src/main/hitl.ts': 'updateJsonState',
-    'src/main/bridge/push.ts': 'read-only',
+    // ONE writer now. Every process — the app, cron, the CLI, the MCP server —
+    // mutates the inbox through src/shared/inbox-store.ts, which holds the same
+    // advisory lock on hitl.json and additionally owns the append-only archive
+    // and the counts index. Anything else that names the path only resolves it.
+    'src/shared/inbox-store.ts': 'updateInbox',
+    'src/main/hitl.ts': 'read-only',
     'src/main/remote-host-script.cjs': 'updateJsonListShared',
     // The bundled processes name each shared path exactly once, in their path
     // seam; the modules that mutate them are pinned by the constant-following
@@ -116,6 +121,15 @@ describe('discipline — every mutator of shared state takes the lock (ticket 11
 
         if (how === 'read-only') {
           for (const line of mentioning) expect(line).not.toMatch(RAW_WRITE)
+          return
+        }
+
+        // The store resolves the path once and writes through `p.hot`, so the
+        // literal-line scan cannot see its writes. The dedicated suite at the
+        // bottom of this file pins them instead; here we only assert it is the
+        // module that actually carries the mutator.
+        if (how === 'updateInbox') {
+          expect(source).toContain('export function updateInbox')
           return
         }
 
@@ -182,17 +196,63 @@ describe('the bundled processes mutate shared state through the same lock (ticke
 
   for (const [file, name] of Object.entries(CONST_FOR)) {
     test(`every runner write of ${file} takes the lock`, () => {
+      // hitl.json is the one shared file the bundled processes no longer write
+      // directly: they hand the path to the inbox store, which takes the same
+      // lock. So the locked spelling to look for differs per file.
+      const LOCKED = file === 'hitl.json' ? 'inboxPathsFor' : 'updateJsonListShared'
       const mentioning: string[] = []
       for (const rel of runnerSources) {
         for (const line of readFileSync(join(ROOT, rel), 'utf8').split('\n')) {
           if (!line.includes(name)) continue
           mentioning.push(`${rel}  ${line.trim()}`)
-          if (RAW.test(line)) expect(`${rel}  ${line.trim()}`).toContain('updateJsonListShared')
+          if (RAW.test(line)) expect(`${rel}  ${line.trim()}`).toContain(LOCKED)
         }
       }
       // A guard that matches nothing is not a guard.
       expect(mentioning.length).toBeGreaterThan(0)
-      expect(mentioning.some((l) => l.includes('updateJsonListShared'))).toBe(true)
+      expect(mentioning.some((l) => l.includes(LOCKED))).toBe(true)
     })
   }
+})
+
+describe('the inbox store owns every inbox file, and holds one lock over all of them', () => {
+  // The hot/archive split turned one state file into four. That is only safe
+  // while ONE module writes them, inside ONE lock — an archive append that
+  // races the hot rewrite is how an item ends up in neither.
+  const STORE = 'src/shared/inbox-store.ts'
+  const INBOX_FILES = ['hitl-archive.jsonl', 'hitl-counts.json', 'hitl-archive-hidden.json']
+
+  test('nothing but the store names the archive, counts or hidden files', () => {
+    const namers = SOURCES.filter((rel) => {
+      const src = readFileSync(join(ROOT, rel), 'utf8')
+      return INBOX_FILES.some((f) => src.includes(`'${f}'`))
+    })
+    expect(namers).toEqual([STORE])
+  })
+
+  test('every write in the store happens inside withFileLockShared', () => {
+    const src = readFileSync(join(ROOT, STORE), 'utf8')
+    // The lock is taken on the HOT path, which is the same lock the app,
+    // terminal-cron, terminal-cli and the MCP server have always contended for.
+    expect(src).toContain('withFileLockShared(p.hot')
+
+    // Locate the one locked region and require every mutation to sit in it.
+    const body = src.slice(src.indexOf('withFileLockShared(p.hot'))
+    for (const call of ['appendFileSync(p.archive', 'writeJsonAtomicShared(p.hot']) {
+      expect(src).toContain(call)
+      expect(body).toContain(call)
+    }
+  })
+
+  test('the archive append precedes the hot rewrite, so a crash duplicates rather than loses', () => {
+    const src = readFileSync(join(ROOT, STORE), 'utf8')
+    const append = src.indexOf('appendFileSync(p.archive')
+    const hidden = src.indexOf('writeJsonAtomicShared(p.hidden')
+    const hot = src.indexOf('writeJsonAtomicShared(p.hot')
+    const counts = src.indexOf('writeJsonAtomicShared(p.counts')
+    expect(append).toBeGreaterThan(-1)
+    expect(append).toBeLessThan(hidden)
+    expect(hidden).toBeLessThan(hot)
+    expect(hot).toBeLessThan(counts)
+  })
 })

@@ -14,7 +14,7 @@ import { configPath } from './config-dir'
 import { describeSpec, nextRun } from './cron'
 import { listAllRuns, readCronRunLog, readSessionRunLog, readSessionRunLogTail } from './cron-runs'
 import { emitActivity, readActivity } from './events'
-import { markHitlRead, readHitl, resolveHitl } from './hitl'
+import { markHitlRead, readHitl, readHitlArchive, resolveHitl } from './hitl'
 import { itemSeverity } from './hitl-severity'
 import { readBgTaskLog } from './bg-tasks'
 import { listRuns, readAgentRunLog } from './agent-run-store'
@@ -230,9 +230,13 @@ export function createBridgeDeps(ctx: BridgeDepsCtx): BridgeDeps {
     // Local items plus every configured host's. An agent blocked on `tm` pages
     // nobody otherwise, which defeats the whole point of an AFK remote.
     hitl: async () => {
-      // ALL local items (open + resolved), so the phone can show read/unread and
-      // filter — capped newest-first so a long resolved history stays wire-cheap.
-      const local = readHitl()
+      // Live items plus one page of history, so the phone can still show
+      // read/unread and filter — capped newest-first so a long resolved history
+      // stays wire-cheap. The history page is a tail read of the append-only
+      // archive, never a parse of everything ever filed.
+      const live = readHitl()
+      const recent = readHitlArchive(null, Math.max(0, 200 - live.length)).items
+      const local = [...live, ...recent]
         .sort((a, b) => b.createdAt - a.createdAt)
         .slice(0, 200)
         .map((h) => ({

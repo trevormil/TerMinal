@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ALL,
   categoryDepth,
@@ -13,6 +13,7 @@ import {
 } from '../../../../shared/inbox-categories'
 import { inboxQuiet, slackChannelName, type SlackChannelCfg } from '../../../../shared/slack'
 import {
+  Archive,
   ArrowLeft,
   Check,
   ChevronDown,
@@ -189,6 +190,17 @@ export function InboxDrawer({
   }
   const [snoozeOpen, setSnoozeOpen] = useState(false)
   const [showSnoozed, setShowSnoozed] = useState(false)
+  // History (retired items) is fetched a page at a time from the append-only
+  // archive, and only once you ask for it. `cursor === null` means exhausted.
+  const [showHistory, setShowHistory] = useState(false)
+  const [history, setHistory] = useState<HitlItem[]>([])
+  const [historyCursor, setHistoryCursor] = useState<string | null | undefined>(undefined)
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyTotal, setHistoryTotal] = useState(0)
+  // An item you read in THIS drawer session leaves the live list on the next
+  // poll — main archived it. Holding it here keeps the row where you left it
+  // instead of yanking it out from under the cursor mid-read.
+  const keptRead = useRef<Map<string, HitlItem>>(new Map())
   // When Slack mirroring is on (and a token is configured), each sidebar row
   // shows the #channel its category posts to — the mapping, where you file.
   const [slackHints, setSlackHints] = useState<SlackChannelCfg | null>(null)
@@ -221,7 +233,11 @@ export function InboxDrawer({
         .remoteAll()
         .then((r) => r.items)
         .catch(() => [] as HitlItem[]),
-    ]).then(([local, remote]) => setItems([...local, ...remote]))
+    ]).then(([local, remote]) => {
+      const live = [...local, ...remote]
+      const liveIds = new Set(live.map((h) => h.id))
+      setItems([...live, ...[...keptRead.current.values()].filter((h) => !liveIds.has(h.id))])
+    })
   const reloadSnoozes = () =>
     window.gt.inbox
       .snoozes()
@@ -237,7 +253,44 @@ export function InboxDrawer({
   }, [])
   // Poll the list. Also re-reads snoozes, so an item that comes due reappears
   // in the main list within one poll rather than waiting for a manual refresh.
-  usePolled(async () => Promise.all([reload(), reloadSnoozes()]), { intervalMs: 15_000 })
+  usePolled(
+    async () =>
+      Promise.all([
+        reload(),
+        reloadSnoozes(),
+        // The counts index is one tiny file — cheap enough to poll for the
+        // history total without ever touching the history itself.
+        window.gt.inbox
+          .counts()
+          .then((c) => setHistoryTotal(c.archived))
+          .catch(() => {}),
+      ]),
+    { intervalMs: 15_000 },
+  )
+
+  // One page of history. Called on expand and on "Load more" — never on mount,
+  // and never on the poll: history does not change under you.
+  const loadHistory = () => {
+    if (historyLoading || historyCursor === null) return
+    setHistoryLoading(true)
+    window.gt.inbox
+      .archive(historyCursor, 50)
+      .then((page) => {
+        setHistory((prev) => {
+          const seen = new Set(prev.map((h) => h.id))
+          return [...prev, ...page.items.filter((h) => !seen.has(h.id))]
+        })
+        setHistoryCursor(page.done ? null : page.cursor)
+      })
+      .catch(() => setHistoryCursor(null))
+      .finally(() => setHistoryLoading(false))
+  }
+  const toggleHistory = () => {
+    setShowHistory((open) => {
+      if (!open && !history.length) loadHistory()
+      return !open
+    })
+  }
 
   // One axis: read vs unread. No archive. Legacy items already resolved before
   // this change stay hidden (they were archived); everything else shows, newest
@@ -276,6 +329,7 @@ export function InboxDrawer({
     if (!fresh.length) return
     // Optimistic: flip local read-state now, persist in the background.
     const freshIds = fresh.map((h) => h.id)
+    for (const h of fresh) keptRead.current.set(h.id, { ...h, readAt: Date.now() })
     setItems((prev) =>
       (prev || []).map((h) => (freshIds.includes(h.id) ? { ...h, readAt: Date.now() } : h)),
     )
@@ -285,7 +339,14 @@ export function InboxDrawer({
   // Email parity: put an item back on the unread pile (and return to the list,
   // like a mail client does).
   const markUnread = (h: HitlItem) => {
-    setItems((prev) => (prev || []).map((x) => (x.id === h.id ? { ...x, readAt: undefined } : x)))
+    keptRead.current.delete(h.id)
+    // Reopening from history puts the item back in the live list, so drop the
+    // stale history row rather than showing it in both places.
+    setHistory((prev) => prev.filter((x) => x.id !== h.id))
+    setItems((prev) => {
+      const next = (prev || []).map((x) => (x.id === h.id ? { ...x, readAt: undefined } : x))
+      return next.some((x) => x.id === h.id) ? next : [{ ...h, readAt: undefined }, ...next]
+    })
     void window.gt.inbox.markRead([h.id], h.hostId, false).catch(() => 0)
     setReading(null)
   }
@@ -815,6 +876,60 @@ export function InboxDrawer({
               )}
             </div>
           )}
+
+          {(historyTotal > 0 || history.length > 0) && (
+            <div className="border-t border-[var(--gt-border)]">
+              <button
+                onClick={toggleHistory}
+                className="flex w-full items-center gap-1.5 px-4 py-2 text-left text-[11px] text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-300"
+              >
+                {showHistory ? (
+                  <ChevronDown size={12} strokeWidth={2} />
+                ) : (
+                  <ChevronRight size={12} strokeWidth={2} />
+                )}
+                <Archive size={11} strokeWidth={2} />
+                History
+                <span className="tabular-nums text-zinc-600">{historyTotal}</span>
+              </button>
+              {showHistory && (
+                <div className="divide-y divide-[var(--gt-border)]/60">
+                  {history.map((h) => (
+                    <div
+                      key={h.id}
+                      className="flex w-full items-center gap-2 px-4 py-2 text-left opacity-70"
+                    >
+                      <span className="min-w-0 flex-1 truncate text-[12px] text-zinc-400">
+                        {h.title}
+                      </span>
+                      <span className="shrink-0 text-[10px] tabular-nums text-zinc-600">
+                        {new Date(h.createdAt).toLocaleDateString()}
+                      </span>
+                      <button
+                        onClick={() => markUnread(h)}
+                        title="Put this back on the unread pile"
+                        className="shrink-0 rounded-md border border-[var(--gt-border)] px-1.5 py-0.5 text-[10px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
+                      >
+                        Unread
+                      </button>
+                    </div>
+                  ))}
+                  {historyCursor !== null && (
+                    <button
+                      onClick={loadHistory}
+                      disabled={historyLoading}
+                      className="w-full px-4 py-2 text-center text-[11px] text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-300 disabled:opacity-50"
+                    >
+                      {historyLoading ? 'Loading…' : 'Load more'}
+                    </button>
+                  )}
+                  {historyCursor === null && history.length === 0 && (
+                    <div className="px-4 py-2 text-[11px] text-zinc-600">Nothing archived yet.</div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -831,6 +946,9 @@ const tab: Tab = {
   // Snoozed items are off your plate, so they must not keep the badge lit —
   // otherwise "ask me tomorrow" still nags you today.
   badge: async (gt) => {
+    // `list()` is the LIVE items — after the hot/archive split that is tens of
+    // rows, not the whole history. Snoozes still have to be subtracted per-id,
+    // which is why this is not simply `counts().unread`.
     const [items, snoozes, settings] = await Promise.all([
       gt.inbox.list(),
       gt.inbox.snoozes().catch(() => ({}) as Record<string, number>),

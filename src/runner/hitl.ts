@@ -9,7 +9,7 @@ import { HITL_FILE, LEGACY_TG_SCRIPT } from './config'
 import { log } from './log'
 import { inboxNotifyThreshold, tgCreds } from './settings'
 import { mirrorHitlToSlack, slackQuietsTelegram } from './slack'
-import { updateJsonListShared } from './state-io'
+import { inboxPathsFor, updateInbox } from '../shared/inbox-store'
 
 const SEVERITY_RANK: Record<string, number> = { urgent: 3, normal: 2, low: 1 }
 
@@ -39,7 +39,7 @@ export function fileHitl(item: HitlInput): HitlItem {
     ...item,
   } as unknown as HitlItem
   try {
-    updateJsonListShared<HitlItem>(HITL_FILE(), (list) => [rec, ...list])
+    updateInbox(inboxPathsFor(HITL_FILE()), (live) => [rec, ...live])
   } catch (e) {
     log(`hitl write failed: ${e}`)
   }

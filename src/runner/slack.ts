@@ -6,7 +6,7 @@
 // to Slack; no sidecar → Slack off, all no-ops.
 import type { HitlItem } from '../shared/types/activity'
 import { HITL_FILE, readJson, SLACK_SIDECAR } from './config'
-import { updateJsonListShared } from './state-io'
+import { inboxPathsFor, updateInbox } from '../shared/inbox-store'
 
 export type SlackCfg = {
   botToken: string
@@ -100,8 +100,10 @@ export function mirrorHitlToSlack(item: HitlItem): void {
     if (res?.ok && typeof res.channel === 'string' && typeof res.ts === 'string') {
       const slackChannel = res.channel
       const slackTs = res.ts
-      updateJsonListShared<HitlItem>(HITL_FILE(), (list) =>
-        list.map((h) => (h.id === item.id ? { ...h, slackChannel, slackTs } : h)),
+      // Live items only: a stamp that arrives after the item was resolved is
+      // a lost thread ref, never a lost item.
+      updateInbox(inboxPathsFor(HITL_FILE()), (live) =>
+        live.map((h) => (h.id === item.id ? { ...h, slackChannel, slackTs } : h)),
       )
     }
   })().catch(() => {})

@@ -282,6 +282,9 @@ const gt: GtApi = {
     markRead: (ids: string[], hostId?: string, read?: boolean) =>
       ipcRenderer.invoke('hitl:mark-read', ids, hostId, read),
     markAllRead: () => ipcRenderer.invoke('hitl:mark-all-read'),
+    counts: () => ipcRenderer.invoke('hitl:counts'),
+    archive: (cursor?: string | null, limit?: number) =>
+      ipcRenderer.invoke('hitl:archive', cursor, limit),
   },
   // Agent reliability: scorecards computed from the existing run stores, the
   // disabled roster with its reasons, and persistent-agent memory compaction.
@@ -517,6 +520,12 @@ const gt: GtApi = {
     markRead: (ids: string[], hostId?: string, read?: boolean) =>
       ipcRenderer.invoke('inbox:mark-read', ids, hostId, read),
     markAllRead: () => ipcRenderer.invoke('inbox:mark-all-read'),
+    // Badge fast path: the small counts index, never the item list.
+    counts: () => ipcRenderer.invoke('inbox:counts'),
+    // History, a page at a time, newest first. `cursor` is opaque — hand back
+    // whatever the previous page returned.
+    archive: (cursor?: string | null, limit?: number) =>
+      ipcRenderer.invoke('inbox:archive', cursor, limit),
     snoozes: () => ipcRenderer.invoke('inbox:snoozes'),
     snooze: (id: string, until: number) => ipcRenderer.invoke('inbox:snooze', id, until),
     unsnooze: (id: string) => ipcRenderer.invoke('inbox:unsnooze', id),

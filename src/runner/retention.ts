@@ -8,16 +8,15 @@
 // run-retention.ts), which can see running runs and dirty worktrees.
 import { readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { HitlItem } from '../shared/types/activity'
+import { inboxPathsFor, readInboxCounts, updateInbox } from '../shared/inbox-store'
+import { writeJsonAtomicShared } from './state-io'
 import { CFG, CRON_LOG, HITL_FILE, MONITOR_LOG, readJson, RETENTION_MARKER } from './config'
 import { log } from './log'
-import { updateJsonListShared, writeJsonAtomicShared } from './state-io'
 
 const RETENTION_INTERVAL_MS = 24 * 60 * 60 * 1000
 const LOG_MAX_BYTES = 2 * 1024 * 1024
 const LEFTOVER_MIN_AGE_MS = 60 * 60 * 1000
 const QUARANTINE_MIN_AGE_MS = 30 * 24 * 60 * 60 * 1000
-const HITL_ARCHIVE_AFTER_MS = 60 * 24 * 60 * 60 * 1000
 
 // Cap an append-only log, keeping the TAIL (the end you actually debug with).
 // One `.1` generation only — an unbounded chain is the same leak, renamed.
@@ -59,35 +58,28 @@ export function sweepLeftovers(): number {
   return freed
 }
 
-// hitl.json is read and rewritten whole on every filing, so it has to stay
-// small. Only READ items past the window move out; an OPEN item is somebody's
-// outstanding blocker and is never archived, however old.
+// Settled items leave the live inbox the moment they are read or resolved —
+// src/shared/inbox-store.ts appends them to hitl-archive.jsonl inside the same
+// lock as the write that retired them. There is no age window any more and
+// nothing to sweep on a cadence.
+//
+// What remains here is the FLUSH: a hot file written by an older build, or by
+// the hand-written remote-host script, can still be carrying settled items. One
+// locked no-op update splits them out (and folds any pre-split dated archive
+// directory in). Returns how many items moved.
 export function archiveHitl(): number {
-  const now = Date.now()
-  const cutoff = now - HITL_ARCHIVE_AFTER_MS
-  let archived = 0
   try {
-    updateJsonListShared<HitlItem>(HITL_FILE(), (list) => {
-      const settled = (h: HitlItem): boolean =>
-        (!!h.readAt || h.status === 'resolved') &&
-        (h.resolvedAt ?? h.readAt ?? h.createdAt ?? now) < cutoff
-      const stale = list.filter(settled)
-      if (!stale.length) return undefined
-      const dest = join(
-        CFG(),
-        'hitl-archive',
-        `hitl-${new Date(now).toISOString().slice(0, 10)}.json`,
-      )
-      const prev = readJson<HitlItem[]>(dest)
-      const existing = Array.isArray(prev) ? prev : []
-      writeJsonAtomicShared(dest, [...existing, ...stale])
-      archived = stale.length
-      return list.filter((h) => !settled(h))
-    })
+    const p = inboxPathsFor(HITL_FILE())
+    // Read the stored index, never a derived one: deriving it would parse the
+    // hot file first and a torn file would throw HERE, before the locked write
+    // that is supposed to quarantine it ever runs.
+    const before = readInboxCounts(p).archived
+    updateInbox(p, () => undefined)
+    return Math.max(0, readInboxCounts(p).archived - before)
   } catch (e) {
     log(`retention: hitl archive failed: ${e}`)
+    return 0
   }
-  return archived
 }
 
 export type RetentionSummary = {

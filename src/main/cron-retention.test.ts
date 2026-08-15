@@ -83,7 +83,7 @@ describe('terminal-cron retention', () => {
     expect(readFileSync(q, 'utf8')).toBe('the only copy')
   })
 
-  test('archives long-settled HITL items and never touches open ones', () => {
+  test('flushes every settled HITL item out of the live file, whatever its age', () => {
     const { home, cfg } = sandbox()
     const old = Date.now() - 200 * DAY
     writeFileSync(
@@ -104,15 +104,40 @@ describe('terminal-cron retention', () => {
 
     expect(runRetention(home).code).toBe(0)
 
+    // There is no age window any more: settled is settled. What stays live is
+    // exactly what still wants a human.
     const live = JSON.parse(readFileSync(join(cfg, 'hitl.json'), 'utf8')) as { id: string }[]
-    expect(live.map((h) => h.id).sort()).toEqual(['open-ancient', 'settled-recent'])
+    expect(live.map((h) => h.id)).toEqual(['open-ancient'])
 
-    const archives = readdirSync(join(cfg, 'hitl-archive'))
-    expect(archives).toHaveLength(1)
-    const archived = JSON.parse(readFileSync(join(cfg, 'hitl-archive', archives[0]), 'utf8')) as {
-      id: string
-    }[]
-    expect(archived.map((h) => h.id)).toEqual(['settled-old'])
+    const archived = readFileSync(join(cfg, 'hitl-archive.jsonl'), 'utf8')
+      .split('\n')
+      .filter((l) => l.trim())
+      .map((l) => JSON.parse(l) as { id: string })
+    expect(archived.map((h) => h.id).sort()).toEqual(['settled-old', 'settled-recent'])
+
+    // The badge index is written by the same locked pass, so it cannot drift.
+    const counts = JSON.parse(readFileSync(join(cfg, 'hitl-counts.json'), 'utf8'))
+    expect(counts).toMatchObject({ live: 1, unread: 1, archived: 2 })
+  })
+
+  test('folds a pre-split dated archive directory into the jsonl', () => {
+    const { home, cfg } = sandbox()
+    mkdirSync(join(cfg, 'hitl-archive'), { recursive: true })
+    writeFileSync(
+      join(cfg, 'hitl-archive', 'hitl-2026-01-01.json'),
+      JSON.stringify([{ id: 'from-the-old-format', title: 'x', status: 'resolved' }]),
+    )
+    writeFileSync(
+      join(cfg, 'hitl.json'),
+      JSON.stringify([{ id: 'settled', title: 'x', status: 'resolved', readAt: 1 }]),
+    )
+
+    expect(runRetention(home).code).toBe(0)
+
+    const archived = readFileSync(join(cfg, 'hitl-archive.jsonl'), 'utf8')
+    expect(archived).toContain('from-the-old-format')
+    expect(archived).toContain('settled')
+    expect(existsSync(join(cfg, 'hitl-archive'))).toBe(false)
   })
 
   test('a corrupt hitl.json is quarantined, not archived away', () => {
@@ -121,7 +146,7 @@ describe('terminal-cron retention', () => {
 
     expect(runRetention(home).code).toBe(0)
     // The archive path must not have swallowed it, and the bytes must survive.
-    expect(existsSync(join(cfg, 'hitl-archive'))).toBe(false)
+    expect(existsSync(join(cfg, 'hitl-archive.jsonl'))).toBe(false)
     const q = readdirSync(cfg).filter((n) => n.includes('.corrupt-'))
     expect(q).toHaveLength(1)
     expect(readFileSync(join(cfg, q[0]), 'utf8')).toContain('real-blocker')

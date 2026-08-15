@@ -11,7 +11,14 @@ import {
 } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { updateJsonListShared } from '../runner/state-io'
+import {
+  inboxCounts,
+  inboxPathsFor,
+  readInboxArchive,
+  readInboxLive,
+  updateInbox,
+  type InboxArchivePage,
+} from '../shared/inbox-store'
 import { maxAreaId } from '../runner/repo-state'
 import { ACTIVITY_FILE, CFG, HITL_FILE, type Args } from './env'
 import { readActivityPage } from '../shared/activity-log'
@@ -298,7 +305,10 @@ export function fileHitlTool(args: Args): { id: string } {
   // Locked read-modify-write: the app, cron and the CLI all mutate this file
   // and take the same advisory lock. Writing through them is what manufactures
   // the torn read that makes THEM quarantine the inbox and refuse (ticket 110).
-  updateJsonListShared<Record<string, any>>(hitlFile, (cur) => [item, ...cur])
+  updateInbox<Record<string, any> & { id: string }>(inboxPathsFor(hitlFile), (live) => [
+    item as Record<string, any> & { id: string },
+    ...live,
+  ])
   mirrorHitlToSlack(item, hitlFile)
   emitActivityRaw({
     kind: 'blocked',
@@ -326,19 +336,27 @@ export function resolveHitlTool(args: Args): { ok: boolean } {
   // can address a different item by the time we write it back.
   let updated: Record<string, any> | null = null
   let wasOpen = false
-  const wrote = updateJsonListShared<Record<string, any>>(hitlFile, (cur) => {
-    const idx = cur.findIndex((h) => h.id === id)
-    if (idx < 0) return undefined
-    wasOpen = cur[idx].status === 'open'
-    updated = {
-      ...cur[idx],
-      status: resolved ? 'resolved' : 'open',
-      resolvedAt: resolved ? Date.now() : undefined,
-    }
-    const next = cur.slice()
-    next[idx] = updated
-    return next
-  })
+  const wrote = updateInbox<Record<string, any> & { id: string }>(
+    inboxPathsFor(hitlFile),
+    (cur) => {
+      const idx = cur.findIndex((h) => h.id === id)
+      if (idx < 0) return undefined
+      wasOpen = cur[idx].status === 'open'
+      updated = {
+        ...cur[idx],
+        status: resolved ? 'resolved' : 'open',
+        resolvedAt: resolved ? Date.now() : undefined,
+        // Un-resolving must also clear readAt, or the item is "open" and still
+        // retired — invisible in both the live list and, being live, in history.
+        ...(resolved ? {} : { readAt: undefined }),
+      }
+      const next = cur.slice()
+      next[idx] = updated as Record<string, any> & { id: string }
+      return next
+    },
+    // Un-resolving addresses an item that has already left the live set.
+    resolved ? {} : { include: [id] },
+  )
   if (!wrote || !updated) return { ok: false }
   const item = updated as Record<string, any>
   if (resolved && wasOpen) {
@@ -488,7 +506,23 @@ export function listHitlTool(args: Args): Record<string, any>[] {
   const file = HITL_FILE()
   if (!existsSync(file)) return []
   try {
-    const arr = JSON.parse(readFileSync(file, 'utf8'))
+    // Live items come from the small hot file. History is only read when the
+    // caller actually asked for it, and then only far enough to fill `limit` —
+    // this used to parse every item ever filed to answer "what is open?".
+    const paths = inboxPathsFor(file)
+    const arr: Record<string, any>[] = readInboxLive<Record<string, any> & { id: string }>(paths)
+    if (status !== 'open') {
+      let cursor: string | null | undefined = undefined
+      for (let page = 0; page < 200 && arr.length < limit * 4; page++) {
+        const res: InboxArchivePage<Record<string, any> & { id: string }> = readInboxArchive(
+          paths,
+          { cursor, limit: 200 },
+        )
+        arr.push(...res.items)
+        if (res.done) break
+        cursor = res.cursor
+      }
+    }
     return (
       arr
         .filter((h: any) => (status === 'all' ? true : h.status === status))
@@ -536,10 +570,8 @@ export function harnessStatusTool(): Record<string, any> {
   const hitlFile = HITL_FILE()
   let hitlOpen = 0
   try {
-    if (existsSync(hitlFile)) {
-      const arr = JSON.parse(readFileSync(hitlFile, 'utf8'))
-      hitlOpen = arr.filter((h: any) => h.status === 'open').length
-    }
+    // The counts index, not a parse of the inbox: a rollup must stay cheap.
+    hitlOpen = inboxCounts(inboxPathsFor(hitlFile)).live
   } catch {
     /* an unreadable inbox reports zero rather than failing the rollup */
   }
