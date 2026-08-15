@@ -35,8 +35,7 @@ import { filterSessionMetas } from '../lib/sessionSearch'
 import { repoOrientationPendingKey } from '../lib/orientation'
 import { relativeTime } from '../lib/time'
 import { SpawnOptions, type SpawnOptionsValue } from './SpawnOptions'
-import { getPref, setPref } from '../lib/prefs'
-import { clampSpawnCount } from '../lib/spawnOptions'
+import { clampSpawnCount, DEFAULT_SPAWN } from '../lib/spawnOptions'
 
 export type Choice = {
   mode: 'new' | 'resume'
@@ -266,28 +265,27 @@ export function EntryScreen({
   )
   // Spawn options apply to every NEW session this screen can start — workspace,
   // scratch, a freshly scaffolded repo, and the recent-workspace chips.
+  // Deliberately NOT persisted: every visit (and every spawn within a visit)
+  // starts at ×1 / None, so picking a multiplier or a prompt is always an
+  // explicit per-spawn act, never a sticky default carried over silently.
   const [savedPrompts, setSavedPrompts] = useState<SavedPrompt[]>([])
-  const [spawn, setSpawn] = useState<SpawnOptionsValue>(() => ({
-    count: clampSpawnCount(getPref('spawnCount')),
-    promptId: getPref('spawnPromptId'),
-    text: '',
-  }))
-  const changeSpawn = (next: SpawnOptionsValue) => {
-    setSpawn(next)
-    setPref('spawnCount', clampSpawnCount(next.count))
-    setPref('spawnPromptId', next.promptId)
-  }
+  const [spawn, setSpawn] = useState<SpawnOptionsValue>(DEFAULT_SPAWN)
+  const changeSpawn = (next: SpawnOptionsValue) => setSpawn(next)
   const persistPrompts = (next: SavedPrompt[]) => {
     setSavedPrompts(next)
     window.gt.settings.patch({ savedPrompts: next }).catch(() => {})
   }
-  /** Stamp the spawn options onto a NEW-session choice. ×1 + None leaves it
-   *  byte-identical to what this screen produced before spawn options existed. */
-  const withSpawn = (c: Choice): Choice => ({
-    ...c,
-    prefillInput: spawn.text.replace(/\s+$/, '') || undefined,
-    spawnCount: clampSpawnCount(spawn.count) > 1 ? clampSpawnCount(spawn.count) : undefined,
-  })
+  /** Stamp the spawn options onto a NEW-session choice, then reset the picker
+   *  back to ×1 / None so a second spawn in the same visit is just as explicit. */
+  const withSpawn = (c: Choice): Choice => {
+    const stamped: Choice = {
+      ...c,
+      prefillInput: spawn.text.replace(/\s+$/, '') || undefined,
+      spawnCount: clampSpawnCount(spawn.count) > 1 ? clampSpawnCount(spawn.count) : undefined,
+    }
+    setSpawn(DEFAULT_SPAWN)
+    return stamped
+  }
   const parentLabel = defaultParent ? tilde(defaultParent) : '~'
 
   const togglePin = (path: string) => {
