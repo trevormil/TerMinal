@@ -34,6 +34,11 @@ export type RemoteStatus =
   | 'working'
   /** Agent is blocked in `ask` and waiting on your reply. */
   | 'awaiting'
+  /** Parked between turns in the never-die Stop hook — waiting for YOU, not
+   *  working. Written by `terminal-cli remote check --wait`, and read by the
+   *  phone (RemoteModels.isIdle); it was missing from this union, so the type
+   *  disagreed with what is actually on disk. */
+  | 'idle'
   /** Session finished or was ended. */
   | 'ended'
 
