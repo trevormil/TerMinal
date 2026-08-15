@@ -67,10 +67,15 @@ trap 'rm -rf "$LOCK" 2>/dev/null || true' EXIT
 #
 # Exit codes from `remote check --wait`:
 #   0 + output → a phone message; block and hand it over
-#   0 + no output → session ended (or none) → allow the stop
-#   3 → timed out with nothing new → re-park with a heartbeat so the SESSION
-#       never dies even though a single hook run is capped by the Stop-hook
-#       timeout. The turn ends and this hook immediately fires again.
+#   0 + no output → session ended, never registered, or SLEPT after a long idle
+#       (the CLI decides — see src/shared/remote-heartbeat.ts) → allow the stop.
+#       A slept session is not dead: the app pushes the next phone message into
+#       its pty, the same wake path every non-Claude engine already uses.
+#   3 → timed out with nothing new, and the idle is still short → re-park with a
+#       heartbeat so the SESSION never dies even though a single hook run is
+#       capped by the Stop-hook timeout. The turn ends and this hook immediately
+#       fires again. Each heartbeat costs a model turn, which is exactly why the
+#       CLI stops issuing them once the session has been idle for hours.
 REPLIES=$("$CLI" remote check --wait --quiet \
   --timeout "$WAIT_TIMEOUT" \
   --agent-session "$SESSION_ID" \

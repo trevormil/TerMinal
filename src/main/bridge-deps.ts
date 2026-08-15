@@ -33,6 +33,7 @@ import {
   registerRemoteSession,
   saveImage,
   stripAnsi,
+  takeReplies,
 } from './remote-sessions'
 import { repoForCwd, repoRootOf } from './repo'
 import { getSchedule, readSchedules } from './schedules'
@@ -152,7 +153,13 @@ export function createBridgeDeps(ctx: BridgeDepsCtx): BridgeDeps {
   function deliverReplyToPty(remoteId: string, text: string, images: string[]): void {
     try {
       const remote = readRemoteSession(remoteId)
-      if (!remote || remote.engine === 'claude') return // claude: the Stop hook delivers
+      if (!remote) return
+      // Claude normally has the Stop hook parked and listening — injecting then
+      // would deliver the message twice. Except when the session went DORMANT:
+      // it stopped parking after a long idle (so it stops burning a heartbeat
+      // turn an hour), and the app now owns the wake, exactly like every other
+      // engine.
+      if (remote.engine === 'claude' && !remote.dormantAt) return
       const live = ctx.liveSessions()
       // Exact match on the app's own session id (agentSessionId === pinned.sessionId,
       // set for every engine now). cwd is ambiguous — two sessions can share a repo —
@@ -177,6 +184,11 @@ export function createBridgeDeps(ctx: BridgeDepsCtx): BridgeDeps {
         `terminal-cli remote post --id ${remoteId} "<your reply>"]\n\n${text}${imageNote}`
       match.write(`\x1b[200~${body}\x1b[201~`)
       setTimeout(() => match.write('\r'), 80)
+      // A woken Claude session parks again when its turn ends, and that park
+      // drains the queue — so without advancing the cursor here the same message
+      // would be handed over a second time. takeReplies IS the cursor, and it
+      // also flips the session back to working.
+      if (remote.engine === 'claude') takeReplies(remoteId)
     } catch {
       /* best-effort — the log-collect path remains */
     }
