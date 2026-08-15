@@ -1056,3 +1056,167 @@ describe('POST /v1/tickets/comment', () => {
     expect((await post(h.url, { repo: '/repos/alpha', slug: 's', body: 'x' })).status).toBe(501)
   })
 })
+
+describe('GET /v1/tailnet (fleet picker)', () => {
+  const machine = { name: 'laptop', dnsName: 'laptop.tailnet.ts.net', os: 'macOS', online: true }
+
+  it('returns the tailnet machines to an authenticated phone', async () => {
+    const h = await harness({
+      tailnet: () => ({
+        status: 'ok',
+        machines: [
+          { ...machine, self: false },
+          {
+            name: 'studio',
+            dnsName: 'studio.tailnet.ts.net',
+            os: 'macOS',
+            online: true,
+            self: true,
+          },
+        ],
+      }),
+    })
+    const res = await fetch(`${h.url}/v1/tailnet`, { headers: auth })
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.status).toBe('ok')
+    expect(body.machines.map((m: { dnsName: string }) => m.dnsName)).toEqual([
+      'laptop.tailnet.ts.net',
+      'studio.tailnet.ts.net',
+    ])
+  })
+
+  it('requires the token', async () => {
+    const h = await harness({ tailnet: () => ({ status: 'ok', machines: [] }) })
+    expect((await fetch(`${h.url}/v1/tailnet`)).status).toBe(401)
+  })
+
+  // A down tailnet is a state the phone renders, not a request that failed.
+  it('reports unavailable as a 200 body, not an error status', async () => {
+    const h = await harness({
+      tailnet: () => ({ status: 'unavailable', reason: 'Tailscale is signed out on this Mac.' }),
+    })
+    const res = await fetch(`${h.url}/v1/tailnet`, { headers: auth })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({
+      status: 'unavailable',
+      reason: 'Tailscale is signed out on this Mac.',
+    })
+  })
+
+  it('awaits an async dep', async () => {
+    const h = await harness({
+      tailnet: async () => ({ status: 'ok', machines: [{ ...machine, self: false }] }),
+    })
+    const body = await (await fetch(`${h.url}/v1/tailnet`, { headers: auth })).json()
+    expect(body.machines).toHaveLength(1)
+  })
+
+  it('501 when the desktop does not expose the tailnet', async () => {
+    const h = await harness({})
+    expect((await fetch(`${h.url}/v1/tailnet`, { headers: auth })).status).toBe(501)
+  })
+})
+
+describe('/v1/hooks/global (never-die hook install)', () => {
+  const status = {
+    installed: false,
+    settingsPath: '/Users/x/.claude/settings.json',
+    command: '/Users/x/.config/TerMinal/plugin/hooks/remote-check.sh',
+    commandExists: true,
+  }
+
+  it('reports the current state', async () => {
+    const h = await harness({ globalHookStatus: () => status })
+    const res = await fetch(`${h.url}/v1/hooks/global`, { headers: auth })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual(status)
+  })
+
+  it('installs and reports what was written', async () => {
+    const calls: boolean[] = []
+    const h = await harness({
+      setGlobalHook: (install) => {
+        calls.push(install)
+        return {
+          ok: true,
+          changed: true,
+          installed: install,
+          settingsPath: status.settingsPath,
+          command: status.command,
+          message: 'Added a Stop hook',
+        }
+      },
+    })
+    const res = await fetch(`${h.url}/v1/hooks/global`, {
+      method: 'POST',
+      headers: { ...auth, 'content-type': 'application/json' },
+      body: JSON.stringify({ install: true }),
+    })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({
+      ok: true,
+      changed: true,
+      message: 'Added a Stop hook',
+    })
+    expect(calls).toEqual([true])
+  })
+
+  it('passes install:false through as the uninstall', async () => {
+    const calls: boolean[] = []
+    const h = await harness({
+      setGlobalHook: (install) => {
+        calls.push(install)
+        return {
+          ok: true,
+          changed: true,
+          installed: install,
+          settingsPath: status.settingsPath,
+          command: status.command,
+          message: 'Removed',
+        }
+      },
+    })
+    await fetch(`${h.url}/v1/hooks/global`, {
+      method: 'POST',
+      headers: { ...auth, 'content-type': 'application/json' },
+      body: JSON.stringify({ install: false }),
+    })
+    expect(calls).toEqual([false])
+  })
+
+  // The phone must see the REASON ("open TerMinal once"), so a refused write is
+  // a 200 body with ok:false rather than an opaque error status.
+  it('surfaces a refused write as ok:false with the reason', async () => {
+    const h = await harness({
+      setGlobalHook: () => ({ ok: false, error: 'the hook script isn’t on this Mac yet' }),
+    })
+    const res = await fetch(`${h.url}/v1/hooks/global`, {
+      method: 'POST',
+      headers: { ...auth, 'content-type': 'application/json' },
+      body: '{}',
+    })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ ok: false, error: 'the hook script isn’t on this Mac yet' })
+  })
+
+  it('requires the token on both verbs', async () => {
+    const h = await harness({
+      globalHookStatus: () => status,
+      setGlobalHook: () => ({ ok: false, error: 'x' }),
+    })
+    expect((await fetch(`${h.url}/v1/hooks/global`)).status).toBe(401)
+    expect((await fetch(`${h.url}/v1/hooks/global`, { method: 'POST', body: '{}' })).status).toBe(
+      401,
+    )
+  })
+
+  it('501 when the desktop does not expose the hook install', async () => {
+    const h = await harness({})
+    expect((await fetch(`${h.url}/v1/hooks/global`, { headers: auth })).status).toBe(501)
+    expect(
+      (await fetch(`${h.url}/v1/hooks/global`, { method: 'POST', headers: auth, body: '{}' }))
+        .status,
+    ).toBe(501)
+  })
+})

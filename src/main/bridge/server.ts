@@ -109,6 +109,17 @@ export type BridgeDeps = {
     | null
     | Promise<{ token: string; fp: string; name: string } | null>
 
+  /**
+   * The tailnet's machines, so the phone can pick which Mac it drives. Injected
+   * like tailscalePair — the bridge module itself shells out to nothing.
+   */
+  tailnet?(): BridgeTailnet | Promise<BridgeTailnet>
+
+  /** Is the never-die Stop hook registered in the Mac's ~/.claude/settings.json? */
+  globalHookStatus?(): BridgeGlobalHook
+  /** Register (or remove) it. Reports exactly what was written. */
+  setGlobalHook?(install: boolean): BridgeGlobalHookResult
+
   /** Repos the phone may start a session in — also the workspace list. */
   repos?(): BridgeRepo[]
   /** Engines available for a new session, labelled the way the desktop shows
@@ -152,6 +163,47 @@ export type BridgeDeps = {
    */
   spawn?(input: SpawnInput): { id: string } | { error: string }
 }
+
+/** One machine on the tailnet, as the phone's fleet picker lists it. */
+export type BridgeTailnetMachine = {
+  name: string
+  /** MagicDNS name, no trailing dot — what the phone pairs against. */
+  dnsName: string
+  os: string
+  online: boolean
+  /** The Mac answering this request; it is already the selected one. */
+  self: boolean
+}
+
+/**
+ * `unavailable` is an ANSWER, not a failure: Tailscale stopped, signed out, or
+ * not installed is an ordinary state the phone renders as a sentence. Making it
+ * an HTTP error would leave the phone showing "can't reach TerMinal" for a Mac
+ * it is plainly talking to.
+ */
+export type BridgeTailnet =
+  { status: 'ok'; machines: BridgeTailnetMachine[] } | { status: 'unavailable'; reason: string }
+
+/** State of the global never-die Stop hook on the Mac. */
+export type BridgeGlobalHook = {
+  installed: boolean
+  settingsPath: string
+  command: string
+  /** False when the tm plugin hasn't been installed on that Mac yet. */
+  commandExists: boolean
+}
+
+/** Outcome of an install/uninstall — `ok:false` is a reported result, not a 500. */
+export type BridgeGlobalHookResult =
+  | {
+      ok: true
+      changed: boolean
+      installed: boolean
+      settingsPath: string
+      command: string
+      message: string
+    }
+  | { ok: false; error: string }
 
 /** A repo the phone may start a session in. */
 export type BridgeRepo = {
@@ -653,6 +705,58 @@ export function createBridgeHandler(
         })
         .catch((e: Error) => json(res, 413, { error: e.message }))
       return
+    }
+
+    // The fleet picker: every machine on this Mac's tailnet. Authenticated like
+    // everything else — an already-paired phone is asking which OTHER Mac to
+    // switch to, which sidesteps the bootstrap problem entirely.
+    if (req.method === 'GET' && url.pathname === '/v1/tailnet') {
+      if (!deps.tailnet) {
+        json(res, 501, { error: 'tailnet listing not available' })
+        return
+      }
+      Promise.resolve(deps.tailnet())
+        .then((fleet) => json(res, 200, fleet))
+        .catch((e: Error) => json(res, 500, { error: e.message }))
+      return
+    }
+
+    // The global never-die Stop hook. GET reports state; POST {install} writes.
+    // A refused write (no plugin on disk, unparseable settings.json) comes back
+    // 200 with ok:false and a sentence — the request succeeded, the operation
+    // did not, and the phone must be able to show WHY.
+    if (url.pathname === '/v1/hooks/global') {
+      if (req.method === 'GET') {
+        if (!deps.globalHookStatus) {
+          json(res, 501, { error: 'hook install not available' })
+          return
+        }
+        try {
+          json(res, 200, deps.globalHookStatus())
+        } catch (e) {
+          json(res, 500, { error: (e as Error).message })
+        }
+        return
+      }
+      if (req.method === 'POST') {
+        if (!deps.setGlobalHook) {
+          json(res, 501, { error: 'hook install not available' })
+          return
+        }
+        readBody(req)
+          .then((raw) => {
+            let install = true
+            try {
+              const parsed = JSON.parse(raw || '{}') as { install?: unknown }
+              if (typeof parsed.install === 'boolean') install = parsed.install
+            } catch {
+              /* an empty or malformed body means the default: install */
+            }
+            json(res, 200, deps.setGlobalHook!(install))
+          })
+          .catch((e: Error) => json(res, 413, { error: e.message }))
+        return
+      }
     }
 
     if (req.method === 'GET' && url.pathname === '/v1/repos') {

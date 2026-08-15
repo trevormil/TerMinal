@@ -324,6 +324,25 @@ actor BridgeClient {
         return try JSONDecoder().decode(Started.self, from: data).id
     }
 
+    // ---- the fleet, and Mac-side setup ----------------------------------
+
+    /// Every machine on this Mac's tailnet, online first. Asking the Mac you
+    /// are already paired with sidesteps the pairing bootstrap entirely.
+    func tailnet() async throws -> TailnetFleet {
+        try TailnetFleet.decode(try await get("v1/tailnet"))
+    }
+
+    /// Is the never-die Stop hook registered globally on that Mac?
+    func globalHook() async throws -> GlobalHookStatus {
+        try JSONDecoder().decode(GlobalHookStatus.self, from: try await get("v1/hooks/global"))
+    }
+
+    /// Install (or remove) it. The Mac reports exactly what it wrote.
+    func setGlobalHook(install: Bool) async throws -> GlobalHookResult {
+        let data = try await post("v1/hooks/global", body: ["install": install])
+        return try JSONDecoder().decode(GlobalHookResult.self, from: data)
+    }
+
     /// Hand this device's APNs token to the Mac so alerts can reach it.
     func registerDevice(token: String, environment: String) async throws {
         try await post("v1/devices", body: ["token": token, "environment": environment])

@@ -8,9 +8,10 @@ import { coerceEffort, engineEffortsOf } from '../shared/engines'
 import { ensureIdentity, pairingPayload } from './bridge/identity'
 import { registerDevice } from './bridge/push'
 import { runLogAuthorized } from './bridge/run-auth'
-import { tailscalePeerAllowed } from './bridge/tailscale'
+import { tailscaleFleet, tailscalePeerAllowed } from './bridge/tailscale'
 import { listCiJobs, listCiRuns } from './ci'
 import { configPath } from './config-dir'
+import { globalHookStatus, installGlobalHook, uninstallGlobalHook } from './global-hook'
 import { describeSpec, nextRun } from './cron'
 import { listAllRuns, readCronRunLog, readSessionRunLog, readSessionRunLogTail } from './cron-runs'
 import { emitActivity, readActivity } from './events'
@@ -641,6 +642,26 @@ export function createBridgeDeps(ctx: BridgeDepsCtx): BridgeDeps {
         detail: peer?.node || peer?.login || 'tailnet peer',
       })
       return { token: payload.t, fp: payload.fp, name: payload.n }
+    },
+
+    // The fleet picker's data. Already-paired phones only (the route is behind
+    // the token), so this reveals the tailnet to someone who can already drive
+    // this Mac.
+    tailnet: () => tailscaleFleet(),
+
+    // The global never-die Stop hook. Explicitly requested, never automatic —
+    // the app does not write to ~/.claude on its own (see global-hook.ts).
+    globalHookStatus: () => globalHookStatus(),
+    setGlobalHook: (install) => {
+      const result = install ? installGlobalHook() : uninstallGlobalHook()
+      if (result.ok && result.changed) {
+        emitActivity({
+          kind: 'info',
+          title: install ? 'Global listener hook installed' : 'Global listener hook removed',
+          detail: result.message,
+        })
+      }
+      return result
     },
   }
 }

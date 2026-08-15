@@ -47,6 +47,23 @@ every session, in every repo. Check Settings → Updates → tm plugin, or
 `claude plugin details tm`. The manual steps below are only for a machine
 running Claude Code without the app.
 
+### From the phone (ticket 125)
+
+TerMinal Remote → Settings → **Listener hook** shows whether the paired Mac has
+a global registration and installs or removes it on request. Still never
+automatic — the app writes to `~/.claude/settings.json` only when you ask, and
+tells you exactly what it wrote.
+
+- Endpoint: `GET/POST /v1/hooks/global` on the bridge (bearer-authenticated like
+  every other route), implemented in `src/main/global-hook.ts`.
+- **Idempotent and additive.** A second install is a no-op; another tool's Stop
+  hooks are left exactly as they were, never merged into.
+- **Undoable.** The Remove button takes out only the entry pointing at
+  `~/.config/TerMinal/plugin/hooks/remote-check.sh` and prunes what it emptied.
+- It refuses — without writing — if that script isn't on disk yet (open TerMinal
+  on the Mac once so it installs the plugin), or if `settings.json` isn't
+  readable JSON.
+
 <details>
 <summary>Manual registration (no TerMinal app)</summary>
 
