@@ -4,6 +4,7 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron'
 // narrowed engine union, a renamed argument, a method the renderer expects and
 // the bridge never grew) fails the build here instead of at runtime.
 import type {
+  ActivityCursor,
   ActivityEvent,
   AgentRun,
   CheapMessage,
@@ -293,7 +294,8 @@ const gt: GtApi = {
 
   // activity feed + notifications
   activity: {
-    list: () => ipcRenderer.invoke('activity:list'),
+    page: (cursor: ActivityCursor | null, limit?: number) =>
+      ipcRenderer.invoke('activity:page', cursor, limit),
     unseenCount: (since: number, kinds: string[]) =>
       ipcRenderer.invoke('activity:unseen-count', since, kinds),
     clear: () => ipcRenderer.invoke('activity:clear'),

@@ -5,8 +5,8 @@
 
 // src/mcp/agents.ts
 import { spawnSync } from "child_process";
-import { existsSync as existsSync7, mkdirSync as mkdirSync3, readFileSync as readFileSync7, readdirSync as readdirSync5, writeFileSync as writeFileSync3 } from "fs";
-import { basename as basename5, join as join8 } from "path";
+import { existsSync as existsSync8, mkdirSync as mkdirSync3, readFileSync as readFileSync7, readdirSync as readdirSync5, writeFileSync as writeFileSync3 } from "fs";
+import { basename as basename6, join as join9 } from "path";
 
 // src/runner/repo-state.ts
 import { existsSync as existsSync2 } from "fs";
@@ -439,13 +439,13 @@ var normalizeModelTier = (value) => MODEL_TIERS.includes(value) ? value : "auto"
 // src/mcp/writes.ts
 import {
   appendFileSync,
-  existsSync as existsSync6,
+  existsSync as existsSync7,
   mkdirSync as mkdirSync2,
   readFileSync as readFileSync6,
   readdirSync as readdirSync4,
   writeFileSync as writeFileSync2
 } from "fs";
-import { basename as basename4, dirname as dirname2, join as join7 } from "path";
+import { basename as basename5, dirname as dirname3, join as join8 } from "path";
 import { randomUUID as randomUUID2 } from "crypto";
 
 // src/runner/state-io.ts
@@ -562,9 +562,137 @@ function updateJsonListShared(file, update) {
   });
 }
 
+// src/shared/activity-log.ts
+import { closeSync as closeSync2, existsSync as existsSync4, openSync as openSync2, readSync, renameSync as renameSync2, rmSync, statSync } from "fs";
+import { basename as basename3, dirname as dirname2, join as join6 } from "path";
+var BLOCK = 64 * 1024;
+var ACTIVITY_ROTATE_BYTES = 5 * 1024 * 1024;
+var ACTIVITY_GENERATIONS = 2;
+function activityGenerationPaths(base) {
+  const dir = dirname2(base);
+  const name = basename3(base);
+  const dot = name.lastIndexOf(".");
+  const stem = dot > 0 ? name.slice(0, dot) : name;
+  const ext = dot > 0 ? name.slice(dot) : "";
+  const out = [base];
+  for (let i = 1;i <= ACTIVITY_GENERATIONS; i++)
+    out.push(join6(dir, `${stem}-${i}${ext}`));
+  return out;
+}
+function parse(line) {
+  if (!line.trim())
+    return null;
+  try {
+    const ev = JSON.parse(line);
+    return ev && typeof ev === "object" ? ev : null;
+  } catch {
+    return null;
+  }
+}
+function readRange(fd, start, len) {
+  if (len <= 0)
+    return Buffer.alloc(0);
+  const buf = Buffer.alloc(len);
+  let got = 0;
+  while (got < len) {
+    const n = readSync(fd, buf, got, len - got, start + got);
+    if (n <= 0)
+      break;
+    got += n;
+  }
+  return got === len ? buf : buf.subarray(0, got);
+}
+function lastLineEnd(fd, end) {
+  let pos = end;
+  while (pos > 0) {
+    const start = Math.max(0, pos - BLOCK);
+    const buf = readRange(fd, start, pos - start);
+    const idx = buf.lastIndexOf(10);
+    if (idx >= 0)
+      return start + idx + 1;
+    pos = start;
+  }
+  return 0;
+}
+function* reverseLinesInFile(file, end) {
+  let fd;
+  try {
+    fd = openSync2(file, "r");
+  } catch {
+    return;
+  }
+  try {
+    let pos = lastLineEnd(fd, end);
+    let carry = Buffer.alloc(0);
+    while (pos > 0) {
+      const start = Math.max(0, pos - BLOCK);
+      const buf = Buffer.concat([readRange(fd, start, pos - start), carry]);
+      pos = start;
+      carry = Buffer.alloc(0);
+      let cut = buf.length;
+      while (cut > 0) {
+        const nl = cut >= 2 ? buf.lastIndexOf(10, cut - 2) : -1;
+        if (nl >= 0) {
+          yield { line: buf.subarray(nl + 1, cut - 1).toString("utf8"), start: start + nl + 1 };
+          cut = nl + 1;
+        } else if (start === 0) {
+          yield { line: buf.subarray(0, cut - 1).toString("utf8"), start: 0 };
+          cut = 0;
+        } else {
+          carry = buf.subarray(0, cut);
+          break;
+        }
+      }
+    }
+  } finally {
+    closeSync2(fd);
+  }
+}
+function* reverseLines(base, cursor) {
+  const paths = activityGenerationPaths(base);
+  const from = cursor ? cursor.gen : 0;
+  for (let gen = from;gen < paths.length; gen++) {
+    const file = paths[gen];
+    if (!existsSync4(file))
+      continue;
+    let end = 0;
+    if (gen === from && cursor)
+      end = cursor.offset;
+    else {
+      try {
+        end = statSync(file).size;
+      } catch {
+        continue;
+      }
+    }
+    for (const l of reverseLinesInFile(file, end))
+      yield { gen, start: l.start, line: l.line };
+  }
+}
+function readActivityPage(base, opts = {}) {
+  const limit = Math.max(1, opts.limit ?? 200);
+  const maxScan = opts.maxScan ?? Math.max(limit * 50, 5000);
+  const events = [];
+  let cursor = null;
+  let consumed = null;
+  let scanned = 0;
+  for (const { gen, start, line } of reverseLines(base, opts.cursor)) {
+    if (events.length >= limit || scanned >= maxScan) {
+      cursor = consumed;
+      break;
+    }
+    scanned++;
+    consumed = { gen, offset: start };
+    const ev = parse(line);
+    if (ev && (!opts.filter || opts.filter(ev)))
+      events.push(ev);
+  }
+  return { events, cursor };
+}
+
 // src/mcp/notify.ts
 import { spawn } from "child_process";
-import { existsSync as existsSync4, readFileSync as readFileSync4 } from "fs";
+import { existsSync as existsSync5, readFileSync as readFileSync4 } from "fs";
 function slackCfg() {
   try {
     const c = JSON.parse(readFileSync4(SLACK_SIDECAR(), "utf8"));
@@ -660,7 +788,7 @@ function pingTelegram(text, inlineKeyboard) {
     }).catch(() => {});
     return;
   }
-  if (existsSync4(LEGACY_TG_SCRIPT())) {
+  if (existsSync5(LEGACY_TG_SCRIPT())) {
     try {
       const child = spawn(LEGACY_TG_SCRIPT(), ["--kind=blocked", text], { stdio: "ignore" });
       child.on("error", () => {});
@@ -670,8 +798,8 @@ function pingTelegram(text, inlineKeyboard) {
 }
 
 // src/mcp/reads.ts
-import { existsSync as existsSync5, readFileSync as readFileSync5, readdirSync as readdirSync3, statSync } from "fs";
-import { basename as basename3, join as join6 } from "path";
+import { existsSync as existsSync6, readFileSync as readFileSync5, readdirSync as readdirSync3, statSync as statSync2 } from "fs";
+import { basename as basename4, join as join7 } from "path";
 function listTicketsForRoot(repoRoot, filter, includeBody) {
   const out = [];
   for (const dir of backlogReadDirs(repoRoot)) {
@@ -686,7 +814,7 @@ function listTicketsForRoot(repoRoot, filter, includeBody) {
         continue;
       let raw;
       try {
-        raw = readFileSync5(join6(dir, f), "utf8");
+        raw = readFileSync5(join7(dir, f), "utf8");
       } catch {
         continue;
       }
@@ -713,7 +841,7 @@ function listTicketsForRoot(repoRoot, filter, includeBody) {
           startedAt: meta.agent_run_started_at || undefined,
           status: meta.agent_run_status || undefined
         } : undefined,
-        repo: basename3(repoRoot)
+        repo: basename4(repoRoot)
       };
       if (includeBody)
         ticket.body = body.slice(0, 600);
@@ -745,13 +873,13 @@ function getTicketTool(args) {
   if (!slug)
     return null;
   for (const root of knownRepoRoots()) {
-    const f = backlogReadDirs(root).map((dir) => join6(dir, `${slug}.md`)).find((p) => existsSync5(p));
+    const f = backlogReadDirs(root).map((dir) => join7(dir, `${slug}.md`)).find((p) => existsSync6(p));
     if (f) {
       const raw = readFileSync5(f, "utf8");
       const { meta, body } = parseFrontmatter(raw);
       return {
         slug,
-        repo: basename3(root),
+        repo: basename4(root),
         repoRoot: root,
         ...meta,
         body
@@ -762,7 +890,7 @@ function getTicketTool(args) {
 }
 function listPrs(args) {
   const root = prsRoot();
-  if (!root || !existsSync5(root))
+  if (!root || !existsSync6(root))
     return [];
   const out = [];
   const walk = (dir, depth = 0) => {
@@ -775,10 +903,10 @@ function listPrs(args) {
       return;
     }
     for (const name of names) {
-      const p = join6(dir, name);
+      const p = join7(dir, name);
       let st;
       try {
-        st = statSync(p);
+        st = statSync2(p);
       } catch {
         continue;
       }
@@ -816,28 +944,28 @@ function getPrArtifact(args) {
   const root = prsRoot();
   if (!root)
     return null;
-  const dir = join6(root, host, ...repo.split("/"), String(number));
-  if (!existsSync5(dir))
+  const dir = join7(root, host, ...repo.split("/"), String(number));
+  if (!existsSync6(dir))
     return null;
   let targetSha = sha;
   if (!targetSha) {
     try {
-      const meta2 = JSON.parse(readFileSync5(join6(dir, "meta.json"), "utf8"));
+      const meta2 = JSON.parse(readFileSync5(join7(dir, "meta.json"), "utf8"));
       targetSha = meta2.commits?.[0]?.slice(0, 7);
     } catch {}
   }
   if (!targetSha)
     return null;
-  const file = join6(dir, `${targetSha}.md`);
-  if (!existsSync5(file))
+  const file = join7(dir, `${targetSha}.md`);
+  if (!existsSync6(file))
     return null;
   const raw = readFileSync5(file, "utf8");
   const { meta, body } = parseFrontmatter(raw);
   return { host, repo, number, sha: targetSha, meta, body };
 }
 function listSchedules(args) {
-  const sf = join6(CFG(), "schedules.json");
-  if (!existsSync5(sf))
+  const sf = join7(CFG(), "schedules.json");
+  if (!existsSync6(sf))
     return [];
   try {
     const arr = JSON.parse(readFileSync5(sf, "utf8"));
@@ -859,14 +987,14 @@ function listSchedules(args) {
 }
 function recentAgentRuns(args) {
   const out = [];
-  const cronDir = join6(CFG(), "cron-runs");
-  if (existsSync5(cronDir)) {
+  const cronDir = join7(CFG(), "cron-runs");
+  if (existsSync6(cronDir)) {
     try {
       for (const f of readdirSync3(cronDir)) {
         if (!f.endsWith(".json"))
           continue;
         try {
-          const r = JSON.parse(readFileSync5(join6(cronDir, f), "utf8"));
+          const r = JSON.parse(readFileSync5(join7(cronDir, f), "utf8"));
           if (args.repo && !r.repoLabel?.toLowerCase().includes(args.repo.toLowerCase()))
             continue;
           if (args.status && r.status !== args.status)
@@ -892,8 +1020,8 @@ function recentAgentRuns(args) {
   return out.sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0)).slice(0, args.limit || 50);
 }
 function aiSpendToday(args) {
-  const dir = join6(CFG(), "ai-runs");
-  if (!existsSync5(dir))
+  const dir = join7(CFG(), "ai-runs");
+  if (!existsSync6(dir))
     return { totalUsd: 0, totalRuns: 0, byModel: {}, byAgent: {} };
   const dayStart = (() => {
     const d = new Date;
@@ -909,11 +1037,11 @@ function aiSpendToday(args) {
       if (!f.endsWith(".json"))
         continue;
       try {
-        const r = JSON.parse(readFileSync5(join6(dir, f), "utf8"));
+        const r = JSON.parse(readFileSync5(join7(dir, f), "utf8"));
         if ((r.startedAt || 0) < dayStart)
           continue;
         if (args.repo) {
-          const b = basename3(r.repoRoot || "");
+          const b = basename4(r.repoRoot || "");
           if (!b.toLowerCase().includes(args.repo.toLowerCase()))
             continue;
         }
@@ -949,9 +1077,9 @@ function fileTicket(args) {
     throw new Error(`no repo matching "${repo}"`);
   const backlogDir = backlogWriteDir(repoRoot);
   mkdirSync2(backlogDir, { recursive: true });
-  const nextIdFile = join7(backlogDir, ".next-id");
+  const nextIdFile = join8(backlogDir, ".next-id");
   let nextId = 1;
-  if (existsSync6(nextIdFile)) {
+  if (existsSync7(nextIdFile)) {
     try {
       nextId = parseInt(readFileSync6(nextIdFile, "utf8").trim(), 10) || 1;
     } catch {}
@@ -985,7 +1113,7 @@ agent_kind: ${agent.kind}
 
 ${body}
 `;
-  const path = join7(backlogDir, `${slug}.md`);
+  const path = join8(backlogDir, `${slug}.md`);
   writeFileSync2(path, frontmatter);
   try {
     writeFileSync2(nextIdFile, String(nextId + 1) + `
@@ -995,7 +1123,7 @@ ${body}
     kind: "ticket-filed",
     title: `Ticket filed \xB7 #${id}`,
     detail: title,
-    repo: basename4(repoRoot),
+    repo: basename5(repoRoot),
     repoRoot
   });
   return { slug, id, path };
@@ -1004,7 +1132,7 @@ function locateTicket(slug) {
   let path = null;
   let repoRoot = null;
   for (const root of knownRepoRoots()) {
-    const p = backlogReadDirs(root).map((dir) => join7(dir, `${slug}.md`)).find((candidate) => existsSync6(candidate));
+    const p = backlogReadDirs(root).map((dir) => join8(dir, `${slug}.md`)).find((candidate) => existsSync7(candidate));
     if (p) {
       path = p;
       repoRoot = root;
@@ -1127,7 +1255,7 @@ prs: ${formatted}
       kind: status === "closed" ? "ticket-closed" : "info",
       title: unblocked ? `Ticket unblocked \xB7 #${ticketLabel}` : `Ticket ${status} \xB7 #${ticketLabel}`,
       detail: unblocked ? `${currentTitle} \xB7 ${status}` : currentTitle,
-      repo: basename4(repoRoot),
+      repo: basename5(repoRoot),
       repoRoot
     });
   }
@@ -1291,18 +1419,18 @@ function stateFilePath(repoArg, agentId) {
   if (!agentId)
     throw new Error("agent is required");
   const root = findRepoRoot(repoArg);
-  const slug = root ? basename4(root) : repoArg;
-  return join7(CFG(), "agent-state", slug, `${agentId}.json`);
+  const slug = root ? basename5(root) : repoArg;
+  return join8(CFG(), "agent-state", slug, `${agentId}.json`);
 }
 function setAgentStateTool(args) {
   const { repo, agent, key, value } = args;
   if (!key)
     throw new Error("key is required");
   const file = stateFilePath(repo, agent);
-  mkdirSync2(dirname2(file), { recursive: true });
+  mkdirSync2(dirname3(file), { recursive: true });
   let state = {};
   try {
-    if (existsSync6(file))
+    if (existsSync7(file))
       state = JSON.parse(readFileSync6(file, "utf8"));
   } catch {}
   state[key] = value;
@@ -1314,7 +1442,7 @@ function setAgentStateTool(args) {
 function getAgentStateTool(args) {
   const { repo, agent, key } = args;
   const file = stateFilePath(repo, agent);
-  if (!existsSync6(file))
+  if (!existsSync7(file))
     return key ? { value: null } : { state: {} };
   try {
     const s = JSON.parse(readFileSync6(file, "utf8"));
@@ -1323,34 +1451,24 @@ function getAgentStateTool(args) {
     return key ? { value: null } : { state: {} };
   }
 }
+var ACTIVITY_SCAN_LIMIT = 20000;
 function listActivityTool(args) {
   const { kind, repo, sinceMs, limit = 50 } = args || {};
-  const file = ACTIVITY_FILE();
-  if (!existsSync6(file))
-    return [];
-  let raw = "";
-  try {
-    raw = readFileSync6(file, "utf8");
-  } catch {
-    return [];
-  }
-  const events = [];
-  for (const line of raw.split(`
-`)) {
-    if (!line.trim())
-      continue;
-    try {
-      const ev = JSON.parse(line);
+  const wantRepo = repo ? String(repo).toLowerCase() : "";
+  const { events } = readActivityPage(ACTIVITY_FILE(), {
+    limit,
+    maxScan: ACTIVITY_SCAN_LIMIT,
+    filter: (ev) => {
       if (kind && ev.kind !== kind)
-        continue;
-      if (repo && !(ev.repo || "").toLowerCase().includes(repo.toLowerCase()))
-        continue;
+        return false;
+      if (wantRepo && !(ev.repo || "").toLowerCase().includes(wantRepo))
+        return false;
       if (sinceMs && ev.ts < sinceMs)
-        continue;
-      events.push(ev);
-    } catch {}
-  }
-  return events.slice(-limit).reverse().map((ev) => ({
+        return false;
+      return true;
+    }
+  });
+  return events.map((ev) => ({
     id: ev.id,
     ts: ev.ts,
     kind: ev.kind,
@@ -1362,7 +1480,7 @@ function listActivityTool(args) {
 function listHitlTool(args) {
   const { status = "open", repo, limit = 50 } = args || {};
   const file = HITL_FILE();
-  if (!existsSync6(file))
+  if (!existsSync7(file))
     return [];
   try {
     const arr = JSON.parse(readFileSync6(file, "utf8"));
@@ -1383,8 +1501,8 @@ function listHitlTool(args) {
 }
 function listBgTasksTool(args) {
   const { status, repo, limit = 20 } = args || {};
-  const file = join7(CFG(), "bg-tasks.json");
-  if (!existsSync6(file))
+  const file = join8(CFG(), "bg-tasks.json");
+  if (!existsSync7(file))
     return [];
   try {
     const arr = JSON.parse(readFileSync6(file, "utf8"));
@@ -1397,22 +1515,22 @@ function harnessStatusTool() {
   const hitlFile = HITL_FILE();
   let hitlOpen = 0;
   try {
-    if (existsSync6(hitlFile)) {
+    if (existsSync7(hitlFile)) {
       const arr = JSON.parse(readFileSync6(hitlFile, "utf8"));
       hitlOpen = arr.filter((h) => h.status === "open").length;
     }
   } catch {}
-  const cronDir = join7(CFG(), "cron-runs");
+  const cronDir = join8(CFG(), "cron-runs");
   let cronRunning = 0;
   let cronFailed24h = 0;
-  if (existsSync6(cronDir)) {
+  if (existsSync7(cronDir)) {
     const dayAgo = Date.now() - 86400000;
     try {
       for (const f of readdirSync4(cronDir)) {
         if (!f.endsWith(".json"))
           continue;
         try {
-          const r = JSON.parse(readFileSync6(join7(cronDir, f), "utf8"));
+          const r = JSON.parse(readFileSync6(join8(cronDir, f), "utf8"));
           if (r.status === "running")
             cronRunning++;
           if (r.status === "failed" && r.startedAt >= dayAgo)
@@ -1423,8 +1541,8 @@ function harnessStatusTool() {
   }
   let bgRunning = 0;
   try {
-    const bf = join7(CFG(), "bg-tasks.json");
-    if (existsSync6(bf)) {
+    const bf = join8(CFG(), "bg-tasks.json");
+    if (existsSync7(bf)) {
       const arr = JSON.parse(readFileSync6(bf, "utf8"));
       bgRunning = arr.filter((t) => t.status === "running").length;
     }
@@ -1443,14 +1561,14 @@ function setRunOutcomeTool(args) {
   const { runId, outcome } = args;
   if (!runId || !outcome)
     throw new Error("runId and outcome are required");
-  const dir = join7(CFG(), "ai-runs");
-  if (!existsSync6(dir))
+  const dir = join8(CFG(), "ai-runs");
+  if (!existsSync7(dir))
     return { ok: false, reason: "no ai-runs/ dir" };
   let updated = 0;
   for (const f of readdirSync4(dir)) {
     if (!f.endsWith(".json"))
       continue;
-    const path = join7(dir, f);
+    const path = join8(dir, f);
     try {
       const r = JSON.parse(readFileSync6(path, "utf8"));
       if (r.runId === runId) {
@@ -1542,8 +1660,8 @@ function listAgentsTool(args) {
   for (const [id, title] of DEFAULT_AGENT_SUMMARIES) {
     pushAgent(out, seen, { id, title, scope: "global", kind: "classic", source: "default" });
   }
-  const globalJson = join8(CFG(), "agents", "global.json");
-  if (existsSync7(globalJson)) {
+  const globalJson = join9(CFG(), "agents", "global.json");
+  if (existsSync8(globalJson)) {
     try {
       const list = JSON.parse(readFileSync7(globalJson, "utf8"));
       const arr = Array.isArray(list) ? list : [];
@@ -1561,8 +1679,8 @@ function listAgentsTool(args) {
       }
     } catch {}
   }
-  const localJson = join8(root, ".agents", "agents.json");
-  if (existsSync7(localJson)) {
+  const localJson = join9(root, ".agents", "agents.json");
+  if (existsSync8(localJson)) {
     try {
       const list = JSON.parse(readFileSync7(localJson, "utf8"));
       const arr = Array.isArray(list) ? list : Array.isArray(list?.agents) ? list.agents : [];
@@ -1583,16 +1701,16 @@ function listAgentsTool(args) {
       }
     } catch {}
   }
-  if (existsSync7(join8(root, ".agents"))) {
+  if (existsSync8(join9(root, ".agents"))) {
     try {
-      for (const f of readdirSync5(join8(root, ".agents"))) {
+      for (const f of readdirSync5(join9(root, ".agents"))) {
         if (!f.endsWith(".sh"))
           continue;
         const id = f.slice(0, -3);
         let meta = {};
         try {
-          const p = join8(root, ".agents", `${id}.json`);
-          if (existsSync7(p))
+          const p = join9(root, ".agents", `${id}.json`);
+          if (existsSync8(p))
             meta = JSON.parse(readFileSync7(p, "utf8"));
         } catch {}
         pushAgent(out, seen, {
@@ -1607,8 +1725,8 @@ function listAgentsTool(args) {
       }
     } catch {}
   }
-  const globalScripts = join8(CFG(), "scripts");
-  if (existsSync7(globalScripts)) {
+  const globalScripts = join9(CFG(), "scripts");
+  if (existsSync8(globalScripts)) {
     try {
       for (const f of readdirSync5(globalScripts)) {
         if (!f.endsWith(".sh"))
@@ -1616,8 +1734,8 @@ function listAgentsTool(args) {
         const id = f.slice(0, -3);
         let meta = {};
         try {
-          const p = join8(globalScripts, `${id}.json`);
-          if (existsSync7(p))
+          const p = join9(globalScripts, `${id}.json`);
+          if (existsSync8(p))
             meta = JSON.parse(readFileSync7(p, "utf8"));
         } catch {}
         pushAgent(out, seen, {
@@ -1632,12 +1750,12 @@ function listAgentsTool(args) {
       }
     } catch {}
   }
-  const persistentRoot = join8(CFG(), "persistent-agents");
-  if (existsSync7(persistentRoot)) {
+  const persistentRoot = join9(CFG(), "persistent-agents");
+  if (existsSync8(persistentRoot)) {
     try {
       for (const id of readdirSync5(persistentRoot)) {
-        const metaPath = join8(persistentRoot, id, "agent.json");
-        if (!existsSync7(metaPath))
+        const metaPath = join9(persistentRoot, id, "agent.json");
+        if (!existsSync8(metaPath))
           continue;
         try {
           const meta = JSON.parse(readFileSync7(metaPath, "utf8"));
@@ -1654,15 +1772,15 @@ function listAgentsTool(args) {
       }
     } catch {}
   }
-  return { repo: basename5(root), agents: out.sort((a, b) => a.id.localeCompare(b.id)) };
+  return { repo: basename6(root), agents: out.sort((a, b) => a.id.localeCompare(b.id)) };
 }
 function noteFirstDelegation(title, repo, agentId) {
   try {
     const sessionId = process.env.GT_TERMINAL_SESSION_ID || "";
-    const dir = join8(CFG(), "delegation-seen");
+    const dir = join9(CFG(), "delegation-seen");
     mkdirSync3(dir, { recursive: true, mode: 448 });
-    const marker = join8(dir, `${(sessionId || "no-session").replace(/[^\w-]/g, "_")}.json`);
-    if (existsSync7(marker))
+    const marker = join9(dir, `${(sessionId || "no-session").replace(/[^\w-]/g, "_")}.json`);
+    if (existsSync8(marker))
       return;
     writeFileSync3(marker, JSON.stringify({ at: Date.now(), repo, agentId }), { mode: 384 });
     emitActivityRaw({
@@ -1690,15 +1808,15 @@ function requestAgentArtifactTool(args) {
   const timeoutMs = Math.max(30000, Math.min(Number(args.timeoutMs || 180000), 600000));
   const model = typeof args.model === "string" && args.model.trim() ? args.model.trim() : "";
   const runSlug = `${new Date().toISOString().replace(/[:.]/g, "-")}-${slugify(title)}`;
-  const dir = join8(statePathForWrite(root, "agent-requests") || join8(root, ".TerMinal", "agent-requests"), runSlug);
+  const dir = join9(statePathForWrite(root, "agent-requests") || join9(root, ".TerMinal", "agent-requests"), runSlug);
   mkdirSync3(dir, { recursive: true });
-  const promptPath = join8(dir, "prompt.md");
-  const reportPath = join8(dir, "report.md");
-  const metaPath = join8(dir, "artifact.json");
+  const promptPath = join9(dir, "prompt.md");
+  const reportPath = join9(dir, "report.md");
+  const metaPath = join9(dir, "artifact.json");
   const fullPrompt = `You are a delegated TerMinal agent request.
 
 Agent: ${agent.kind}:${agent.scope}:${agent.id}
-Repo: ${basename5(root)}
+Repo: ${basename6(root)}
 Working directory: ${root}
 
 Task:
@@ -1711,7 +1829,7 @@ Rules:
 - If follow-up implementation is needed, recommend exactly which agent should own it.
 `;
   writeFileSync3(promptPath, fullPrompt);
-  noteFirstDelegation(title, basename5(root), agent.id);
+  noteFirstDelegation(title, basename6(root), agent.id);
   const child = spawnSync("claude", ["-p", fullPrompt, "--permission-mode", "auto", ...model ? ["--model", model] : []], {
     cwd: root,
     encoding: "utf8",
@@ -1744,7 +1862,7 @@ ${errorMessage}
 \`\`\`` : ""}`);
   writeFileSync3(reportPath, `---
 title: ${JSON.stringify(title)}
-repo: ${basename5(root)}
+repo: ${basename6(root)}
 agent_id: ${agent.id}
 agent_scope: ${agent.scope}
 agent_kind: ${agent.kind}
@@ -1776,12 +1894,12 @@ ${body}
     kind: ok ? "agent-run" : "error",
     title: `Agent artifact \xB7 ${agent.id}`,
     detail: title,
-    repo: basename5(root),
+    repo: basename6(root),
     repoRoot: root
   });
   return {
     ok,
-    repo: basename5(root),
+    repo: basename6(root),
     agent,
     artifactPath: reportPath,
     promptPath,
@@ -1795,15 +1913,15 @@ ${body}
 
 // src/mcp/insights.ts
 import { execFileSync as execFileSync2 } from "child_process";
-import { existsSync as existsSync8, readFileSync as readFileSync8, readdirSync as readdirSync6, statSync as statSync2 } from "fs";
+import { existsSync as existsSync9, readFileSync as readFileSync8, readdirSync as readdirSync6, statSync as statSync3 } from "fs";
 import { homedir as homedir3 } from "os";
-import { basename as basename6, join as join9 } from "path";
+import { basename as basename7, join as join10 } from "path";
 function listReviewPatternsTool(args) {
   const harness = configuredHarnessDir();
   if (!harness)
     return { error: "no harnessDir configured in ~/.config/TerMinal/settings.json" };
-  const path = join9(harness, "reports", "review-patterns.md");
-  if (!existsSync8(path))
+  const path = join10(harness, "reports", "review-patterns.md");
+  if (!existsSync9(path))
     return { error: "no review patterns report yet; runs nightly via bin/review-findings-mine" };
   const limit = typeof args?.limit === "number" ? Math.max(1, Math.min(50, args.limit)) : 10;
   const raw = readFileSync8(path, "utf8");
@@ -1824,7 +1942,7 @@ function listReviewPatternsTool(args) {
 function factoryHealthTool() {
   const out = [];
   for (const root of knownRepoRoots()) {
-    const repo = basename6(root);
+    const repo = basename7(root);
     const repoOut = {
       repo,
       ticketCounts: { open: 0, inProgress: 0, closed: 0, stuck: 0, icebox: 0 },
@@ -1837,7 +1955,7 @@ function factoryHealthTool() {
           if (!/^\d{4}-.*\.md$/.test(f))
             continue;
           try {
-            const { meta } = parseFrontmatter(readFileSync8(join9(backlog, f), "utf8"));
+            const { meta } = parseFrontmatter(readFileSync8(join10(backlog, f), "utf8"));
             const s = meta.status || "open";
             if (s === "open")
               repoOut.ticketCounts.open++;
@@ -1859,12 +1977,12 @@ function factoryHealthTool() {
     const root = prsRoot();
     if (!root)
       return { repos: out.sort((a, b) => b.ticketCounts.open - a.ticketCounts.open) };
-    const cf = join9(root, "cache.json");
-    if (existsSync8(cf)) {
+    const cf = join10(root, "cache.json");
+    if (existsSync9(cf)) {
       const cache = JSON.parse(readFileSync8(cf, "utf8"));
       const prs = Array.isArray(cache?.prs) ? cache.prs : [];
       for (const pr of prs) {
-        const repoBase = basename6(String(pr.repo || ""));
+        const repoBase = basename7(String(pr.repo || ""));
         const r = out.find((x) => x.repo === repoBase || pr.repo?.endsWith(x.repo));
         if (r && (pr.state || "").toLowerCase() === "open")
           r.openPrs++;
@@ -1883,8 +2001,8 @@ function searchDecisionsTool(args) {
   const out = [];
   for (const root of roots) {
     for (const sub of ["docs/decisions", "docs/learnings", "docs/runbooks"]) {
-      const dir = join9(root, sub);
-      if (!existsSync8(dir))
+      const dir = join10(root, sub);
+      if (!existsSync9(dir))
         continue;
       let entries;
       try {
@@ -1895,7 +2013,7 @@ function searchDecisionsTool(args) {
       for (const f of entries) {
         if (!f.endsWith(".md"))
           continue;
-        const path = join9(dir, f);
+        const path = join10(dir, f);
         let raw;
         try {
           raw = readFileSync8(path, "utf8");
@@ -1913,7 +2031,7 @@ function searchDecisionsTool(args) {
 `, idx);
         const snippet = raw.slice(lineStart, lineEnd > 0 ? lineEnd : lineStart + 200);
         out.push({
-          repo: basename6(root),
+          repo: basename7(root),
           path: path.replace(homedir3(), "~"),
           kind: sub.split("/")[1],
           title: meta.title || f.replace(/\.md$/, ""),
@@ -1949,7 +2067,7 @@ function recentChangesTool(args) {
       const [sha, author, when, ...subjectParts] = line.split("|");
       return { sha, author, when, subject: subjectParts.join("|") };
     });
-    return { repo: basename6(root), days, count: commits.length, commits };
+    return { repo: basename7(root), days, count: commits.length, commits };
   } catch (e) {
     return { error: `git log failed: ${e.message}` };
   }
@@ -1960,10 +2078,10 @@ function nearestSessionTool(args) {
     return { error: "unknown repo; pass repo=<basename> or set TERMINAL_REPO" };
   const limit = typeof args?.limit === "number" ? Math.max(1, Math.min(20, args.limit)) : 5;
   const slug = "-" + root.replace(/^\//, "").replace(/\//g, "-");
-  const dir = join9(homedir3(), ".claude", "projects", slug);
-  if (!existsSync8(dir))
+  const dir = join10(homedir3(), ".claude", "projects", slug);
+  if (!existsSync9(dir))
     return {
-      repo: basename6(root),
+      repo: basename7(root),
       sessions: [],
       hint: `no transcript dir at ~/.claude/projects/${slug}`
     };
@@ -1974,10 +2092,10 @@ function nearestSessionTool(args) {
     return { error: `cannot read ${dir}` };
   }
   const sessions = files.filter((f) => f.endsWith(".jsonl")).map((f) => {
-    const path = join9(dir, f);
+    const path = join10(dir, f);
     let stat;
     try {
-      stat = statSync2(path);
+      stat = statSync3(path);
     } catch {
       return null;
     }
@@ -1988,7 +2106,7 @@ function nearestSessionTool(args) {
       path: path.replace(homedir3(), "~")
     };
   }).filter(Boolean).sort((a, b) => b.modifiedMs - a.modifiedMs).slice(0, limit);
-  return { repo: basename6(root), count: sessions.length, sessions };
+  return { repo: basename7(root), count: sessions.length, sessions };
 }
 
 // src/mcp/tools.ts

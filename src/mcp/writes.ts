@@ -14,6 +14,7 @@ import { randomUUID } from 'node:crypto'
 import { updateJsonListShared } from '../runner/state-io'
 import { maxAreaId } from '../runner/repo-state'
 import { ACTIVITY_FILE, CFG, HITL_FILE, type Args } from './env'
+import { readActivityPage } from '../shared/activity-log'
 import {
   mirrorHitlToSlack,
   pingTelegram,
@@ -449,43 +450,35 @@ export function getAgentStateTool(args: Args): Record<string, any> {
 
 // --- list_activity --------------------------------------------------------
 
+/** How far back a filtered list_activity will look before giving up. */
+const ACTIVITY_SCAN_LIMIT = 20_000
+
 export function listActivityTool(args: Args): Record<string, any>[] {
   const { kind, repo, sinceMs, limit = 50 } = args || {}
-  const file = ACTIVITY_FILE()
-  if (!existsSync(file)) return []
-  let raw = ''
-  try {
-    raw = readFileSync(file, 'utf8')
-  } catch {
-    return []
-  }
-  const events: Record<string, any>[] = []
-  for (const line of raw.split('\n')) {
-    if (!line.trim()) continue
-    try {
-      const ev = JSON.parse(line)
-      if (kind && ev.kind !== kind) continue
-      if (repo && !(ev.repo || '').toLowerCase().includes(repo.toLowerCase())) continue
-      if (sinceMs && ev.ts < sinceMs) continue
-      events.push(ev)
-    } catch {
-      /* a torn line is one event lost, not a failed listing */
-    }
-  }
-  return (
-    events
-      .slice(-limit)
-      .reverse()
-      // Drop internal fields (repoRoot, suppressTelegram); truncate detail.
-      .map((ev) => ({
-        id: ev.id,
-        ts: ev.ts,
-        kind: ev.kind,
-        title: ev.title,
-        detail: typeof ev.detail === 'string' ? ev.detail.slice(0, 200) : ev.detail,
-        repo: ev.repo,
-      }))
-  )
+  const wantRepo = repo ? String(repo).toLowerCase() : ''
+  // A tail read of the newest matches, not a full parse of the history — same
+  // shared reader the app and the CLI use, so it also spans rotated
+  // generations. The scan is bounded: a filter matching nothing looks at the
+  // newest ACTIVITY_SCAN_LIMIT events rather than every event ever emitted.
+  const { events } = readActivityPage(ACTIVITY_FILE(), {
+    limit,
+    maxScan: ACTIVITY_SCAN_LIMIT,
+    filter: (ev) => {
+      if (kind && ev.kind !== kind) return false
+      if (wantRepo && !(ev.repo || '').toLowerCase().includes(wantRepo)) return false
+      if (sinceMs && ev.ts < sinceMs) return false
+      return true
+    },
+  })
+  // Drop internal fields (repoRoot, suppressTelegram); truncate detail.
+  return events.map((ev) => ({
+    id: ev.id,
+    ts: ev.ts,
+    kind: ev.kind,
+    title: ev.title,
+    detail: typeof ev.detail === 'string' ? ev.detail.slice(0, 200) : ev.detail,
+    repo: ev.repo,
+  }))
 }
 
 // --- list_hitl ------------------------------------------------------------

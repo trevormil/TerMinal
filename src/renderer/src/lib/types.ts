@@ -234,6 +234,8 @@ export type MonitorSaveResult = {
 /** Which layer a failing probe failed at — re-exported from the shared flap logic. */
 import type { FailureCategory as MonitorFailureCategory } from '../../../shared/monitor-flap'
 export type { FailureCategory as MonitorFailureCategory } from '../../../shared/monitor-flap'
+import type { ActivityCursor, ActivityPage } from '../../../shared/activity-log'
+export type { ActivityCursor, ActivityPage } from '../../../shared/activity-log'
 /** Daemon verdict on whether THIS machine has connectivity. */
 export type MonitorConnectivity = { offline: boolean; since?: number }
 export type MonitorStatusState = {
@@ -674,7 +676,9 @@ export type GtApi = {
     setDisabled: (id: string, disabled: boolean, reason?: string) => Promise<DisabledEntry[]>
   }
   activity: {
-    list: () => Promise<ActivityEvent[]>
+    /** One page of the feed, newest first. Pass the previous page's `cursor` for
+     *  the next (older) page; a null cursor back means there is no more. */
+    page: (cursor: ActivityCursor | null, limit?: number) => Promise<ActivityPage>
     /** Count of events newer than `since` with kind in `kinds` — badge polling. */
     unseenCount: (since: number, kinds: string[]) => Promise<number>
     clear: () => Promise<void>
