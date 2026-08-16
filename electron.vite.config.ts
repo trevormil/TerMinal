@@ -116,6 +116,9 @@ export default defineConfig({
     // /facet instances, so the language never activates → no syntax highlighting.
     // Dedupe the whole core (versions are pinned to single copies in overrides).
     resolve: {
+      alias: {
+        '@': fileURLToPath(new URL('./src/renderer/src', import.meta.url)),
+      },
       dedupe: [
         '@codemirror/state',
         '@codemirror/view',

@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@import 'tw-animate-css';
 
 /* IBM Plex pairing: Sans for UI chrome, Mono for numerics/code/terminal.
    Registered as Tailwind theme tokens so `font-sans`/`font-mono` use them. */
@@ -38,6 +39,66 @@
   --gt-scrollbar-strong: #3a3a4d;
   /* signature gradient lifted from the logo (teal → violet) */
   --gt-grad: linear-gradient(135deg, #00e0c6 0%, #7c6ef6 100%);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   shadcn/ui semantic token layer.
+   These are the names shadcn components reference (`bg-primary`,
+   `text-foreground`, `border-input`, …). Each is an ALIAS of a `--gt-*`
+   brand token rather than a new value, so `themes.ts` keeps being the single
+   place that swaps the palette (dark/light, the three themes, accent swatches)
+   and `token-parity.test.ts` keeps its one source of truth. `@theme inline`
+   below exposes them as Tailwind utilities that resolve through the alias at
+   runtime — which is exactly why a theme/accent change re-renders without a
+   rebuild.
+   ───────────────────────────────────────────────────────────────────────── */
+:root {
+  --background: var(--gt-bg);
+  --foreground: var(--gt-text);
+  --card: var(--gt-panel);
+  --card-foreground: var(--gt-text);
+  --popover: var(--gt-panel);
+  --popover-foreground: var(--gt-text);
+  --primary: var(--gt-accent);
+  --primary-foreground: var(--gt-inverse);
+  --secondary: var(--gt-panel-2);
+  --secondary-foreground: var(--gt-text);
+  --muted: var(--gt-surface-hover);
+  --muted-foreground: var(--gt-text-muted);
+  --accent: var(--gt-accent-2);
+  --accent-foreground: var(--gt-text);
+  --destructive: var(--gt-red);
+  --destructive-foreground: var(--gt-inverse);
+  --border: var(--gt-border);
+  --input: var(--gt-border);
+  --ring: var(--gt-accent);
+  --radius: 0.5rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
 }
 
 :root[data-gt-mode='light'] {
