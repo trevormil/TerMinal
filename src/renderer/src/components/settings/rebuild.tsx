@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Loader2, PackageOpen, RotateCcw } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { Section, type SettingsSectionSpec } from './shared'
 
 // In-app rebuild panel. Kicks off bin/release as a detached daemon, tails the
@@ -48,21 +49,20 @@ function RebuildPanel() {
 
   return (
     <div className="space-y-2">
-      <button
+      <Button
+        type="button"
+        variant="default"
+        className="w-full justify-start"
         onClick={start}
         disabled={busy || running}
-        className="flex w-full items-center gap-2 rounded-lg border border-[var(--gt-accent)]/40 bg-[var(--gt-accent)]/10 px-3 py-2 text-left text-[12px] text-zinc-100 hover:bg-[var(--gt-accent)]/20 disabled:opacity-50"
+        aria-busy={busy || running || undefined}
       >
-        {busy || running ? (
-          <Loader2 size={14} className="animate-spin" />
-        ) : (
-          <RotateCcw size={14} strokeWidth={2} />
-        )}
+        {busy || running ? <Loader2 className="animate-spin" /> : <RotateCcw strokeWidth={2} />}
         {running
           ? 'Rebuilding… (app will quit + relaunch automatically)'
           : 'Rebuild + reinstall now'}
-        <span className="ml-auto text-[10.5px] text-zinc-600">bun run release</span>
-      </button>
+        <span className="ml-auto text-[10.5px] font-normal text-zinc-600">bun run release</span>
+      </Button>
       {error && <div className="text-[11px] text-amber-400">{error}</div>}
       {(running || log) && (
         <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md border border-[var(--gt-border)] bg-[var(--gt-code-bg)] p-2 font-mono text-[10.5px] leading-relaxed text-[var(--gt-text-soft)]">

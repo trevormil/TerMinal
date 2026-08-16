@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Bot, FileText, Play, Trash2, FolderOpen, Plus, ClipboardList } from 'lucide-react'
-import { Badge } from '../../components/ui'
+import { Badge } from '../../components/ui/badge'
 import { EnginePicker } from '../../components/EnginePicker'
 import { useResizableWidth, ResizeHandle } from '../../components/ResizeHandle'
 import { EngineLogo } from '../../components/EngineLogo'
@@ -483,7 +483,7 @@ export function PersistentAgentsPanel({
                             <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-zinc-100">
                               {artifact.title}
                             </span>
-                            <Badge tone="blue">{artifact.kind}</Badge>
+                            <Badge variant="info">{artifact.kind}</Badge>
                           </div>
                           {artifact.summary && (
                             <div className="mt-1 line-clamp-2 text-[10.5px] leading-snug text-zinc-500">

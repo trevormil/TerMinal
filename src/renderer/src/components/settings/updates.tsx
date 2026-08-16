@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ArrowUpCircle, CircleCheck, ClipboardCopy, Loader2, RotateCcw } from 'lucide-react'
 import type { RepoStateStatus, TmPluginStatus, UpdateCheckResult } from '../../lib/types'
+import { Button } from '@/components/ui/button'
 import { Section, type SettingsSectionSpec } from './shared'
 
 // Installed-build update status. Compares the baked build sha against
@@ -102,47 +103,48 @@ function UpdatesPanel() {
         )}
       </div>
       <div className="flex items-center gap-2">
-        <button
+        <Button
+          type="button"
+          variant="secondary"
           onClick={check}
           disabled={checking}
-          className="flex items-center gap-2 rounded-lg border border-[var(--gt-border)] bg-black/20 px-3 py-2 text-[12px] text-zinc-200 hover:border-[var(--gt-accent)]/40 disabled:opacity-50"
+          aria-busy={checking || undefined}
         >
-          {checking ? (
-            <Loader2 size={14} className="animate-spin" />
-          ) : (
-            <RotateCcw size={14} strokeWidth={2} />
-          )}
+          {checking ? <Loader2 className="animate-spin" /> : <RotateCcw strokeWidth={2} />}
           Check now
-        </button>
-        <button
+        </Button>
+        <Button
+          type="button"
+          variant="default"
+          className="flex-1 justify-start"
           onClick={startUpdate}
           disabled={updating || status !== 'behind'}
-          className="flex flex-1 items-center gap-2 rounded-lg border border-[var(--gt-accent)]/40 bg-[var(--gt-accent)]/10 px-3 py-2 text-left text-[12px] text-zinc-100 hover:bg-[var(--gt-accent)]/20 disabled:opacity-50"
+          aria-busy={updating || undefined}
         >
-          {updating ? (
-            <Loader2 size={14} className="animate-spin" />
-          ) : (
-            <ArrowUpCircle size={14} strokeWidth={2} />
-          )}
+          {updating ? <Loader2 className="animate-spin" /> : <ArrowUpCircle strokeWidth={2} />}
           {updating ? 'Updating… (app will quit + relaunch automatically)' : 'Update now'}
-          <span className="ml-auto text-[10.5px] text-zinc-600">pull main + bun run release</span>
-        </button>
+          <span className="ml-auto text-[10.5px] font-normal text-zinc-600">
+            pull main + bun run release
+          </span>
+        </Button>
       </div>
       {error && <div className="text-[11px] text-amber-400">{error}</div>}
-      <button
+      <Button
+        type="button"
+        variant="secondary"
+        className="w-full justify-start"
         onClick={copyCmd}
-        className="flex w-full items-center gap-2 rounded-lg border border-[var(--gt-border)] bg-black/20 px-3 py-2 text-left text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/40"
       >
         {copied ? (
-          <CircleCheck size={13} strokeWidth={2} className="shrink-0 text-[var(--gt-green)]" />
+          <CircleCheck strokeWidth={2} className="shrink-0 text-[var(--gt-green)]" />
         ) : (
-          <ClipboardCopy size={13} strokeWidth={2} className="shrink-0 text-zinc-600" />
+          <ClipboardCopy strokeWidth={2} className="shrink-0 text-zinc-600" />
         )}
-        <span className="truncate font-mono">{manualCmd}</span>
-        <span className="ml-auto shrink-0 text-[10px] text-zinc-600">
+        <span className="truncate font-mono font-normal">{manualCmd}</span>
+        <span className="ml-auto shrink-0 text-[10px] font-normal text-zinc-600">
           {copied ? 'Copied' : 'Copy manual update'}
         </span>
-      </button>
+      </Button>
     </div>
   )
 }
@@ -197,18 +199,17 @@ function TmPluginPanel() {
             {stateText}
           </div>
         </div>
-        <button
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
           onClick={sync}
           disabled={syncing}
-          className="flex items-center gap-1.5 rounded-lg border border-[var(--gt-border)] bg-black/20 px-2.5 py-1.5 text-[11px] text-zinc-200 hover:border-[var(--gt-accent)]/40 disabled:opacity-50"
+          aria-busy={syncing || undefined}
         >
-          {syncing ? (
-            <Loader2 size={12} className="animate-spin" />
-          ) : (
-            <RotateCcw size={12} strokeWidth={2} />
-          )}
+          {syncing ? <Loader2 className="animate-spin" /> : <RotateCcw strokeWidth={2} />}
           Sync
-        </button>
+        </Button>
       </div>
       {error && <div className="mt-1.5 text-[10.5px] text-amber-400">{error}</div>}
     </div>
@@ -287,18 +288,17 @@ function RepoStatePanel() {
                   : 'nothing in the repo to move'}
           </div>
         </div>
-        <button
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
           onClick={migrate}
           disabled={busy || !(status?.pending || status?.legacyCopies)}
-          className="flex items-center gap-1.5 rounded-lg border border-[var(--gt-border)] bg-black/20 px-2.5 py-1.5 text-[11px] text-zinc-200 hover:border-[var(--gt-accent)]/40 disabled:opacity-50"
+          aria-busy={busy || undefined}
         >
-          {busy ? (
-            <Loader2 size={12} className="animate-spin" />
-          ) : (
-            <RotateCcw size={12} strokeWidth={2} />
-          )}
+          {busy ? <Loader2 className="animate-spin" /> : <RotateCcw strokeWidth={2} />}
           Move out of repo
-        </button>
+        </Button>
       </div>
       {note && <div className="mt-1.5 text-[10.5px] text-zinc-400">{note}</div>}
     </div>

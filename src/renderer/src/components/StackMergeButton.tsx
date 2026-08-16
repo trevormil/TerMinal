@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Layers, Check, X, Loader2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import type { PrStack } from '../lib/types'
 
 /**
@@ -40,7 +41,7 @@ export function StackMergeButton({
 
   if (err)
     return (
-      <span className="inline-flex items-center gap-1 text-[11px] text-amber-400" title={err}>
+      <span className="inline-flex items-center gap-1 text-[11px] text-[var(--gt-yellow)]" title={err}>
         <X size={12} strokeWidth={2.5} />
         Stack merge failed
         <button onClick={() => setErr(null)} className="ml-1 underline hover:text-amber-300">
@@ -51,7 +52,7 @@ export function StackMergeButton({
 
   if (stage === 'merging')
     return (
-      <span className="inline-flex items-center gap-1 text-[11px] text-zinc-400">
+      <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
         <Loader2 size={12} strokeWidth={2.5} className="animate-spin" />
         merging stack…
       </span>
@@ -60,11 +61,14 @@ export function StackMergeButton({
   if (stage === 'confirm')
     return (
       <span className="inline-flex items-center gap-1.5">
-        <span className="text-[11px] text-zinc-400">
+        <span className="text-[11px] text-muted-foreground">
           merge {cascading.length} layers ({cascading.map((l) => `${sym}${l.iid}`).join(' → ')})
           into {stack.baseRef}?
         </span>
-        <button
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
           onClick={async () => {
             setStage('merging')
             setErr(null)
@@ -82,29 +86,36 @@ export function StackMergeButton({
             }
           }}
           title="Confirm stack merge"
-          className="inline-flex items-center rounded-md border border-[var(--gt-green)]/40 bg-[var(--gt-green)]/10 p-1 text-[var(--gt-green)] hover:bg-[var(--gt-green)]/20"
+          aria-label="Confirm stack merge"
+          className="size-6 border border-[var(--gt-green)]/40 bg-[var(--gt-green)]/10 text-[var(--gt-green)] hover:bg-[var(--gt-green)]/20 hover:text-[var(--gt-green)]"
         >
           <Check size={12} strokeWidth={2.5} />
-        </button>
-        <button
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
           onClick={() => setStage('idle')}
           title="Cancel"
-          className="inline-flex items-center rounded-md border border-[var(--gt-border)] p-1 text-zinc-400 hover:text-zinc-200"
+          aria-label="Cancel"
+          className="size-6 border border-border text-muted-foreground hover:text-foreground"
         >
           <X size={12} strokeWidth={2.5} />
-        </button>
+        </Button>
       </span>
     )
 
   return (
-    <button
+    <Button
+      type="button"
+      variant="default"
+      size="sm"
       onClick={() => setStage('confirm')}
       title={`Merge layers 1–${position} of this stack into ${stack.baseRef} in one cascading operation`}
-      className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/10 px-2 py-1 text-[11px] text-[var(--gt-accent-light)] hover:bg-[var(--gt-accent)]/20"
     >
       <Layers size={12} strokeWidth={2} />
       Merge stack
       <span className="text-zinc-500">· {cascading.length}</span>
-    </button>
+    </Button>
   )
 }

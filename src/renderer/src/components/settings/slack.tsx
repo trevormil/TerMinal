@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { Hash, Loader2, Send } from 'lucide-react'
 import { slackChannelName } from '../../../../shared/slack'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import {
   SecretInput,
   Section,
   Toggle,
-  actionButton,
-  inp,
   type SettingsCtx,
   type SettingsSectionSpec,
 } from './shared'
@@ -76,7 +76,7 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
             <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
               Default channel
             </span>
-            <input
+            <Input
               defaultValue={s.slack.defaultChannel}
               onBlur={(e) => {
                 const v = e.target.value.trim()
@@ -84,14 +84,14 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
               }}
               placeholder="#terminal-inbox"
               spellCheck={false}
-              className={`${inp} font-mono`}
+              className="font-mono"
             />
           </label>
           <label className="block min-w-0 space-y-1">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
               Channel prefix
             </span>
-            <input
+            <Input
               defaultValue={s.slack.channelPrefix}
               onBlur={(e) => {
                 const v = e.target.value.trim()
@@ -99,7 +99,7 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
               }}
               placeholder="inbox"
               spellCheck={false}
-              className={`${inp} font-mono`}
+              className="font-mono"
             />
           </label>
         </div>
@@ -107,7 +107,7 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
           <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
             Auto-invite member ID
           </span>
-          <input
+          <Input
             defaultValue={s.slack.inviteUserId}
             onBlur={(e) => {
               const v = e.target.value.trim()
@@ -115,7 +115,7 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
             }}
             placeholder="U0ABC123DEF"
             spellCheck={false}
-            className={`${inp} font-mono`}
+            className="font-mono"
           />
           <span className="block text-[10.5px] text-zinc-600">
             Your Slack member ID (Profile → three-dot menu → Copy member ID). Invited to every
@@ -130,14 +130,17 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
           hint="Create + join a missing public channel on first post; off, unroutable posts fall back to the default channel."
         />
         <div className="flex items-center gap-2">
-          <button onClick={testSlack} disabled={sl?.busy} className={actionButton}>
-            {sl?.busy ? (
-              <Loader2 size={13} className="animate-spin" />
-            ) : (
-              <Send size={13} strokeWidth={2} />
-            )}
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={testSlack}
+            disabled={sl?.busy}
+            aria-busy={sl?.busy || undefined}
+          >
+            {sl?.busy ? <Loader2 className="animate-spin" /> : <Send strokeWidth={2} />}
             Test
-          </button>
+          </Button>
           {sl && !sl.busy && (
             <span className={`text-[11px] ${sl.ok ? 'text-[var(--gt-green)]' : 'text-amber-400'}`}>
               {sl.ok ? '✓ Posted — check the default channel.' : sl.error}

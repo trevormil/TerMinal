@@ -1,7 +1,21 @@
-import { Badge } from './ui'
+import { Badge } from './ui/badge'
 import { statusTone } from '../lib/badges'
 import type { AgentRunEvaluation } from '../lib/types'
 import { relativeTime } from '../lib/time'
+
+// Map a legacy badge tone (from lib/badges.ts) to the shadcn badge variant.
+const badgeVariantFor = (tone: string) =>
+  tone === 'green' || tone === 'ok'
+    ? ('success' as const)
+    : tone === 'red' || tone === 'bad'
+      ? ('destructive' as const)
+      : tone === 'yellow' || tone === 'warn'
+        ? ('warning' as const)
+        : tone === 'blue'
+          ? ('info' as const)
+          : tone === 'accent'
+            ? ('default' as const)
+            : ('secondary' as const)
 
 function fmtWhen(ts: number): string {
   return ts ? relativeTime(ts) : 'unknown'
@@ -21,7 +35,9 @@ export function RunEvaluationPanel({
           <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
             Evaluation
           </span>
-          <Badge tone={statusTone(evaluation.status)}>{evaluation.status}</Badge>
+          <Badge variant={badgeVariantFor(statusTone(evaluation.status))}>
+            {evaluation.status}
+          </Badge>
           <span className="min-w-0 truncate text-[11px] text-zinc-400">{evaluation.summary}</span>
         </div>
         {evaluation.checks.length > 0 && (
@@ -31,7 +47,7 @@ export function RunEvaluationPanel({
                 key={check.id}
                 className="inline-flex max-w-full items-center gap-1 rounded-md border border-[var(--gt-border)]/70 px-1.5 py-0.5 text-[10px] text-zinc-500"
               >
-                <Badge tone={statusTone(check.status)}>{check.status}</Badge>
+                <Badge variant={badgeVariantFor(statusTone(check.status))}>{check.status}</Badge>
                 <span className="truncate">{check.title}</span>
               </span>
             ))}
@@ -44,7 +60,9 @@ export function RunEvaluationPanel({
   return (
     <div className="rounded-lg border border-[var(--gt-border)] bg-black/20 p-3">
       <div className="mb-2 flex items-center gap-2">
-        <Badge tone={statusTone(evaluation.status)}>{evaluation.status}</Badge>
+        <Badge variant={badgeVariantFor(statusTone(evaluation.status))}>
+          {evaluation.status}
+        </Badge>
         <span className="text-[11.5px] text-zinc-300">{evaluation.summary}</span>
         <span className="ml-auto text-[10.5px] text-zinc-600">
           evaluated {fmtWhen(evaluation.evaluatedAt)}
@@ -54,7 +72,7 @@ export function RunEvaluationPanel({
         <div className="space-y-1">
           {evaluation.checks.map((check) => (
             <div key={check.id} className="flex min-w-0 items-start gap-2 text-[11px]">
-              <Badge tone={statusTone(check.status)}>{check.status}</Badge>
+              <Badge variant={badgeVariantFor(statusTone(check.status))}>{check.status}</Badge>
               <span className="min-w-0 flex-1">
                 <span className="font-semibold text-zinc-300">{check.title}</span>
                 {check.required && <span className="ml-1 text-zinc-600">Required</span>}

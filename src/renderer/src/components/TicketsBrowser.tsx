@@ -12,7 +12,15 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
 } from 'lucide-react'
-import { Badge } from './ui'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { EnginePicker } from './EnginePicker'
 import { EngineLogo } from './EngineLogo'
 import { EngineModelPicker } from './EngineModelPicker'
@@ -70,6 +78,23 @@ const TONE_TEXT: Record<BadgeTone, string> = {
   accent: 'text-[var(--gt-accent-light)]',
   mute: 'text-zinc-500',
 }
+
+// Legacy BadgeTone → shadcn Badge variant. The shadcn badge speaks in
+// variants, not tones; this is the one map so chips keep their meaning.
+const toneVariant = (tone: BadgeTone) =>
+  (
+    {
+      ok: 'success',
+      green: 'success',
+      warn: 'warning',
+      yellow: 'warning',
+      bad: 'destructive',
+      red: 'destructive',
+      blue: 'info',
+      accent: 'default',
+      mute: 'secondary',
+    } as const
+  )[tone]
 
 const runSourceTone = (source: TicketRunLink['source']): BadgeTone =>
   source === 'cron'
@@ -697,7 +722,7 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                     ) : (
                       <ChevronRight size={12} strokeWidth={2} className="text-zinc-500" />
                     )}
-                    <Badge tone={statusTone(status)}>
+                    <Badge variant={toneVariant(statusTone(status))}>
                       {ticketGroupLabel(effectiveView.groupBy, status)}
                     </Badge>
                     <span className="text-[11px] tabular-nums text-zinc-600">{items.length}</span>
@@ -722,7 +747,7 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                             {t.title}
                           </span>
                           {t.hitl && !hitlOnly && (
-                            <Badge tone="red">
+                            <Badge variant="destructive">
                               <Hand size={10} strokeWidth={2.25} />
                             </Badge>
                           )}
@@ -739,14 +764,14 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                           ) : (
                             <>
                               {t.horizon !== 'now' && (
-                                <Badge tone={horizonTone(t.horizon)}>
+                                <Badge variant={toneVariant(horizonTone(t.horizon))}>
                                   {labelFrom(HORIZON_LABELS, t.horizon)}
                                 </Badge>
                               )}
                               {t.modelTier !== 'auto' && (
-                                <Badge tone={modelTierTone(t.modelTier)}>{t.modelTier}</Badge>
+                                <Badge variant={toneVariant(modelTierTone(t.modelTier))}>{t.modelTier}</Badge>
                               )}
-                              <Badge tone={priorityTone(t.priority)}>
+                              <Badge variant={toneVariant(priorityTone(t.priority))}>
                                 {labelFrom(PRIORITY_LABELS, t.priority)}
                               </Badge>
                             </>
@@ -755,7 +780,7 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                             t.depends_on.some((id) => {
                               const dep = tickets?.find((x) => x.id === id)
                               return !dep || dep.status !== 'closed'
-                            }) && <Badge tone="red">Blocked</Badge>}
+                            }) && <Badge variant="destructive">Blocked</Badge>}
                         </div>
                         {t.prs.length > 0 && (
                           <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 font-mono text-[10px] text-zinc-600">
@@ -841,7 +866,7 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                         : 'Last recorded ticket implementation run'
                     }
                   >
-                    <Badge tone={runSourceTone(selected.run.source)}>{selected.run.source}</Badge>
+                    <Badge variant={toneVariant(runSourceTone(selected.run.source))}>{selected.run.source}</Badge>
                     <span className="font-mono text-zinc-500">{selected.run.id.slice(0, 8)}</span>
                     {selected.run.status && (
                       <span className="uppercase">{selected.run.status}</span>

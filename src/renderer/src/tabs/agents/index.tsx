@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Bot } from 'lucide-react'
-import { Badge } from '../../components/ui'
+import { Badge } from '../../components/ui/badge'
 import { EnginePicker } from '../../components/EnginePicker'
 import { useResizableWidth, ResizeHandle } from '../../components/ResizeHandle'
 import { onNavigate } from '../../lib/nav'
@@ -320,7 +320,7 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
           </button>
         ))}
       </div>
-      {activeRunCount > 0 && <Badge tone="green">{activeRunCount}</Badge>}
+      {activeRunCount > 0 && <Badge variant="success">{activeRunCount}</Badge>}
     </div>
   )
 

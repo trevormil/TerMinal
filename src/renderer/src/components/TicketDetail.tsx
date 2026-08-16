@@ -1,6 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Plus, Hand, ArrowUpRight, CircleDot, ListChecks, Check, X, Bot } from 'lucide-react'
-import { Badge, badgeClasses } from './ui'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
 import { Markdown } from './Markdown'
 import { DetailTabs } from './DetailTabs'
 import { TicketLineagePanel, useTicketLineage, lineageTabCount } from './TicketLineagePanel'
@@ -26,6 +28,42 @@ import type { Ticket, TicketAgentRecommendation, TicketComment, Mr, Persona } fr
 const STATUSES = ['open', 'in-progress', 'closed', 'stuck', 'icebox']
 const PRIORITIES = ['critical', 'high', 'medium', 'low']
 
+const toneVariant = (
+  tone: BadgeTone,
+): 'default' | 'secondary' | 'destructive' | 'success' | 'warning' | 'info' =>
+  tone === 'ok' || tone === 'green'
+    ? 'success'
+    : tone === 'warn' || tone === 'yellow'
+      ? 'warning'
+      : tone === 'bad' || tone === 'red'
+        ? 'destructive'
+        : tone === 'blue'
+          ? 'info'
+          : tone === 'accent'
+            ? 'default'
+            : 'secondary'
+
+/** Badge colour classes for the native field `<select>` (no badge chrome, just the tone). */
+const toneClass = (tone: BadgeTone): string => {
+  switch (tone) {
+    case 'ok':
+    case 'green':
+      return 'border-[var(--gt-green)]/25 bg-[var(--gt-green)]/10 text-[var(--gt-green)]'
+    case 'warn':
+    case 'yellow':
+      return 'border-[var(--gt-yellow)]/25 bg-[var(--gt-yellow)]/10 text-[var(--gt-yellow)]'
+    case 'bad':
+    case 'red':
+      return 'border-destructive/25 bg-destructive/10 text-destructive'
+    case 'blue':
+      return 'border-[var(--gt-blue)]/25 bg-[var(--gt-blue)]/10 text-[var(--gt-blue)]'
+    case 'accent':
+      return 'border-primary/30 bg-primary/10 text-[var(--gt-accent-light)]'
+    default:
+      return 'border-border bg-muted text-muted-foreground'
+  }
+}
+
 function FieldSelect({
   value,
   options,
@@ -44,7 +82,7 @@ function FieldSelect({
       // field-sizing:content makes the <select> hug the selected value instead of
       // sizing to its widest option ("in-progress"/"critical") — kills the
       // trailing min-width padding on short values like "open".
-      className={`cursor-pointer appearance-none rounded-md border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide outline-none [field-sizing:content] ${badgeClasses(tone)}`}
+      className={`cursor-pointer appearance-none rounded-md border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide outline-none [field-sizing:content] ${toneClass(tone)}`}
     >
       {options.map((o) => (
         <option key={o} value={o} className="bg-[var(--gt-panel)] normal-case text-zinc-200">
@@ -94,7 +132,7 @@ function AcceptanceSection({
         <div className="mb-1.5 flex items-center gap-1.5 text-[10.5px] uppercase tracking-wider text-zinc-500">
           <ListChecks size={12} strokeWidth={2} /> Acceptance criteria — one per line
         </div>
-        <textarea
+        <Textarea
           autoFocus
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
@@ -102,22 +140,27 @@ function AcceptanceSection({
           placeholder={
             'join endpoint returns 429 over the rate limit\nlimit configurable via env, default 60/min\nexisting auth tests still pass'
           }
-          className="w-full resize-y rounded-md border border-[var(--gt-border)] bg-[var(--gt-bg)] p-2 font-mono text-[12px] text-zinc-100 outline-none focus:border-[var(--gt-accent)]/60"
+          className="min-h-0 resize-y bg-[var(--gt-bg)] font-mono"
         />
         <div className="mt-2 flex items-center gap-2">
-          <button
+          <Button
+            type="button"
+            variant="default"
+            size="sm"
             onClick={save}
             disabled={saving}
-            className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/10 px-2 py-1 text-[11px] text-[var(--gt-accent)] hover:bg-[var(--gt-accent)]/20 disabled:opacity-50"
+            aria-busy={saving || undefined}
           >
             <Check size={12} strokeWidth={2.5} /> Save
-          </button>
-          <button
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
             onClick={() => setEditing(false)}
-            className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:text-zinc-200"
           >
             <X size={12} strokeWidth={2.5} /> Cancel
-          </button>
+          </Button>
         </div>
       </div>
     )
@@ -127,9 +170,12 @@ function AcceptanceSection({
     <div className="mb-3">
       <div className="mb-1.5 flex items-center gap-1.5 text-[10.5px] uppercase tracking-wider text-zinc-500">
         <ListChecks size={12} strokeWidth={2} /> Acceptance criteria
-        <button
+        <Button
+          type="button"
+          variant="ghost"
+          size="xs"
           onClick={open}
-          className="ml-1 inline-flex items-center gap-0.5 rounded border border-[var(--gt-border)] px-1 py-0.5 text-[10px] normal-case text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200"
+          className="ml-1 normal-case text-muted-foreground hover:border-primary/50 hover:text-foreground"
         >
           {criteria.length ? (
             'Edit'
@@ -138,7 +184,7 @@ function AcceptanceSection({
               <Plus size={10} strokeWidth={2.5} /> Add
             </>
           )}
-        </button>
+        </Button>
       </div>
       {criteria.length ? (
         <ul className="space-y-1">
@@ -308,7 +354,7 @@ function LogSection({
       <div className="flex gap-2.5">
         <div className="w-6 shrink-0" />
         <div className="min-w-0 flex-1">
-          <textarea
+          <Textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
@@ -316,16 +362,19 @@ function LogSection({
             }}
             rows={2}
             placeholder="Leave a note — agents working this ticket read it. ⌘↵ to post."
-            className="w-full resize-y rounded-lg border border-[var(--gt-border)] bg-black/30 px-2.5 py-2 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
+            className="min-h-0 resize-y"
           />
           <div className="mt-1.5 flex justify-end">
-            <button
+            <Button
+              type="button"
+              variant="default"
+              size="sm"
               onClick={post}
               disabled={!draft.trim() || saving}
-              className="rounded-md border border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/10 px-2.5 py-1 text-[11px] font-semibold text-[var(--gt-accent-light)] hover:bg-[var(--gt-accent)]/20 disabled:opacity-40"
+              aria-busy={saving || undefined}
             >
               {saving ? 'Posting…' : 'Comment'}
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -444,7 +493,7 @@ export function TicketDetail({
                   onChanged()
                 }}
               />
-              <Badge tone={typeTone(selected.type)}>{selected.type}</Badge>
+              <Badge variant={toneVariant(typeTone(selected.type))}>{selected.type}</Badge>
               <FieldSelect
                 value={selected.priority}
                 options={PRIORITIES}
@@ -455,22 +504,24 @@ export function TicketDetail({
                 }}
               />
               {selected.horizon !== 'now' && (
-                <Badge tone={horizonTone(selected.horizon)}>{selected.horizon}</Badge>
+                <Badge variant={toneVariant(horizonTone(selected.horizon))}>{selected.horizon}</Badge>
               )}
             </>
           )}
           {selected.provider === 'linear' && selected.url && (
-            <button
+            <Button
+              type="button"
+              variant="secondary"
+              size="xs"
               onClick={() => navigateTo('tickets', { viewUrl: selected.url })}
               title="Open this issue in the embedded Linear view"
-              className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-1.5 py-0.5 text-[10.5px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-200"
             >
               <ArrowUpRight size={11} strokeWidth={2} />
               Linear
-            </button>
+            </Button>
           )}
           {selected.hitl && (
-            <Badge tone="red">
+            <Badge variant="destructive">
               <Hand size={10} strokeWidth={2.25} />
               Needs human
             </Badge>
@@ -485,17 +536,20 @@ export function TicketDetail({
             </button>
           )}
           {selected.status === 'stuck' && (
-            <button
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
               onClick={async () => {
                 await window.gt.tickets.update(selected.slug, { status: 'open' })
                 onChanged()
               }}
-              className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-green)]/35 bg-[var(--gt-green)]/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--gt-green)] hover:bg-[var(--gt-green)]/20"
+              className="border border-[var(--gt-green)]/35 bg-[var(--gt-green)]/10 text-[var(--gt-green)] hover:bg-[var(--gt-green)]/20 hover:text-[var(--gt-green)]"
               title="Move this ticket back to open once the blocker is cleared."
             >
               <CircleDot size={10} strokeWidth={2.25} />
               Unblock
-            </button>
+            </Button>
           )}
         </div>
         <h1 className="mb-2 text-lg font-bold text-zinc-100">{selected.title}</h1>

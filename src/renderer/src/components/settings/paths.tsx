@@ -1,13 +1,13 @@
 import { useContext, useEffect, useState, type ReactNode } from 'react'
 import { FolderOpen, FolderTree, Loader2, RefreshCw, Trash2 } from 'lucide-react'
 import type { ProjectsDirValidation } from '../../lib/types'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import {
   ActiveSectionContext,
   EditDetails,
   Section,
-  buttonSoft,
   formatBytes,
-  inp,
   tilde,
   type SettingsCtx,
   type SettingsSectionSpec,
@@ -59,18 +59,21 @@ function PathSetting({
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {onBrowse && (
-            <button onClick={onBrowse} className={buttonSoft}>
-              <FolderOpen size={12} strokeWidth={2} />
+            <Button type="button" variant="secondary" size="sm" onClick={onBrowse}>
+              <FolderOpen strokeWidth={2} />
               Browse
-            </button>
+            </Button>
           )}
           {value && onClear && (
-            <button
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
               onClick={onClear}
-              className="rounded-md px-2 py-1 text-[11px] text-zinc-500 hover:bg-white/5 hover:text-zinc-300"
+              className="text-zinc-500 hover:text-zinc-300"
             >
               Use default
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -180,16 +183,19 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
               <div className="mb-2 flex flex-wrap items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[10.5px] text-amber-200">
                 <span className="min-w-0 flex-1">{projectsDirValidation.message}</span>
                 {projectsDirValidation.suggestedParent && (
-                  <button
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="xs"
                     onClick={() =>
                       saveDaemon({
                         projectsDir: projectsDirValidation.suggestedParent || '',
                       })
                     }
-                    className="rounded border border-amber-400/40 bg-black/20 px-2 py-0.5 text-[10.5px] font-semibold text-amber-100 hover:bg-amber-400/10"
+                    className="border-amber-400/40 bg-black/20 font-semibold text-amber-100 hover:bg-amber-400/10"
                   >
                     Use parent
-                  </button>
+                  </Button>
                 )}
               </div>
             )}
@@ -202,23 +208,26 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
                   0 repos found here — they may be nested one level deeper.
                 </span>
                 {projectsDirValidation.suggestedChild && (
-                  <button
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="xs"
                     onClick={() =>
                       saveDaemon({
                         projectsDir: projectsDirValidation.suggestedChild || '',
                       })
                     }
-                    className="rounded border border-amber-400/40 bg-black/20 px-2 py-0.5 text-[10.5px] font-semibold text-amber-100 hover:bg-amber-400/10"
+                    className="border-amber-400/40 bg-black/20 font-semibold text-amber-100 hover:bg-amber-400/10"
                   >
                     Use {projectsDirValidation.suggestedChild} (
                     {projectsDirValidation.suggestedCount}{' '}
                     {projectsDirValidation.suggestedCount === 1 ? 'repo' : 'repos'})
-                  </button>
+                  </Button>
                 )}
               </div>
             )}
           <EditDetails>
-            <input
+            <Input
               key={`${profile}-projectsDir-${selectedDaemon.projectsDir}`}
               defaultValue={selectedDaemon.projectsDir}
               onBlur={(e) =>
@@ -227,7 +236,7 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
               }
               placeholder={selectedIsRemote ? '~/projects' : '/path/to/projects'}
               spellCheck={false}
-              className={`${inp} font-mono`}
+              className="font-mono"
             />
           </EditDetails>
         </PathSetting>
@@ -240,7 +249,7 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
           onClear={() => saveDaemon({ worktreesDir: '' })}
         >
           <EditDetails>
-            <input
+            <Input
               key={`${profile}-worktreesDir-${selectedDaemon.worktreesDir}`}
               defaultValue={selectedDaemon.worktreesDir}
               onBlur={(e) =>
@@ -249,7 +258,7 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
               }
               placeholder={selectedIsRemote ? '~/.worktrees' : '/path/to/worktrees'}
               spellCheck={false}
-              className={`${inp} font-mono`}
+              className="font-mono"
             />
           </EditDetails>
         </PathSetting>
@@ -261,7 +270,7 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
           onClear={() => saveDaemon({ templateRepo: '' })}
         >
           <EditDetails>
-            <input
+            <Input
               key={`${profile}-templateRepo-${selectedDaemon.templateRepo}`}
               defaultValue={selectedDaemon.templateRepo}
               onBlur={(e) =>
@@ -270,7 +279,7 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
               }
               placeholder="owner/repo or https://github.com/owner/repo"
               spellCheck={false}
-              className={`${inp} font-mono`}
+              className="font-mono"
             />
           </EditDetails>
         </PathSetting>
@@ -283,7 +292,7 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
           onClear={() => saveDaemon({ harnessDir: '' })}
         >
           <EditDetails>
-            <input
+            <Input
               key={`${profile}-harnessDir-${selectedDaemon.harnessDir}`}
               defaultValue={selectedDaemon.harnessDir}
               onBlur={(e) =>
@@ -292,18 +301,20 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
               }
               placeholder={selectedIsRemote ? '~/autopilot-harness' : '/path/to/autopilot-harness'}
               spellCheck={false}
-              className={`${inp} font-mono`}
+              className="font-mono"
             />
           </EditDetails>
         </PathSetting>
         <div className="mt-2 flex items-center gap-2">
-          <button
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
             onClick={() => window.gt.openConfigDir()}
             title="Reveal ~/.config/TerMinal/ in Finder — edit schedules.json, settings.json, or agent-state/ sidecars by hand"
-            className={buttonSoft}
           >
             Open TerMinal config dir
-          </button>
+          </Button>
           <span className="text-[10.5px] text-zinc-600">
             schedules · settings · cron logs · agent state
           </span>
@@ -336,44 +347,53 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
                 </div>
               )}
             </div>
-            <button
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
               onClick={() => void refreshStorage()}
               disabled={storageBusy !== null}
-              className={buttonSoft}
+              aria-busy={storageBusy === 'scan' || undefined}
             >
               {storageBusy === 'scan' ? (
-                <Loader2 size={12} className="animate-spin" />
+                <Loader2 className="animate-spin" />
               ) : (
-                <RefreshCw size={12} strokeWidth={2} />
+                <RefreshCw strokeWidth={2} />
               )}
               Dry-run estimate
-            </button>
-            <button
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
               onClick={() => void reclaimStorage()}
               disabled={storageBusy !== null || !storage || storage.reclaimableBytes === 0}
-              className={buttonSoft}
+              aria-busy={storageBusy === 'reclaim' || undefined}
               title="Deletes worktrees past the size or 30-day age budget, checkpoint stores untouched for 90 days, stale temp/lock/quarantine files; rotates oversized logs; then runs git gc on large checkpoint stores. Running worktrees and worktrees with uncommitted changes are never touched."
             >
               {storageBusy === 'reclaim' ? (
-                <Loader2 size={12} className="animate-spin" />
+                <Loader2 className="animate-spin" />
               ) : (
-                <Trash2 size={12} strokeWidth={2} />
+                <Trash2 strokeWidth={2} />
               )}
               Reclaim leaked state
-            </button>
-            <button
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
               onClick={() => void clearScratch()}
               disabled={storageBusy !== null || !storage?.scratch.clearable}
-              className={buttonSoft}
+              aria-busy={storageBusy === 'scratch' || undefined}
               title="Explicitly deletes ~/.config/TerMinal/scratch. This is separate from leaked-state reclaim."
             >
               {storageBusy === 'scratch' ? (
-                <Loader2 size={12} className="animate-spin" />
+                <Loader2 className="animate-spin" />
               ) : (
-                <Trash2 size={12} strokeWidth={2} />
+                <Trash2 strokeWidth={2} />
               )}
               Clear scratch
-            </button>
+            </Button>
           </div>
         </div>
       </div>

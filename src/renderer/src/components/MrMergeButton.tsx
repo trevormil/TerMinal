@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { GitMerge, Check, X, Loader2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 
 // Human-initiated MR/PR merge (the user clicks; the app shells out to gh/glab).
 // A confirm step gates the irreversible-ish action; errors from the forge CLI
@@ -35,7 +36,7 @@ export function MrMergeButton({
 
   if (err)
     return (
-      <span className="inline-flex items-center gap-1 text-[11px] text-amber-400" title={err}>
+      <span className="inline-flex items-center gap-1 text-[11px] text-[var(--gt-yellow)]" title={err}>
         <X size={12} strokeWidth={2.5} />
         Merge failed
         <button
@@ -52,7 +53,7 @@ export function MrMergeButton({
 
   if (stage === 'merging')
     return (
-      <span className="inline-flex items-center gap-1 text-[11px] text-zinc-400">
+      <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
         <Loader2 size={12} strokeWidth={2.5} className="animate-spin" />
         merging…
       </span>
@@ -61,41 +62,52 @@ export function MrMergeButton({
   if (stage === 'confirm')
     return (
       <span className="inline-flex items-center gap-1">
-        <span className="text-[11px] text-zinc-400">
+        <span className="text-[11px] text-muted-foreground">
           merge {sym}
           {iid}?
         </span>
-        <button
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
           onClick={doMerge}
           title="Confirm merge"
-          className="inline-flex items-center rounded-md border border-[var(--gt-green)]/40 bg-[var(--gt-green)]/10 p-1 text-[var(--gt-green)] hover:bg-[var(--gt-green)]/20"
+          aria-label="Confirm merge"
+          className="size-6 border border-[var(--gt-green)]/40 bg-[var(--gt-green)]/10 text-[var(--gt-green)] hover:bg-[var(--gt-green)]/20 hover:text-[var(--gt-green)]"
         >
           <Check size={12} strokeWidth={2.5} />
-        </button>
-        <button
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
           onClick={(e) => {
             stop(e)
             setStage('idle')
           }}
           title="Cancel"
-          className="inline-flex items-center rounded-md border border-[var(--gt-border)] p-1 text-zinc-400 hover:text-zinc-200"
+          aria-label="Cancel"
+          className="size-6 border border-border text-muted-foreground hover:text-foreground"
         >
           <X size={12} strokeWidth={2.5} />
-        </button>
+        </Button>
       </span>
     )
 
   return (
-    <button
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
       onClick={(e) => {
         stop(e)
         setStage('confirm')
       }}
       title={`Merge ${sym}${iid}`}
-      className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-green)]/40 bg-[var(--gt-green)]/10 px-2 py-1 text-[11px] text-[var(--gt-green)] hover:bg-[var(--gt-green)]/20"
+      className="border border-[var(--gt-green)]/40 bg-[var(--gt-green)]/10 text-[var(--gt-green)] hover:bg-[var(--gt-green)]/20 hover:text-[var(--gt-green)]"
     >
       <GitMerge size={12} strokeWidth={2} />
       Merge
-    </button>
+    </Button>
   )
 }

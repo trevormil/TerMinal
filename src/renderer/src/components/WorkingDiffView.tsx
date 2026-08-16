@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { GitCompare, RefreshCw, ChevronLeft } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { DiffView } from './MrDetail'
 import type { WorkingDiff } from '../lib/types'
 
@@ -32,29 +33,37 @@ export function WorkingDiffView({ onBack }: { onBack?: () => void }) {
     <div className="flex h-full min-h-0 flex-col bg-[var(--gt-bg)]">
       <div className="flex shrink-0 items-center gap-2 border-b border-[var(--gt-border)] px-3 py-2">
         {onBack && (
-          <button
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
             onClick={onBack}
-            className="flex items-center text-zinc-500 hover:text-zinc-200"
+            className="text-muted-foreground hover:text-foreground"
             title="Back"
+            aria-label="Back"
           >
             <ChevronLeft size={16} strokeWidth={2} />
-          </button>
+          </Button>
         )}
-        <GitCompare size={14} strokeWidth={2} className="text-zinc-400" />
-        <span className="text-[12px] font-semibold text-zinc-200">Working changes</span>
+        <GitCompare size={14} strokeWidth={2} className="text-muted-foreground" />
+        <span className="text-[12px] font-semibold text-foreground">Working changes</span>
         {res?.ok && (
-          <span className="text-[11px] text-zinc-600">
+          <span className="text-[11px] text-muted-foreground">
             {res.branch || 'HEAD'}
             {res.base && res.base !== res.branch ? ` vs ${res.base}` : ' · uncommitted'}
           </span>
         )}
-        <button
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
           onClick={load}
-          className="ml-auto flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-zinc-500 hover:bg-white/10 hover:text-zinc-200"
+          className="ml-auto text-muted-foreground hover:text-foreground"
           title="Refresh"
+          aria-label="Refresh"
         >
           <RefreshCw size={12} strokeWidth={2} className={loading ? 'animate-spin' : ''} />
-        </button>
+        </Button>
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">
         {res === null ? (

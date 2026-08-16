@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Check, MessageSquarePlus, Undo2, X } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { EditorView } from '@codemirror/view'
 import { Compartment, EditorState, Prec, type Extension } from '@codemirror/state'
 import { oneDark } from '@codemirror/theme-one-dark'
@@ -126,45 +128,53 @@ export function ReviewEditsView({
         <span className="font-medium text-zinc-200">Reviewing edits</span>
         <span className="text-zinc-600">vs {baseLabel}</span>
         <div className="flex-1" />
-        <button
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
           onClick={() => setNoteOpen((o) => !o)}
           title="Comment on the cursor's line"
-          className={`inline-flex items-center gap-1 rounded-md px-2 py-1 ${
-            noteOpen
-              ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
-              : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-200'
-          }`}
+          className={noteOpen ? 'bg-primary/20 text-foreground' : 'text-muted-foreground'}
         >
           <MessageSquarePlus size={12} strokeWidth={2} />
           Comment
-        </button>
-        <button
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
           onClick={rejectAll}
           title="Revert every edit to the base version"
-          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-zinc-500 hover:bg-white/5 hover:text-[var(--gt-red)]"
+          className="text-muted-foreground hover:text-destructive"
         >
           <Undo2 size={12} strokeWidth={2} />
           Reject all
-        </button>
-        <button
+        </Button>
+        <Button
+          type="button"
+          variant="default"
+          size="sm"
           onClick={onClose}
           title="Keep the buffer as-is"
-          className="inline-flex items-center gap-1 rounded-md bg-[var(--gt-accent)]/20 px-2 py-1 text-zinc-100"
         >
           <Check size={12} strokeWidth={2} />
           Accept all
-        </button>
-        <button
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
           onClick={onClose}
-          className="flex items-center rounded p-1 text-zinc-500 hover:bg-white/10 hover:text-zinc-200"
+          className="text-muted-foreground hover:text-foreground"
           title="Close review"
+          aria-label="Close review"
         >
           <X size={12} strokeWidth={2} />
-        </button>
+        </Button>
       </div>
       {noteOpen && (
         <div className="flex shrink-0 items-center gap-1.5 border-b border-[var(--gt-border)] bg-black/30 px-3 py-1.5">
-          <input
+          <Input
             autoFocus
             value={note}
             onChange={(e) => setNote(e.target.value)}
@@ -173,7 +183,7 @@ export function ReviewEditsView({
               if (e.key === 'Escape') setNoteOpen(false)
             }}
             placeholder="Comment for the line under the cursor — Enter to pin"
-            className="min-w-0 flex-1 rounded-md border border-[var(--gt-border)] bg-black/40 px-2 py-1 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
+            className="min-w-0 flex-1"
           />
         </div>
       )}

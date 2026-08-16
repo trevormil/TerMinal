@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Columns2, Layers, MoveHorizontal } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { dataUrl } from '../../../shared/file-viewers'
 
 // Image diff (ticket 0048): HEAD vs working tree for image files, with the
@@ -28,25 +29,33 @@ export function ImageDiffView({
   const newSrc = newBase64 ? dataUrl(path, newBase64) : ''
   const both = !!oldSrc && !!newSrc
 
-  const btn = (on: boolean) =>
-    `inline-flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-[11px] transition-colors ${
-      on
-        ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
-        : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-200'
-    }`
+  const modeBtn = (m: Mode, Icon: typeof Columns2, label: string, title: string) => (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      onClick={() => setMode(m)}
+      className={mode === m ? 'bg-primary/20 text-foreground' : 'text-muted-foreground'}
+      title={title}
+      aria-pressed={mode === m}
+    >
+      <Icon size={12} strokeWidth={2} />
+      {label}
+    </Button>
+  )
 
   if (!both) {
     const src = newSrc || oldSrc
     return (
       <div className="flex h-full min-h-0 flex-col">
-        <div className="flex shrink-0 items-center gap-2 border-b border-[var(--gt-border)] px-3 py-1.5 text-[11px] text-zinc-500">
+        <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1.5 text-[11px] text-muted-foreground">
           {newSrc ? 'Added — no version at HEAD' : 'Deleted — only the HEAD version exists'}
         </div>
         <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-[var(--gt-code-bg)] p-4">
           {src ? (
             <img src={src} className="max-h-full max-w-full object-contain" alt={path} />
           ) : (
-            <span className="text-[12px] text-zinc-600">Nothing to show.</span>
+            <span className="text-[12px] text-muted-foreground">Nothing to show.</span>
           )}
         </div>
       </div>
@@ -55,27 +64,10 @@ export function ImageDiffView({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 items-center gap-1.5 border-b border-[var(--gt-border)] px-3 py-1.5">
-        <button
-          onClick={() => setMode('side')}
-          className={btn(mode === 'side')}
-          title="Side by side"
-        >
-          <Columns2 size={12} strokeWidth={2} />
-          Side
-        </button>
-        <button onClick={() => setMode('swipe')} className={btn(mode === 'swipe')} title="Swipe">
-          <MoveHorizontal size={12} strokeWidth={2} />
-          Swipe
-        </button>
-        <button
-          onClick={() => setMode('onion')}
-          className={btn(mode === 'onion')}
-          title="Onion skin"
-        >
-          <Layers size={12} strokeWidth={2} />
-          Onion
-        </button>
+      <div className="flex shrink-0 items-center gap-1.5 border-b border-border px-3 py-1.5">
+        {modeBtn('side', Columns2, 'Side', 'Side by side')}
+        {modeBtn('swipe', MoveHorizontal, 'Swipe', 'Swipe')}
+        {modeBtn('onion', Layers, 'Onion', 'Onion skin')}
         {mode !== 'side' && (
           <input
             type="range"
@@ -88,7 +80,7 @@ export function ImageDiffView({
           />
         )}
         <div className="flex-1" />
-        <span className="text-[10px] text-zinc-700">HEAD vs working tree</span>
+        <span className="text-[10px] text-muted-foreground">HEAD vs working tree</span>
       </div>
       <div className="min-h-0 flex-1 overflow-auto bg-[var(--gt-code-bg)] p-4">
         {mode === 'side' ? (
@@ -99,7 +91,7 @@ export function ImageDiffView({
             ].map(({ src, label }) => (
               <figure key={label} className="flex min-w-0 flex-1 flex-col items-center gap-1">
                 <img src={src} className="max-h-[70vh] max-w-full object-contain" alt={label} />
-                <figcaption className="text-[10.5px] text-zinc-600">{label}</figcaption>
+                <figcaption className="text-[10.5px] text-muted-foreground">{label}</figcaption>
               </figure>
             ))}
           </div>

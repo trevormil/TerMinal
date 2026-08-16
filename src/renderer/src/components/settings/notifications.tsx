@@ -1,4 +1,4 @@
-import { BellDot, Check } from 'lucide-react'
+import { BellDot } from 'lucide-react'
 import {
   CATEGORY_META,
   CHANNEL_META,
@@ -9,6 +9,8 @@ import {
   type NotifyChannelId,
   type NotifyMatrix,
 } from '../../../../shared/notifications'
+import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Section, type SettingsCtx, type SettingsSectionSpec } from './shared'
 
 // The category × channel routing grid. A checked cell = that channel fires for
@@ -52,19 +54,15 @@ function NotificationMatrix({
                 </td>
                 {NOTIFY_CHANNELS.map((ch) => {
                   const on = channelWants(ch, cat, matrix)
+                  const label = `${on ? 'Disable' : 'Enable'} ${CATEGORY_META[cat].label} → ${CHANNEL_META[ch].label}`
                   return (
                     <td key={ch} className="px-2 text-center">
-                      <button
-                        onClick={() => onToggle(ch, cat)}
-                        title={`${on ? 'Disable' : 'Enable'} ${CATEGORY_META[cat].label} → ${CHANNEL_META[ch].label}`}
-                        className={`inline-flex h-5 w-5 cursor-pointer items-center justify-center rounded transition-colors ${
-                          on
-                            ? 'bg-[var(--gt-accent)]/20 text-[var(--gt-accent-light)]'
-                            : 'bg-black/20 text-transparent hover:bg-white/5'
-                        }`}
-                      >
-                        <Check size={13} strokeWidth={2.5} />
-                      </button>
+                      <Checkbox
+                        checked={on}
+                        onCheckedChange={() => onToggle(ch, cat)}
+                        title={label}
+                        aria-label={label}
+                      />
                     </td>
                   )
                 })}
@@ -73,12 +71,15 @@ function NotificationMatrix({
           </tbody>
         </table>
       </div>
-      <button
+      <Button
+        type="button"
+        variant="ghost"
+        size="xs"
         onClick={onReset}
-        className="text-[11px] text-zinc-500 transition-colors hover:text-zinc-300"
+        className="text-zinc-500 hover:text-zinc-300"
       >
         Reset to defaults
-      </button>
+      </Button>
     </div>
   )
 }

@@ -1,6 +1,5 @@
 import { GitBranch, Layers } from 'lucide-react'
-import { Badge } from './ui'
-import { stateTone } from '../lib/badges'
+import { Badge } from '@/components/ui/badge'
 import type { Mr, PrStack } from '../lib/types'
 
 /**
@@ -95,7 +94,19 @@ export function StackMap({
               >
                 {mr?.title || 'Not in the current list'}
               </span>
-              {mr && <Badge tone={stateTone(mr.state)}>{mr.state}</Badge>}
+              {mr && (
+                <Badge
+                  variant={
+                    mr.state === 'merged'
+                      ? 'success'
+                      : mr.state === 'closed'
+                        ? 'destructive'
+                        : 'warning'
+                  }
+                >
+                  {mr.state}
+                </Badge>
+              )}
               {current && (
                 <span className="shrink-0 text-[9.5px] font-semibold uppercase tracking-wider text-[var(--gt-accent-light)]">
                   here

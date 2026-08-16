@@ -11,8 +11,9 @@ import {
   FileText,
   ArrowUpRight,
 } from 'lucide-react'
-import { Badge, ForceChip } from '../../components/ui'
+import { ForceChip } from '../../components/ui'
 import type { BadgeTone } from '../../components/ui'
+import { Badge } from '../../components/ui/badge'
 import { EngineLogo } from '../../components/EngineLogo'
 import { navigateTo, onNavigate } from '../../lib/nav'
 import { engineLabel } from '../../lib/engines'
@@ -41,6 +42,20 @@ const statusTone = (s: string): BadgeTone =>
 
 const sourceTone = (s: UnifiedRun['source']): BadgeTone =>
   s === 'cron' ? 'accent' : s === 'bg' ? 'yellow' : s === 'session' ? 'green' : 'blue'
+
+// Map a legacy badge tone to the shadcn badge variant.
+const badgeVariantFor = (tone: string) =>
+  tone === 'green' || tone === 'ok'
+    ? ('success' as const)
+    : tone === 'red' || tone === 'bad'
+      ? ('destructive' as const)
+      : tone === 'yellow' || tone === 'warn'
+        ? ('warning' as const)
+        : tone === 'blue'
+          ? ('info' as const)
+          : tone === 'accent'
+            ? ('default' as const)
+            : ('secondary' as const)
 
 function fmtWhen(ts?: number): string {
   if (!ts) return '—'
@@ -381,13 +396,13 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
               </span>
               <span className="ml-2 inline-flex items-center gap-1.5 text-[10.5px]">
                 {counts.running > 0 && (
-                  <Badge tone="blue">
+                  <Badge variant="info">
                     <span className="mr-0.5 inline-block h-1 w-1 rounded-full bg-current gt-pulse" />
                     {counts.running} running
                   </Badge>
                 )}
-                {counts.done > 0 && <Badge tone="green">{counts.done} done</Badge>}
-                {counts.failed > 0 && <Badge tone="red">{counts.failed} failed</Badge>}
+                {counts.done > 0 && <Badge variant="success">{counts.done} done</Badge>}
+                {counts.failed > 0 && <Badge variant="destructive">{counts.failed} failed</Badge>}
               </span>
               <div className="flex-1" />
               <button
@@ -546,8 +561,8 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                     }`}
                   >
                     <span className="flex w-full items-center gap-2">
-                      <Badge tone={statusTone(r.status)}>{r.status}</Badge>
-                      <Badge tone={sourceTone(r.source)}>{r.source}</Badge>
+                      <Badge variant={badgeVariantFor(statusTone(r.status))}>{r.status}</Badge>
+                      <Badge variant={badgeVariantFor(sourceTone(r.source))}>{r.source}</Badge>
                       {r.hostId && (
                         <span
                           className="inline-flex shrink-0 items-center gap-0.5 rounded border border-[var(--gt-accent)]/40 bg-[var(--gt-accent)]/10 px-1 py-0.5 text-[9px] text-[var(--gt-accent-light)]"
@@ -616,8 +631,12 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
           ) : (
             <>
               <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--gt-border)] px-5 py-2">
-                <Badge tone={statusTone(selectedRun.status)}>{selectedRun.status}</Badge>
-                <Badge tone={sourceTone(selectedRun.source)}>{selectedRun.source}</Badge>
+                <Badge variant={badgeVariantFor(statusTone(selectedRun.status))}>
+                  {selectedRun.status}
+                </Badge>
+                <Badge variant={badgeVariantFor(sourceTone(selectedRun.source))}>
+                  {selectedRun.source}
+                </Badge>
                 {selectedRun.force && <ForceChip size="md" />}
                 <span className="text-[13px] font-semibold text-zinc-100">
                   {selectedRun.agentTitle}
@@ -814,7 +833,7 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                         className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] px-2 py-0.5 hover:border-[var(--gt-accent)]/50 hover:bg-white/5"
                       >
                         {selectedRun.trace.ticketRef && (
-                          <Badge tone="blue">ticket {selectedRun.trace.ticketRef}</Badge>
+                          <Badge variant="info">ticket {selectedRun.trace.ticketRef}</Badge>
                         )}
                         <span className="font-mono text-[10.5px] text-zinc-400">
                           {selectedRun.trace.ticketSlug}
@@ -823,11 +842,11 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                       </button>
                     ) : (
                       selectedRun.trace.ticketRef && (
-                        <Badge tone="blue">ticket {selectedRun.trace.ticketRef}</Badge>
+                        <Badge variant="info">ticket {selectedRun.trace.ticketRef}</Badge>
                       )
                     )}
                     {selectedRun.trace.prIid !== undefined && (
-                      <Badge tone="accent">
+                      <Badge variant="default">
                         {selectedRun.trace.prKind || 'pr'} #{selectedRun.trace.prIid}
                       </Badge>
                     )}
