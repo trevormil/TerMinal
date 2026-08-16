@@ -13,7 +13,6 @@ import {
 } from '../../../../shared/inbox-categories'
 import { inboxQuiet, slackChannelName, type SlackChannelCfg } from '../../../../shared/slack'
 import {
-  Archive,
   ArrowLeft,
   Check,
   ChevronDown,
@@ -149,6 +148,10 @@ function snippetOf(h: HitlItem): string {
     .slice(0, 140)
 }
 
+/** Rows per page, Gmail-style. Archive fetches use the same size, so filling a
+ *  page is one IPC call. */
+const PAGE_SIZE = 50
+
 const ACTION_BTN =
   'inline-flex cursor-pointer items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 transition-colors duration-150 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100'
 
@@ -175,6 +178,12 @@ export function InboxDrawer({
   // Persisted, so it survives a reload — which is exactly why resolveSelection
   // has to cope with the category having disappeared meanwhile.
   const [category, pickCategory] = usePref('inboxCategory')
+  // Changing the category is a new view — page numbers from the old one would
+  // point past its end.
+  const pickCategoryFresh = (name: string) => {
+    setPage(0)
+    pickCategory(name)
+  }
   // Which parents are folded shut. Persisted alongside the selection so the
   // sidebar you arranged is the sidebar you come back to.
   // A corrupt stored value must not take the Inbox down with it; the registry
@@ -190,13 +199,15 @@ export function InboxDrawer({
   }
   const [snoozeOpen, setSnoozeOpen] = useState(false)
   const [showSnoozed, setShowSnoozed] = useState(false)
-  // History (retired items) is fetched a page at a time from the append-only
-  // archive, and only once you ask for it. `cursor === null` means exhausted.
-  const [showHistory, setShowHistory] = useState(false)
+  // Retired items are fetched a page at a time from the append-only archive and
+  // rendered INLINE below the live rows — one Gmail-style list with a pager,
+  // not a separate history view. `cursor === null` means the archive is
+  // exhausted; only pages you actually reach are ever fetched.
   const [history, setHistory] = useState<HitlItem[]>([])
   const [historyCursor, setHistoryCursor] = useState<string | null | undefined>(undefined)
   const [historyLoading, setHistoryLoading] = useState(false)
-  const [historyTotal, setHistoryTotal] = useState(0)
+  const [archivedTotal, setArchivedTotal] = useState(0)
+  const [page, setPage] = useState(0)
   // An item you read in THIS drawer session leaves the live list on the next
   // poll — main archived it. Holding it here keeps the row where you left it
   // instead of yanking it out from under the cursor mid-read.
@@ -259,37 +270,32 @@ export function InboxDrawer({
         reload(),
         reloadSnoozes(),
         // The counts index is one tiny file — cheap enough to poll for the
-        // history total without ever touching the history itself.
+        // pager's archived total without ever touching the archive itself.
         window.gt.inbox
           .counts()
-          .then((c) => setHistoryTotal(c.archived))
+          .then((c) => setArchivedTotal(c.archived))
           .catch(() => {}),
       ]),
     { intervalMs: 15_000 },
   )
 
-  // One page of history. Called on expand and on "Load more" — never on mount,
-  // and never on the poll: history does not change under you.
+  // One page of retired items out of the archive — called only to fill the
+  // page you are looking at, never for pages you haven't reached, and never on
+  // the poll: the archive does not change under you.
   const loadHistory = () => {
     if (historyLoading || historyCursor === null) return
     setHistoryLoading(true)
     window.gt.inbox
-      .archive(historyCursor, 50)
-      .then((page) => {
+      .archive(historyCursor, PAGE_SIZE)
+      .then((p) => {
         setHistory((prev) => {
           const seen = new Set(prev.map((h) => h.id))
-          return [...prev, ...page.items.filter((h) => !seen.has(h.id))]
+          return [...prev, ...p.items.filter((h) => !seen.has(h.id))]
         })
-        setHistoryCursor(page.done ? null : page.cursor)
+        setHistoryCursor(p.done ? null : p.cursor)
       })
       .catch(() => setHistoryCursor(null))
       .finally(() => setHistoryLoading(false))
-  }
-  const toggleHistory = () => {
-    setShowHistory((open) => {
-      if (!open && !history.length) loadHistory()
-      return !open
-    })
   }
 
   // One axis: read vs unread. No archive. Legacy items already resolved before
@@ -313,9 +319,47 @@ export function InboxDrawer({
   // Unread counts the WHOLE inbox, not the filtered view: a badge that drops
   // when you pick a category would say the work went away.
   const unread = unsnoozed.filter(isUnread)
-  // What a bulk action operates on — the visible list, which is the only thing
-  // the button can honestly claim to be acting on.
+  // What a bulk action operates on — the visible live items, which is the only
+  // thing the button can honestly claim to be acting on.
   const scopedUnread = shown.filter(isUnread)
+
+  // One Gmail-style list: live items first (they're what needs you — think
+  // "unread first"), then retired items from the archive, PAGE_SIZE to a page.
+  // A live row wins over its crash-replay archive copy (dedup by id).
+  const liveIds = new Set(all.map((h) => h.id))
+  const archivedShown = filterByCategory(
+    history.filter((h) => !liveIds.has(h.id)),
+    activeCategory,
+  )
+  const archivedIds = new Set(archivedShown.map((h) => h.id))
+  const stream = [...shown, ...archivedShown]
+  const pageStart = page * PAGE_SIZE
+  const pageItems = stream.slice(pageStart, pageStart + PAGE_SIZE)
+  const exhausted = historyCursor === null
+  // Fill the visible page from the archive. On All this converges in one fetch
+  // per page; with a category picked, a fill could chase matches through the
+  // whole archive — there, "next" fetches one page per click and an under-full
+  // page is honest about it.
+  useEffect(() => {
+    if (activeCategory !== ALL) return
+    if (stream.length < pageStart + PAGE_SIZE && !exhausted && !historyLoading) loadHistory()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCategory, stream.length, pageStart, exhausted, historyLoading])
+  const hasNext = stream.length > pageStart + PAGE_SIZE || !exhausted
+  const nextPage = () => {
+    if (!hasNext) return
+    if (stream.length <= pageStart + PAGE_SIZE && !exhausted) loadHistory()
+    setPage((p) => p + 1)
+  }
+  // With a category picked the honest total is "matches loaded so far" — the
+  // pager says 12+ while archive pages remain unsearched.
+  const totalLabel =
+    activeCategory === ALL
+      ? `${unsnoozed.length + archivedTotal}`
+      : `${stream.length}${exhausted ? '' : '+'}`
+  const rangeLabel = pageItems.length
+    ? `${pageStart + 1}–${pageStart + pageItems.length} of ${totalLabel}`
+    : `0 of ${totalLabel}`
 
   // Group ids by owning host — a remote item's readAt must persist on the host
   // that owns it (like resolve), or the 15s reload flips it back to unread.
@@ -383,6 +427,7 @@ export function InboxDrawer({
   }
   const remove = async (h: HitlItem) => {
     setItems((prev) => (prev || []).filter((x) => x.id !== h.id))
+    setHistory((prev) => prev.filter((x) => x.id !== h.id))
     setReading(null)
     await window.gt.inbox.remove(h.id, h.hostId).catch(() => false)
   }
@@ -427,8 +472,11 @@ export function InboxDrawer({
   }
 
   // Mail-client model: the list is the inbox; opening an item replaces the
-  // whole pane with the message and a back button — no accordion.
-  const readingItem = reading ? all.find((h) => h.id === reading) || null : null
+  // whole pane with the message and a back button — no accordion. Archived
+  // rows open the same way, off the loaded pages.
+  const readingItem = reading
+    ? all.find((h) => h.id === reading) || history.find((h) => h.id === reading) || null
+    : null
   useEffect(() => {
     if (!reading) return
     const onKey = (e: KeyboardEvent) => {
@@ -666,6 +714,30 @@ export function InboxDrawer({
             {unread.length} unread
           </span>
         )}
+        {/* Gmail-style pager: ‹ 1–50 of N › over the ONE unified list (live
+            first, then archived). Hidden while a bulk selection is active —
+            the header is that row's toolbar. */}
+        {selectedIds.length === 0 && stream.length > 0 && (
+          <div className="flex items-center gap-0.5">
+            <button
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={page === 0}
+              title="Newer"
+              className="rounded-md px-1.5 py-0.5 text-[13px] leading-none text-zinc-500 hover:bg-white/5 hover:text-zinc-200 disabled:opacity-30 disabled:hover:bg-transparent"
+            >
+              ‹
+            </button>
+            <span className="text-[10.5px] tabular-nums text-zinc-500">{rangeLabel}</span>
+            <button
+              onClick={nextPage}
+              disabled={!hasNext}
+              title="Older"
+              className="rounded-md px-1.5 py-0.5 text-[13px] leading-none text-zinc-500 hover:bg-white/5 hover:text-zinc-200 disabled:opacity-30 disabled:hover:bg-transparent"
+            >
+              ›
+            </button>
+          </div>
+        )}
         {onClose && (
           <button
             onClick={onClose}
@@ -690,7 +762,7 @@ export function InboxDrawer({
               return (
                 <button
                   key={c.name}
-                  onClick={() => pickCategory(c.name)}
+                  onClick={() => pickCategoryFresh(c.name)}
                   aria-current={active ? 'true' : undefined}
                   // The full path is the accessible name; the row only draws the
                   // leaf, because at depth the indent already says the parent.
@@ -749,22 +821,33 @@ export function InboxDrawer({
           )}
           {items === null ? (
             <div className="p-4 text-[12px] text-zinc-600">Loading…</div>
-          ) : shown.length === 0 ? (
+          ) : stream.length === 0 ? (
             !trustPrompt.pending && (
               <div className="p-4 text-[12px] text-zinc-600">
                 Inbox zero. Human-needs (decisions, approvals, creds, failed cron runs) land here
                 from any repo.
               </div>
             )
+          ) : pageItems.length === 0 ? (
+            // Paged past what's loaded — the fill fetch is in flight, or a
+            // category walk found nothing further.
+            <div className="p-4 text-[12px] text-zinc-600">
+              {historyLoading ? 'Loading…' : 'Nothing on this page.'}
+            </div>
           ) : (
             // Flat mail-style rows: hairline dividers, hover highlight, click to
-            // open the message full-pane.
+            // open the message full-pane. Live and archived rows share the one
+            // list — archived ones just render read (no bold, no dot, no aging
+            // stripe, no bulk checkbox).
             <div className="divide-y divide-[var(--gt-border)]/60">
-              {shown.map((h) => {
-                const unreadRow = isUnread(h)
+              {pageItems.map((h) => {
+                const archivedRow = archivedIds.has(h.id)
+                const unreadRow = !archivedRow && isUnread(h)
                 const snippet = snippetOf(h)
                 const tier = ageTierOf(h.createdAt, now)
-                const tierColor = ageColor(tier)
+                // The aging stripe means "sitting unhandled" — an archived row
+                // was handled, however old it is.
+                const tierColor = archivedRow ? '' : ageColor(tier)
                 const picked = selected.has(h.id)
                 const chip = chipCategory(h, activeCategory)
                 return (
@@ -776,17 +859,23 @@ export function InboxDrawer({
                     // Aging stripe: the item's whole left edge reddens as it sits.
                     style={tierColor ? { boxShadow: `inset 2px 0 0 0 ${tierColor}` } : undefined}
                   >
-                    <input
-                      type="checkbox"
-                      checked={picked}
-                      onChange={() => toggleSelect(h.id)}
-                      title="Select for bulk actions"
-                      className={`mt-[5px] h-3 w-3 shrink-0 cursor-pointer accent-[var(--gt-accent)] ${
-                        picked || selectedIds.length > 0
-                          ? 'opacity-100'
-                          : 'opacity-0 group-hover:opacity-100'
-                      }`}
-                    />
+                    {archivedRow ? (
+                      // Bulk actions (read/resolve/snooze) act on live items —
+                      // reserve the checkbox column so rows line up.
+                      <span className="mt-[5px] h-3 w-3 shrink-0" aria-hidden />
+                    ) : (
+                      <input
+                        type="checkbox"
+                        checked={picked}
+                        onChange={() => toggleSelect(h.id)}
+                        title="Select for bulk actions"
+                        className={`mt-[5px] h-3 w-3 shrink-0 cursor-pointer accent-[var(--gt-accent)] ${
+                          picked || selectedIds.length > 0
+                            ? 'opacity-100'
+                            : 'opacity-0 group-hover:opacity-100'
+                        }`}
+                      />
+                    )}
                     <button
                       onClick={() => {
                         setReading(h.id)
@@ -813,7 +902,7 @@ export function InboxDrawer({
                             </span>
                           )}
                           <span
-                            title={ageLabel(tier)}
+                            title={archivedRow ? undefined : ageLabel(tier)}
                             className="shrink-0 text-[10px] font-medium tabular-nums"
                             style={{ color: tierColor || 'var(--color-zinc-600, #52525b)' }}
                           >
@@ -877,58 +966,14 @@ export function InboxDrawer({
             </div>
           )}
 
-          {(historyTotal > 0 || history.length > 0) && (
-            <div className="border-t border-[var(--gt-border)]">
-              <button
-                onClick={toggleHistory}
-                className="flex w-full items-center gap-1.5 px-4 py-2 text-left text-[11px] text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-300"
-              >
-                {showHistory ? (
-                  <ChevronDown size={12} strokeWidth={2} />
-                ) : (
-                  <ChevronRight size={12} strokeWidth={2} />
-                )}
-                <Archive size={11} strokeWidth={2} />
-                History
-                <span className="tabular-nums text-zinc-600">{historyTotal}</span>
-              </button>
-              {showHistory && (
-                <div className="divide-y divide-[var(--gt-border)]/60">
-                  {history.map((h) => (
-                    <div
-                      key={h.id}
-                      className="flex w-full items-center gap-2 px-4 py-2 text-left opacity-70"
-                    >
-                      <span className="min-w-0 flex-1 truncate text-[12px] text-zinc-400">
-                        {h.title}
-                      </span>
-                      <span className="shrink-0 text-[10px] tabular-nums text-zinc-600">
-                        {new Date(h.createdAt).toLocaleDateString()}
-                      </span>
-                      <button
-                        onClick={() => markUnread(h)}
-                        title="Put this back on the unread pile"
-                        className="shrink-0 rounded-md border border-[var(--gt-border)] px-1.5 py-0.5 text-[10px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
-                      >
-                        Unread
-                      </button>
-                    </div>
-                  ))}
-                  {historyCursor !== null && (
-                    <button
-                      onClick={loadHistory}
-                      disabled={historyLoading}
-                      className="w-full px-4 py-2 text-center text-[11px] text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-300 disabled:opacity-50"
-                    >
-                      {historyLoading ? 'Loading…' : 'Load more'}
-                    </button>
-                  )}
-                  {historyCursor === null && history.length === 0 && (
-                    <div className="px-4 py-2 text-[11px] text-zinc-600">Nothing archived yet.</div>
-                  )}
-                </div>
-              )}
-            </div>
+          {hasNext && pageItems.length > 0 && (
+            <button
+              onClick={nextPage}
+              disabled={historyLoading}
+              className="w-full border-t border-[var(--gt-border)] px-4 py-2 text-center text-[11px] text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-300 disabled:opacity-50"
+            >
+              {historyLoading ? 'Loading…' : 'Older ›'}
+            </button>
           )}
         </div>
       </div>

@@ -7,6 +7,7 @@ import {
   activityGenerationPaths,
   readActivityPage,
   readActivityDelta,
+  countActivityEvents,
   countActivitySince,
   rotateActivityLog,
   type ActivityCursor,
@@ -226,6 +227,38 @@ describe('countActivitySince', () => {
     write(join(dir, 'activity-1.jsonl'), [ev(0, { kind: 'error' })])
     write(base, [ev(1, { kind: 'error' })])
     expect(countActivitySince(base, 0, ['error'])).toBe(2)
+  })
+})
+
+describe('countActivityEvents', () => {
+  test('a missing log counts zero', () => {
+    expect(countActivityEvents(base)).toBe(0)
+  })
+
+  test('counts every complete event, ignoring a torn trailing append', () => {
+    write(base, [ev(0), ev(1), ev(2)])
+    appendFileSync(base, '{"id":"torn","ts":9')
+    expect(countActivityEvents(base)).toBe(3)
+  })
+
+  test('spans rotated generations', () => {
+    write(join(dir, 'activity-1.jsonl'), [ev(0), ev(1)])
+    write(base, [ev(2)])
+    expect(countActivityEvents(base)).toBe(3)
+  })
+
+  test('agrees with what pagination actually returns', () => {
+    const events = Array.from({ length: 137 }, (_, i) => ev(i))
+    write(base, events)
+    let got = 0
+    let cursor: ActivityCursor | null = null
+    for (;;) {
+      const page = readActivityPage(base, { limit: 50, cursor })
+      got += page.events.length
+      if (!page.cursor) break
+      cursor = page.cursor
+    }
+    expect(countActivityEvents(base)).toBe(got)
   })
 })
 

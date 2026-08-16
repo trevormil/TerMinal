@@ -301,6 +301,7 @@ const gt: GtApi = {
       ipcRenderer.invoke('activity:page', cursor, limit),
     unseenCount: (since: number, kinds: string[]) =>
       ipcRenderer.invoke('activity:unseen-count', since, kinds),
+    count: () => ipcRenderer.invoke('activity:count'),
     clear: () => ipcRenderer.invoke('activity:clear'),
     onEvent: (cb: (ev: ActivityEvent) => void) => {
       const h = (_e: unknown, ev: ActivityEvent) => cb(ev)

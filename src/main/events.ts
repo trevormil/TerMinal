@@ -20,6 +20,8 @@ import {
 import type { ActivityEvent, ActivityKind } from '../shared/types/activity'
 import {
   ACTIVITY_ROTATE_BYTES,
+  activityGenerationPaths,
+  countActivityEvents,
   countActivitySince,
   readActivityDelta,
   readActivityPage,
@@ -269,6 +271,29 @@ export function unseenActivityCount(since: number, kinds: string[]): number {
   return count
 }
 
+// Memoized against every generation's size, so the feed's "of N" pager total
+// costs one stat() per generation in the steady state and a byte scan only
+// after something was appended or rotated.
+let totalMemo: { sizes: string; count: number } | null = null
+
+/** Total events kept across the live log and its rotated generations. */
+export function activityTotalCount(): number {
+  const base = activityLogFile()
+  const sizes = activityGenerationPaths(base)
+    .map((p) => {
+      try {
+        return statSync(p).size
+      } catch {
+        return -1
+      }
+    })
+    .join(',')
+  if (totalMemo && totalMemo.sizes === sizes) return totalMemo.count
+  const count = countActivityEvents(base)
+  totalMemo = { sizes, count }
+  return count
+}
+
 export function clearActivity() {
   const log = activityLogFile()
   try {
@@ -277,4 +302,5 @@ export function clearActivity() {
     /* ignore */
   }
   badgeMemo = null
+  totalMemo = null
 }

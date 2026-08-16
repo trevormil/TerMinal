@@ -169,7 +169,7 @@ function Chip({
 
 type Scope = 'all' | 'repo' | 'session'
 
-const FEED_PAGE_SIZE = 200
+const FEED_PAGE_SIZE = 50
 
 export function ActivityTab({
   ctx,
@@ -206,6 +206,9 @@ export function ActivityTab({
   // "not loaded yet", null means "the oldest kept event is already on screen".
   const [older, setOlder] = useState<ActivityCursor | null | undefined>(undefined)
   const [loadingOlder, setLoadingOlder] = useState(false)
+  // Total kept events, for the pager's "of N" — counted in main (memoized
+  // against the log sizes), incremented locally as live events arrive.
+  const [total, setTotal] = useState<number | null>(null)
 
   useEffect(() => {
     // viewing the feed clears the unseen-high-signal tab badge
@@ -215,11 +218,16 @@ export function ActivityTab({
       setOlder(p.cursor)
       newest.current = p.events[0]?.id || ''
     })
+    window.gt.activity
+      .count()
+      .then(setTotal)
+      .catch(() => {})
     // Live appends arrive pushed from the main process's tail (a byte-delta
     // read of the log), so staying current costs no re-read of the feed.
     const off = window.gt.activity.onEvent((ev) => {
       newest.current = ev.id
       setEvents((prev) => [ev, ...prev])
+      setTotal((t) => (t === null ? t : t + 1))
     })
     return () => off()
   }, [])
@@ -264,18 +272,47 @@ export function ActivityTab({
         (!q || `${e.title} ${e.detail || ''} ${e.repo || ''}`.toLowerCase().includes(q)),
     )
   }, [scoped, kindFilter, deferredQuery])
-  // Bounded render with show-more — 1000 rows re-reconciled per tick janks.
-  const [visibleCount, setVisibleCount] = useState(FEED_PAGE_SIZE)
+  // Gmail-style pages: a 50-row window over the (filtered) stream, with a
+  // ‹ x–y of N › pager in the header. Only the current page renders, and older
+  // events are fetched only when you actually page onto them.
+  const [page, setPage] = useState(0)
   useEffect(() => {
-    setVisibleCount(FEED_PAGE_SIZE)
+    setPage(0)
   }, [scope, kindFilter, deferredQuery])
-  const visibleShown = useMemo(() => shown.slice(0, visibleCount), [shown, visibleCount])
-  const hiddenCount = Math.max(0, shown.length - visibleShown.length)
+  const filtered = scope !== 'all' || kindFilter !== 'all' || deferredQuery.trim() !== ''
+  const pageStart = page * FEED_PAGE_SIZE
+  const pageItems = useMemo(
+    () => shown.slice(pageStart, pageStart + FEED_PAGE_SIZE),
+    [shown, pageStart],
+  )
+  // Unfiltered, the stream is the raw feed, so filling the current page is a
+  // bounded number of one-page fetches. Filtered, a fill could chase matches
+  // through the whole history — there, "next" fetches one page per click and
+  // an under-full page is honest about it.
+  useEffect(() => {
+    if (filtered) return
+    if (shown.length < pageStart + FEED_PAGE_SIZE && older && !loadingOlder) void loadOlder()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtered, shown.length, pageStart, older, loadingOlder])
+  const hasNext = shown.length > pageStart + FEED_PAGE_SIZE || !!older
+  const nextPage = () => {
+    if (!hasNext) return
+    if (shown.length <= pageStart + FEED_PAGE_SIZE && older) void loadOlder()
+    setPage((p) => p + 1)
+  }
+  // Filtered, the honest total is "matches loaded so far" — the pager says 12+
+  // while older pages remain unsearched, exactly what it knows.
+  const totalLabel = filtered ? `${shown.length}${older ? '+' : ''}` : `${total ?? shown.length}`
+  const rangeLabel = pageItems.length
+    ? `${pageStart + 1}–${pageStart + pageItems.length} of ${totalLabel}`
+    : `0 of ${totalLabel}`
 
   const clear = async () => {
     await window.gt.activity.clear()
     setEvents([])
     setOlder(null)
+    setTotal(0)
+    setPage(0)
   }
 
   // ---- detail view ---------------------------------------------------------
@@ -428,7 +465,27 @@ export function ActivityTab({
             className="w-28 rounded-md border border-[var(--gt-border)] bg-black/30 py-0.5 pl-5 pr-1.5 text-[11px] text-zinc-200 outline-none focus:w-40 focus:border-[var(--gt-accent)]/60"
           />
         </div>
-        <span className="text-[11px] tabular-nums text-zinc-600">{shown.length}</span>
+        {/* Gmail-style pager: ‹ 1–50 of 1,234 › — the range shown, the total
+            kept, prev/next a page at a time. */}
+        <div className="flex items-center gap-0.5">
+          <button
+            onClick={() => setPage((p) => Math.max(0, p - 1))}
+            disabled={page === 0}
+            title="Newer"
+            className="rounded-md px-1.5 py-0.5 text-[13px] leading-none text-zinc-500 hover:bg-white/5 hover:text-zinc-200 disabled:opacity-30 disabled:hover:bg-transparent"
+          >
+            ‹
+          </button>
+          <span className="text-[11px] tabular-nums text-zinc-500">{rangeLabel}</span>
+          <button
+            onClick={nextPage}
+            disabled={!hasNext}
+            title="Older"
+            className="rounded-md px-1.5 py-0.5 text-[13px] leading-none text-zinc-500 hover:bg-white/5 hover:text-zinc-200 disabled:opacity-30 disabled:hover:bg-transparent"
+          >
+            ›
+          </button>
+        </div>
         <button
           onClick={clear}
           className="rounded-md px-2 py-0.5 text-[11px] text-zinc-500 hover:bg-white/5 hover:text-zinc-300"
@@ -453,8 +510,14 @@ export function ActivityTab({
               ? 'No activity yet. Session starts, tickets, PRs, reviews, test runs, checks, docs, and agent runs show up here (and as macOS notifications).'
               : 'No activity matches the current filters.'}
           </div>
+        ) : pageItems.length === 0 ? (
+          // Paged past the end of what's loaded — either the fill fetch is in
+          // flight, or a filtered walk found nothing further.
+          <div className="p-6 text-[12px] text-zinc-600">
+            {loadingOlder ? 'Loading…' : 'Nothing on this page.'}
+          </div>
         ) : (
-          groupByDay(visibleShown).map((g) => (
+          groupByDay(pageItems).map((g) => (
             <div key={g.label}>
               <div className="sticky top-0 z-10 flex items-center gap-2 bg-[var(--gt-bg)]/90 px-4 py-1.5 backdrop-blur">
                 <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-500">
@@ -554,25 +617,14 @@ export function ActivityTab({
             </div>
           ))
         )}
-        {hiddenCount > 0 ? (
+        {hasNext && pageItems.length > 0 && (
           <button
-            onClick={() => setVisibleCount((v) => v + FEED_PAGE_SIZE)}
-            className="w-full px-4 py-2 text-center text-[11px] text-[var(--gt-accent-2)] hover:bg-white/5"
+            onClick={nextPage}
+            disabled={loadingOlder}
+            className="w-full px-4 py-2 text-center text-[11px] text-[var(--gt-accent-2)] hover:bg-white/5 disabled:opacity-50"
           >
-            Show {Math.min(hiddenCount, FEED_PAGE_SIZE)} more ({hiddenCount} hidden)
+            {loadingOlder ? 'Loading…' : 'Older ›'}
           </button>
-        ) : (
-          // Everything loaded is on screen — the next click has to go back to
-          // disk for an older page.
-          older && (
-            <button
-              onClick={loadOlder}
-              disabled={loadingOlder}
-              className="w-full px-4 py-2 text-center text-[11px] text-[var(--gt-accent-2)] hover:bg-white/5 disabled:opacity-50"
-            >
-              {loadingOlder ? 'Loading…' : 'Load older events'}
-            </button>
-          )
         )}
       </div>
     </div>

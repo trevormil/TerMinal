@@ -184,7 +184,11 @@ describe('bulk actions mean what the visible list says (ticket 120)', () => {
 
 describe('a row says which category it is in, when that is not obvious (ticket 0123)', () => {
   const tab = read('src/renderer/src/tabs/hitl/index.tsx')
-  const row = tab.slice(tab.indexOf('{shown.map((h) => {'), tab.indexOf('{snoozedItems.length > 0'))
+  // The one unified list renders page windows over live + archived rows.
+  const row = tab.slice(
+    tab.indexOf('{pageItems.map((h) => {'),
+    tab.indexOf('{snoozedItems.length > 0'),
+  )
 
   test('the chip is rendered from the item, not from a lookup table', () => {
     // Same derived-not-declared rule as the sidebar: a brand-new category must

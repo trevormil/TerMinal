@@ -4,7 +4,13 @@
 // None of these are session-scoped, so the module has no deps.
 
 import { handle } from '../typed-ipc'
-import { readActivityPageAt, unseenActivityCount, clearActivity, testDesktopAlert } from '../events'
+import {
+  activityTotalCount,
+  readActivityPageAt,
+  unseenActivityCount,
+  clearActivity,
+  testDesktopAlert,
+} from '../events'
 import type { ActivityCursor } from '../../shared/activity-log'
 import { detectEnv, installGtNotify } from '../env'
 import { testTelegram } from '../telegram'
@@ -28,6 +34,9 @@ export function registerActivityIpc(): void {
   handle('activity:unseen-count', (_e, since: number, kinds: string[]) =>
     unseenActivityCount(since, kinds),
   )
+  // Total kept events — the "of N" in the feed's Gmail-style pager. Memoized
+  // against the log generations' sizes, so polling it is a few stat()s.
+  handle('activity:count', () => activityTotalCount())
   handle('activity:clear', () => clearActivity())
   handle('env:detect', () => detectEnv())
   handle('env:install-gt-notify', () => installGtNotify())
