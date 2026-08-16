@@ -37,7 +37,7 @@ brand token, declared in `index.css` and exposed via `@theme inline`:
 | `--secondary` | `--gt-panel-2` | a soft secondary fill |
 | `--secondary-foreground` | `--gt-text` | |
 | `--muted` | `--gt-surface-hover` | neutral subtle surface (skeleton, hover fill) |
-| `--muted-foreground` | `--gt-text-muted` | secondary text |
+| `--muted-foreground` | `--gt-text-muted-bright` | secondary text (the lifted dark-mode grey) |
 | `--accent` | `--gt-accent-2` | teal — the secondary brand hue, used for deliberate emphasis (healthy/running), **not** generic hover |
 | `--accent-foreground` | `--gt-text` | |
 | `--destructive` | `--gt-red` | red |
@@ -171,9 +171,10 @@ don't force Radix `Select` where the native element already works.
 ## 6. iOS port
 
 `ios/TerMinalRemote/Design/Theme.swift` mirrors the `--gt-*` hex values (locked
-by `token-parity.test.ts`). When the brand kit changes a *token*, change both
-`index.css` and `Theme.swift`; when it changes a *component*, mirror the look in
-the SwiftUI views. SF Symbols are the phone's lucide (design-system.md §9.3).
-The shadcn semantic aliases (§1) are a desktop-only convenience — SwiftUI
-already reads the `--gt-*` values directly, so nothing in iOS needs the semantic
-names.
+by `token-parity.test.ts`) and now also carries `GT.radius` (8pt = `--radius:
+0.5rem`) and `GT.radiusLg` (12pt = `rounded-xl`). When the brand kit changes a
+*token*, change both `index.css` and `Theme.swift`; when it changes a
+*component*, mirror the look in the SwiftUI views. SF Symbols are the phone's
+lucide (design-system.md §9.3). The shadcn semantic aliases (§1) are a
+desktop-only convenience — SwiftUI already reads the `--gt-*` values directly,
+so nothing in iOS needs the semantic names.

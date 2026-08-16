@@ -51,6 +51,12 @@ enum GT {
         endPoint: .bottomTrailing
     )
 
+    // radius — mirrors the desktop's `--radius: 0.5rem` (8pt) and its
+    // `rounded-xl` step (12pt) from `index.css`. One knob per shared shape, so
+    // a radius change on desktop is a one-line change here rather than a hunt.
+    static let radius: CGFloat = 8
+    static let radiusLg: CGFloat = 12
+
     // IBM Plex — the same pairing the desktop uses: Sans for chrome, Mono for
     // anything that must align or read as code. Vendored as TTF under the OFL
     // because node_modules ships woff only, which iOS cannot load.
@@ -109,9 +115,9 @@ struct GTPanel<Content: View>: View {
         content
             .padding(padding)
             .background(GT.panel.opacity(0.55))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .clipShape(RoundedRectangle(cornerRadius: GT.radiusLg))
             .overlay(
-                RoundedRectangle(cornerRadius: 12).stroke(GT.border, lineWidth: 1)
+                RoundedRectangle(cornerRadius: GT.radiusLg).stroke(GT.border, lineWidth: 1)
             )
     }
 }
@@ -145,8 +151,8 @@ extension View {
             .padding(.horizontal, 12)
             .frame(height: 34)
             .background(Color.black.opacity(0.25))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(GT.border, lineWidth: 1))
+            .clipShape(RoundedRectangle(cornerRadius: GT.radius))
+            .overlay(RoundedRectangle(cornerRadius: GT.radius).stroke(GT.border, lineWidth: 1))
     }
 }
 
