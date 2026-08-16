@@ -687,6 +687,9 @@ export type GtApi = {
     page: (cursor: ActivityCursor | null, limit?: number) => Promise<ActivityPage>
     /** Count of events newer than `since` with kind in `kinds` — badge polling. */
     unseenCount: (since: number, kinds: string[]) => Promise<number>
+    /** Total kept events across the log and its rotated generations — the
+     *  "of N" in the feed's pager. Memoized in main against the file sizes. */
+    count: () => Promise<number>
     clear: () => Promise<void>
     onEvent: (cb: (ev: ActivityEvent) => void) => () => void
   }

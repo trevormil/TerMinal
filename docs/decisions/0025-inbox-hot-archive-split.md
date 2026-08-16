@@ -82,10 +82,12 @@ the hot file is hidden from history entirely.
   now a flush that finishes a pending split, not a sweep with a policy;
   `archiveResolvedHitl()` in `src/main/run-retention.ts` was deleted rather than
   left as a second archiver writing a second format.
-- Read items no longer appear inline in the drawer. They move to a **History**
-  section that lazily loads pages of the archive. The drawer keeps items you
-  read in the current session pinned in place so a row does not vanish
-  mid-read.
+- The drawer shows ONE Gmail-style list: live items first, then archived ones,
+  50 to a page behind a `‹ x–y of N ›` pager. Archive pages are fetched only
+  when you page onto them, and the totals come from the counts file. (This
+  replaced the first presentation — a separate collapsible **History** section —
+  without changing the storage below it.) The drawer keeps items you read in
+  the current session pinned in place so a row does not vanish mid-read.
 - Two new IPC channels, `inbox:counts` and `inbox:archive`, each with the
   permanent `hitl:` alias the rename contract requires.
 - `src/main/remote-host-script.cjs` was deliberately NOT taught the new format.

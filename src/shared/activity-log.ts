@@ -229,6 +229,37 @@ export function readActivityDelta(
   }
 }
 
+/** Total complete events across the live log and its rotated generations —
+ *  the "of N" in the feed's pager. Counts newline-terminated lines in fixed
+ *  blocks (a torn trailing append has no newline yet, so it is excluded), so
+ *  the cost is a byte scan with no JSON parsing. Callers memoize per size. */
+export function countActivityEvents(base: string): number {
+  let count = 0
+  for (const file of activityGenerationPaths(base)) {
+    let fd: number
+    try {
+      fd = openSync(file, 'r')
+    } catch {
+      continue
+    }
+    try {
+      const size = statSync(file).size
+      let pos = 0
+      while (pos < size) {
+        const buf = readRange(fd, pos, Math.min(BLOCK, size - pos))
+        if (!buf.length) break
+        for (let i = 0; i < buf.length; i++) if (buf[i] === 0x0a) count++
+        pos += buf.length
+      }
+    } catch {
+      /* a vanished generation counts nothing */
+    } finally {
+      closeSync(fd)
+    }
+  }
+  return count
+}
+
 /** How many events newer than `since` carry one of `kinds` — the tab badge.
  *  The reverse walk ends at the first event at or before `since`, so a badge
  *  poll normally touches one block no matter how long the history is. */

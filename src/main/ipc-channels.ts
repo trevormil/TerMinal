@@ -12,6 +12,7 @@ type Of<F> = F extends (...args: infer A) => infer R ? { args: A; result: Awaite
 
 export type ChannelMap = {
   'activity:clear': Of<GtApi['activity']['clear']>
+  'activity:count': Of<GtApi['activity']['count']>
   'activity:page': Of<GtApi['activity']['page']>
   'activity:unseen-count': Of<GtApi['activity']['unseenCount']>
   'agents:cancel': Of<GtApi['agents']['cancel']>
