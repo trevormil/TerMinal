@@ -32,6 +32,7 @@ import { frameInitialInput } from '../lib/pty-input'
 import type { Choice } from './EntryScreen'
 import type { Engine, KnowledgeScope, PromptSnippet, SkillInfo } from '../lib/types'
 import { rewriteCodexSkillSubmit } from '../lib/codexSkillInput'
+import { reflowTerminalCopy } from '../lib/copyReflow'
 import { droppedPathText, formatDroppedPaths } from '../lib/terminalInput'
 import { DND_REL } from './FileTree'
 import { EngineLogo } from './EngineLogo'
@@ -390,6 +391,19 @@ export function TerminalPane({
     term.open(el)
     fit.fit()
 
+    // Seamless copy: the hosted TUI (Claude Code / codex) hard-wraps its
+    // transcript with real newlines + a hanging indent, so a native copy
+    // pastes with the wrap baked in. Rewrite the clipboard payload at copy
+    // time — provably-wrapped lines re-join, the common indent goes, code
+    // blocks keep their breaks (see copyReflow.ts).
+    const onCopy = (e: ClipboardEvent) => {
+      const text = term.getSelection()
+      if (!text || !e.clipboardData) return
+      e.preventDefault()
+      e.clipboardData.setData('text/plain', reflowTerminalCopy(text, term.cols))
+    }
+    el.addEventListener('copy', onCopy)
+
     const gt = window.gt
     let skillNames = new Set<string>(choice.engine === 'codex' && !isRemote ? ['ticket'] : [])
     if (choice.engine === 'codex' && !isRemote) {
@@ -675,6 +689,7 @@ export function TerminalPane({
     return () => {
       cancelAnimationFrame(raf)
       if (fitTimer) window.clearTimeout(fitTimer)
+      el.removeEventListener('copy', onCopy)
       el.removeEventListener('focusin', onFocusIn)
       el.removeEventListener('contextmenu', onContext)
       el.removeEventListener('dragover', onDragOver)
@@ -1677,8 +1692,10 @@ export function TerminalPane({
           <button
             disabled={!contextMenu.hasSelection}
             onClick={() => {
-              const text = termRef.current?.getSelection() || ''
-              if (text) window.gt.clipboardWrite(text)
+              const t = termRef.current
+              const text = t?.getSelection() || ''
+              // Same reflow as native Cmd+C — one copy behavior everywhere.
+              if (text && t) window.gt.clipboardWrite(reflowTerminalCopy(text, t.cols))
               setContextMenu(null)
               requestAnimationFrame(() => termRef.current?.focus())
             }}
