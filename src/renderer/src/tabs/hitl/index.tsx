@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ALL,
+  UNCATEGORIZED,
   categoryDepth,
   categoryLeaf,
   chipCategory,
   deriveCategories,
+  deriveCategoriesFromCounts,
   filterByCategory,
   hasChildren,
   resolveSelection,
-  shouldShowSidebar,
   visibleCategories,
 } from '../../../../shared/inbox-categories'
 import { inboxQuiet, slackChannelName, type SlackChannelCfg } from '../../../../shared/slack'
@@ -30,7 +31,7 @@ import type { BadgeTone } from '../../components/ui'
 import { Markdown } from '../../components/Markdown'
 import { RepoTrustReview, useRepoTrustPrompt } from '../../components/RepoTrustReview'
 import { navigateTo } from '../../lib/nav'
-import type { Tab, TabContext, HitlItem } from '../../lib/types'
+import type { Tab, TabContext, HitlItem, InboxCounts } from '../../lib/types'
 import { relativeTime } from '../../lib/time'
 import { ageColor, ageLabel, ageTierOf, untilLabel } from '../../lib/inboxAge'
 import { snoozePresets } from '../../../../shared/snooze'
@@ -206,7 +207,7 @@ export function InboxDrawer({
   const [history, setHistory] = useState<HitlItem[]>([])
   const [historyCursor, setHistoryCursor] = useState<string | null | undefined>(undefined)
   const [historyLoading, setHistoryLoading] = useState(false)
-  const [archivedTotal, setArchivedTotal] = useState(0)
+  const [counts, setCounts] = useState<InboxCounts | null>(null)
   const [page, setPage] = useState(0)
   // An item you read in THIS drawer session leaves the live list on the next
   // poll — main archived it. Holding it here keeps the row where you left it
@@ -273,7 +274,7 @@ export function InboxDrawer({
         // pager's archived total without ever touching the archive itself.
         window.gt.inbox
           .counts()
-          .then((c) => setArchivedTotal(c.archived))
+          .then(setCounts)
           .catch(() => {}),
       ]),
     { intervalMs: 15_000 },
@@ -312,8 +313,27 @@ export function InboxDrawer({
   // A snoozed item is off your plate: out of the list AND out of the unread
   // count, or "ask me tomorrow" would still nag you today.
   const unsnoozed = all.filter((h) => !isSnoozed(h))
-  // Derived from the items present — no registry, no union (ticket 120).
-  const categories = deriveCategories(unsnoozed)
+  // The list is paginated, so deriving this rail from materialized rows makes
+  // its numbers partial and causes archive-only categories to appear late.
+  // The local counts index covers the entire archive; remote live items are
+  // merged in because their owning hosts are not part of that local index.
+  const fullCategoryCounts: Record<string, number> = Object.create(null)
+  if (counts) {
+    for (const [name, slot] of Object.entries(counts.byCategory)) {
+      fullCategoryCounts[name] = slot.total
+    }
+    for (const h of unsnoozed.filter((item) => item.hostId)) {
+      const name = h.category || UNCATEGORIZED
+      fullCategoryCounts[name] = (fullCategoryCounts[name] ?? 0) + 1
+    }
+    for (const h of snoozedItems.filter((item) => !item.hostId)) {
+      const name = h.category || UNCATEGORIZED
+      fullCategoryCounts[name] = Math.max(0, (fullCategoryCounts[name] ?? 0) - 1)
+    }
+  }
+  const categories = counts
+    ? deriveCategoriesFromCounts(fullCategoryCounts)
+    : deriveCategories(unsnoozed)
   const activeCategory = resolveSelection(category, categories)
   const shown = filterByCategory(unsnoozed, activeCategory)
   // Unread counts the WHOLE inbox, not the filtered view: a badge that drops
@@ -355,7 +375,7 @@ export function InboxDrawer({
   // pager says 12+ while archive pages remain unsearched.
   const totalLabel =
     activeCategory === ALL
-      ? `${unsnoozed.length + archivedTotal}`
+      ? `${categories.find((c) => c.name === activeCategory)?.count ?? stream.length}`
       : `${stream.length}${exhausted ? '' : '+'}`
   const rangeLabel = pageItems.length
     ? `${pageStart + 1}–${pageStart + pageItems.length} of ${totalLabel}`
@@ -750,66 +770,65 @@ export function InboxDrawer({
       </div>
 
       <div className="flex min-h-0 flex-1">
-        {shouldShowSidebar(categories) && (
-          // Darker than the list it sits beside, and flush to the top — a
-          // leading gap above "All" reads as a missing row.
-          <aside className="w-40 shrink-0 overflow-y-auto border-r border-[var(--gt-border)] bg-[var(--gt-bg)]">
-            {visibleCategories(categories, collapsed).map((c) => {
-              const active = c.name === activeCategory
-              const depth = categoryDepth(c.name)
-              const parent = hasChildren(c.name, categories)
-              const isCollapsed = collapsed.has(c.name)
-              return (
-                <button
-                  key={c.name}
-                  onClick={() => pickCategoryFresh(c.name)}
-                  aria-current={active ? 'true' : undefined}
-                  // The full path is the accessible name; the row only draws the
-                  // leaf, because at depth the indent already says the parent.
-                  title={c.name}
-                  className={`flex w-full items-center gap-1 border-l-2 py-1.5 pr-3 text-left text-[11px] transition-colors duration-150 ${
-                    active
-                      ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/20 text-zinc-100'
-                      : 'border-transparent text-zinc-500 hover:bg-[var(--gt-accent)]/10 hover:text-zinc-200'
-                  }`}
-                  style={{ paddingLeft: `${12 + depth * 12}px` }}
-                >
-                  {parent ? (
-                    // A span, not a nested <button> — a button inside a button
-                    // is invalid HTML and the inner one stops receiving clicks
-                    // in some browsers. stopPropagation keeps the disclosure
-                    // from also selecting the row.
-                    <span
-                      role="button"
-                      tabIndex={-1}
-                      aria-label={isCollapsed ? `Expand ${c.name}` : `Collapse ${c.name}`}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        toggleCollapsed(c.name)
-                      }}
-                      className="-ml-1 shrink-0 rounded px-0.5 text-zinc-600 hover:text-zinc-300"
-                    >
-                      {isCollapsed ? '▸' : '▾'}
-                    </span>
-                  ) : (
-                    // Reserve the disclosure's width so leaf rows at the same
-                    // depth line up with their siblings that have children.
-                    <span className="shrink-0 pl-2.5" aria-hidden />
-                  )}
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate">{categoryLeaf(c.name)}</span>
-                    {slackHints && c.name !== ALL && (
-                      <span className="block truncate font-mono text-[9px] leading-tight text-zinc-600">
-                        #{slackChannelName(c.name, slackHints)}
-                      </span>
-                    )}
+        {/* Darker than the list it sits beside, and flush to the top — a
+            leading gap above "All" reads as a missing row. The rail is stable
+            chrome: it remains visible even when All is its only row. */}
+        <aside className="w-40 shrink-0 overflow-y-auto border-r border-[var(--gt-border)] bg-[var(--gt-bg)]">
+          {visibleCategories(categories, collapsed).map((c) => {
+            const active = c.name === activeCategory
+            const depth = categoryDepth(c.name)
+            const parent = hasChildren(c.name, categories)
+            const isCollapsed = collapsed.has(c.name)
+            return (
+              <button
+                key={c.name}
+                onClick={() => pickCategoryFresh(c.name)}
+                aria-current={active ? 'true' : undefined}
+                // The full path is the accessible name; the row only draws the
+                // leaf, because at depth the indent already says the parent.
+                title={c.name}
+                className={`flex w-full items-center gap-1 border-l-2 py-1.5 pr-3 text-left text-[11px] transition-colors duration-150 ${
+                  active
+                    ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/20 text-zinc-100'
+                    : 'border-transparent text-zinc-500 hover:bg-[var(--gt-accent)]/10 hover:text-zinc-200'
+                }`}
+                style={{ paddingLeft: `${12 + depth * 12}px` }}
+              >
+                {parent ? (
+                  // A span, not a nested <button> — a button inside a button
+                  // is invalid HTML and the inner one stops receiving clicks
+                  // in some browsers. stopPropagation keeps the disclosure
+                  // from also selecting the row.
+                  <span
+                    role="button"
+                    tabIndex={-1}
+                    aria-label={isCollapsed ? `Expand ${c.name}` : `Collapse ${c.name}`}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      toggleCollapsed(c.name)
+                    }}
+                    className="-ml-1 shrink-0 rounded px-0.5 text-zinc-600 hover:text-zinc-300"
+                  >
+                    {isCollapsed ? '▸' : '▾'}
                   </span>
-                  <span className="shrink-0 tabular-nums text-zinc-600">{c.count}</span>
-                </button>
-              )
-            })}
-          </aside>
-        )}
+                ) : (
+                  // Reserve the disclosure's width so leaf rows at the same
+                  // depth line up with their siblings that have children.
+                  <span className="shrink-0 pl-2.5" aria-hidden />
+                )}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate">{categoryLeaf(c.name)}</span>
+                  {slackHints && c.name !== ALL && (
+                    <span className="block truncate font-mono text-[9px] leading-tight text-zinc-600">
+                      #{slackChannelName(c.name, slackHints)}
+                    </span>
+                  )}
+                </span>
+                <span className="shrink-0 tabular-nums text-zinc-600">{c.count}</span>
+              </button>
+            )
+          })}
+        </aside>
         <div className="min-h-0 flex-1 overflow-y-auto">
           {/* Not a HITL item on disk — a live decision about the active repo. It
             sits above the list because it is the one thing here that is

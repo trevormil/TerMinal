@@ -129,6 +129,16 @@ describe('a real caller exists (ticket 120)', () => {
 describe('the sidebar is built on the design system (ticket 119)', () => {
   const tab = read('src/renderer/src/tabs/hitl/index.tsx')
 
+  test('it is always rendered and uses full-inbox indexed totals', () => {
+    const aroundAside = tab.slice(
+      tab.indexOf('<div className="flex min-h-0 flex-1">'),
+      tab.indexOf('</aside>'),
+    )
+    expect(aroundAside).not.toContain('shouldShowSidebar')
+    expect(tab).toContain('deriveCategoriesFromCounts')
+    expect(tab).toContain('slot.total')
+  })
+
   test('it uses an allowed surface, not a new one', () => {
     // The RULE is the allowlist, not one specific token — pinning `--gt-panel`
     // here made a legitimate "make it darker" change look like a violation.

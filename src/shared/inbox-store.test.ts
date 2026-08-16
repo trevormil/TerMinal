@@ -334,11 +334,59 @@ describe('the counts index', () => {
       live: 2,
       unread: 2,
       archived: 1,
-      byCategory: { reviews: { live: 1, unread: 1 } },
+      byCategory: {
+        reviews: { live: 1, unread: 1, archived: 1, total: 2 },
+        Uncategorized: { live: 1, unread: 1, archived: 0, total: 1 },
+      },
     })
 
     updateInbox(p, (w) => w.filter((h) => h.id !== 'a'), { include: ['a'] })
     expect(readInboxCounts(p).archived).toBe(0)
+  })
+
+  test('category totals include the entire archive, not only a loaded page', () => {
+    const p = fresh()
+    updateInbox(p, () => [
+      ...Array.from({ length: 75 }, (_, i) => item({ id: `review-${i}`, category: 'Reviews' })),
+      ...Array.from({ length: 25 }, (_, i) => item({ id: `build-${i}`, category: 'Builds' })),
+    ])
+    updateInbox(p, (live) => live.map((h) => ({ ...h, readAt: 1 })))
+
+    expect(readInboxArchive(p, { limit: 50 }).items).toHaveLength(50)
+    expect(readInboxCounts(p).byCategory).toMatchObject({
+      Reviews: { live: 0, archived: 75, total: 75 },
+      Builds: { live: 0, archived: 25, total: 25 },
+    })
+  })
+
+  test('an older counts index is upgraded from the full archive on demand', () => {
+    const p = fresh()
+    updateInbox(p, () => [item({ id: 'a', category: 'Reviews' })])
+    updateInbox(p, (live) => live.map((h) => ({ ...h, readAt: 1 })))
+    writeFileSync(
+      p.counts,
+      JSON.stringify({ live: 0, unread: 0, archived: 1, byCategory: {}, updatedAt: 1 }),
+    )
+
+    expect(inboxCounts(p).byCategory.Reviews).toMatchObject({ archived: 1, total: 1 })
+  })
+
+  test('reopening an archived item does not count the same message twice', () => {
+    const p = fresh()
+    updateInbox(p, () => [item({ id: 'a', category: 'Reviews' })])
+    updateInbox(p, (live) => live.map((h) => ({ ...h, readAt: 1 })))
+
+    updateInbox(
+      p,
+      (items) => items.map((h) => ({ ...h, readAt: undefined, status: 'open' as const })),
+      { include: ['a'] },
+    )
+    expect(readInboxCounts(p)).toMatchObject({ live: 1, archived: 0 })
+    expect(readInboxCounts(p).byCategory.Reviews.total).toBe(1)
+
+    updateInbox(p, (live) => live.map((h) => ({ ...h, readAt: 2 })))
+    expect(readInboxCounts(p)).toMatchObject({ live: 0, archived: 1 })
+    expect(readInboxCounts(p).byCategory.Reviews.total).toBe(1)
   })
 
   test('counts agree with a full recount after a long random walk', () => {

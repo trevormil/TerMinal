@@ -88,6 +88,7 @@ export function inboxPathsFor(hotFile: string): InboxPaths {
 }
 
 export type InboxCounts = {
+  version: number
   /** Live items (unread and unresolved). */
   live: number
   /** Live items that have never been seen. Today live implies unread, but the
@@ -96,11 +97,14 @@ export type InboxCounts = {
   unread: number
   /** Distinct items in the archive. */
   archived: number
-  byCategory: Record<string, { live: number; unread: number }>
+  byCategory: Record<string, { live: number; unread: number; archived: number; total: number }>
   updatedAt: number
 }
 
+const INBOX_COUNTS_VERSION = 2
+
 const EMPTY_COUNTS: InboxCounts = {
+  version: 0,
   live: 0,
   unread: 0,
   archived: 0,
@@ -117,19 +121,38 @@ export function isInboxLive(h: { readAt?: number; status?: string }): boolean {
 
 const CATEGORY_FALLBACK = 'Uncategorized'
 
-export function inboxCountsOf(live: InboxRecord[], archived: number): InboxCounts {
-  const byCategory: Record<string, { live: number; unread: number }> = {}
+type ArchiveSummary = { total: number; byCategory: Record<string, number> }
+
+function emptyCategoryCount() {
+  return { live: 0, unread: 0, archived: 0, total: 0 }
+}
+
+export function inboxCountsOf(live: InboxRecord[], archive: ArchiveSummary): InboxCounts {
+  const byCategory: InboxCounts['byCategory'] = Object.create(null)
   let unread = 0
   for (const h of live) {
     const cat = h.category || CATEGORY_FALLBACK
-    const slot = (byCategory[cat] ??= { live: 0, unread: 0 })
+    const slot = (byCategory[cat] ??= emptyCategoryCount())
     slot.live++
+    slot.total++
     if (!h.readAt) {
       slot.unread++
       unread++
     }
   }
-  return { live: live.length, unread, archived, byCategory, updatedAt: Date.now() }
+  for (const [cat, archived] of Object.entries(archive.byCategory)) {
+    const slot = (byCategory[cat] ??= emptyCategoryCount())
+    slot.archived += archived
+    slot.total += archived
+  }
+  return {
+    version: INBOX_COUNTS_VERSION,
+    live: live.length,
+    unread,
+    archived: archive.total,
+    byCategory,
+    updatedAt: Date.now(),
+  }
 }
 
 // --- raw file helpers --------------------------------------------------------
@@ -168,7 +191,15 @@ export function readInboxCounts(p: InboxPaths): InboxCounts {
     const parsed = JSON.parse(readFileSync(p.counts, 'utf8')) as InboxCounts
     if (typeof parsed?.live !== 'number' || typeof parsed?.archived !== 'number')
       return { ...EMPTY_COUNTS }
-    return { ...EMPTY_COUNTS, ...parsed, byCategory: parsed.byCategory ?? {} }
+    const byCategory: InboxCounts['byCategory'] = Object.create(null)
+    for (const [cat, raw] of Object.entries(parsed.byCategory ?? {})) {
+      const slot = raw as Partial<InboxCounts['byCategory'][string]>
+      const live = typeof slot.live === 'number' ? slot.live : 0
+      const unread = typeof slot.unread === 'number' ? slot.unread : 0
+      const archived = typeof slot.archived === 'number' ? slot.archived : 0
+      byCategory[cat] = { live, unread, archived, total: live + archived }
+    }
+    return { ...EMPTY_COUNTS, ...parsed, byCategory }
   } catch {
     return { ...EMPTY_COUNTS }
   }
@@ -380,7 +411,7 @@ export function updateInbox<T extends InboxRecord = HitlItem>(
       // Even a no-op mutation must finish a pending migration, or an oversized
       // legacy file survives every read that declines to change anything.
       if (!strays.length) return false
-      return commit(p, live, strays, [], readInboxCounts(p))
+      return commit(p, live, strays, [], readInboxCounts(p), new Map())
     }
 
     const nextLive: T[] = []
@@ -400,7 +431,7 @@ export function updateInbox<T extends InboxRecord = HitlItem>(
     const nextIds = new Set(next.map((h) => h.id))
     const dropped = [...before.keys()].filter((id) => !nextIds.has(id))
 
-    return commit(p, nextLive, toArchive, dropped, readInboxCounts(p))
+    return commit(p, nextLive, toArchive, dropped, readInboxCounts(p), pulled)
   })
 }
 
@@ -415,10 +446,50 @@ function commit(
   toArchive: InboxRecord[],
   dropped: string[],
   prev: InboxCounts,
+  previouslyArchived: ReadonlyMap<string, InboxRecord>,
 ): boolean {
-  // Seed the archive total BEFORE appending — a full scan taken afterwards
-  // already includes the lines we are about to add to it.
-  const base = prev.updatedAt ? prev.archived : countArchive(p)
+  // Seed the per-category archive totals once for an older/missing index. Later
+  // writes maintain them incrementally without rescanning growing history.
+  const archive =
+    prev.version === INBOX_COUNTS_VERSION
+      ? {
+          total: prev.archived,
+          byCategory: Object.fromEntries(
+            Object.entries(prev.byCategory)
+              .filter(([, slot]) => slot.archived > 0)
+              .map(([cat, slot]) => [cat, slot.archived]),
+          ),
+        }
+      : summarizeArchive(p, new Set(live.map((item) => item.id)))
+
+  const adjustArchiveCategory = (item: InboxRecord, delta: number) => {
+    const cat = item.category || CATEGORY_FALLBACK
+    archive.byCategory[cat] = Math.max(0, (archive.byCategory[cat] ?? 0) + delta)
+    if (!archive.byCategory[cat]) delete archive.byCategory[cat]
+  }
+
+  for (const item of toArchive) {
+    const prior = previouslyArchived.get(item.id)
+    if (prior) {
+      adjustArchiveCategory(prior, -1)
+    } else {
+      archive.total++
+    }
+    adjustArchiveCategory(item, 1)
+  }
+  const liveIds = new Set(live.map((item) => item.id))
+  const rearchivedIds = new Set(toArchive.map((item) => item.id))
+  for (const [id, prior] of previouslyArchived) {
+    if (!liveIds.has(id) || rearchivedIds.has(id)) continue
+    archive.total = Math.max(0, archive.total - 1)
+    adjustArchiveCategory(prior, -1)
+  }
+  for (const id of dropped) {
+    const prior = previouslyArchived.get(id)
+    if (!prior) continue
+    archive.total = Math.max(0, archive.total - 1)
+    adjustArchiveCategory(prior, -1)
+  }
 
   if (toArchive.length)
     appendFileSync(p.archive, toArchive.map((h) => `${JSON.stringify(h)}\n`).join(''))
@@ -431,8 +502,7 @@ function commit(
 
   writeJsonAtomicShared(p.hot, live)
 
-  const archived = Math.max(0, base + toArchive.length - dropped.length)
-  writeJsonAtomicShared(p.counts, inboxCountsOf(live, archived))
+  writeJsonAtomicShared(p.counts, inboxCountsOf(live, archive))
   return true
 }
 
@@ -468,22 +538,27 @@ function importLegacyDailyArchives(p: InboxPaths): void {
 
 /** Full archive scan — only ever run once, to seed a counts file that has never
  *  been written. Every later count is maintained incrementally under the lock. */
-function countArchive(p: InboxPaths): number {
+function summarizeArchive(p: InboxPaths, liveIds: ReadonlySet<string>): ArchiveSummary {
   try {
     const hidden = readHidden(p.hidden)
-    const ids = new Set<string>()
+    const records = new Map<string, InboxRecord>()
     for (const line of readFileSync(p.archive, 'utf8').split('\n')) {
       if (!line.trim()) continue
       try {
-        const id = (JSON.parse(line) as InboxRecord).id
-        if (id && !hidden.has(id)) ids.add(id)
+        const item = JSON.parse(line) as InboxRecord
+        if (item.id && !hidden.has(item.id) && !liveIds.has(item.id)) records.set(item.id, item)
       } catch {
         /* torn line */
       }
     }
-    return ids.size
+    const byCategory: Record<string, number> = Object.create(null)
+    for (const item of records.values()) {
+      const cat = item.category || CATEGORY_FALLBACK
+      byCategory[cat] = (byCategory[cat] ?? 0) + 1
+    }
+    return { total: records.size, byCategory }
   } catch {
-    return 0
+    return { total: 0, byCategory: {} }
   }
 }
 
@@ -507,9 +582,11 @@ export function readInboxLive<T extends InboxRecord = HitlItem>(p: InboxPaths): 
 /** Counts, computed on demand if they have never been written. */
 export function inboxCounts(p: InboxPaths): InboxCounts {
   const stored = readInboxCounts(p)
-  if (stored.updatedAt) return stored
-  const live = readInboxLive(p)
-  return inboxCountsOf(live, countArchive(p))
+  if (stored.version === INBOX_COUNTS_VERSION) return stored
+  // A no-op mutation writes the new index under the same lock as ordinary
+  // writers. This is the one-time migration path for existing installations.
+  updateInbox(p, (live) => live)
+  return readInboxCounts(p)
 }
 
 /** One item by id, live first then history. Live is the truth when both exist. */
