@@ -64,7 +64,7 @@
   --secondary: var(--gt-panel-2);
   --secondary-foreground: var(--gt-text);
   --muted: var(--gt-surface-hover);
-  --muted-foreground: var(--gt-text-muted);
+  --muted-foreground: var(--gt-text-muted-bright);
   --accent: var(--gt-accent-2);
   --accent-foreground: var(--gt-text);
   --destructive: var(--gt-red);

@@ -1,5 +1,6 @@
 import { Zap } from 'lucide-react'
-import { Card, Empty } from '../../components/ui'
+import { TitledCard } from '../../components/ui/titled-card'
+import { Empty } from '../../components/ui/display'
 import type { Plugin, TranscriptStats } from '../../lib/types'
 
 const plugin: Plugin<TranscriptStats> = {
@@ -16,14 +17,14 @@ const plugin: Plugin<TranscriptStats> = {
   render: (d) => {
     const a = d?.lastAction
     return (
-      <Card icon={Zap} title="Now Doing">
+      <TitledCard icon={Zap} title="Now Doing">
         {a ? (
           <div className="flex items-start gap-2">
             <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[var(--gt-accent-2)] gt-pulse" />
             <div className="min-w-0">
-              <div className="text-[13px] font-semibold text-zinc-100">{a.tool}</div>
+              <div className="text-[13px] font-semibold text-foreground">{a.tool}</div>
               {a.detail && (
-                <div className="truncate text-[11.5px] text-zinc-500" title={a.detail}>
+                <div className="truncate text-[11.5px] text-muted-foreground" title={a.detail}>
                   {a.detail}
                 </div>
               )}
@@ -32,7 +33,7 @@ const plugin: Plugin<TranscriptStats> = {
         ) : (
           <Empty>Idle</Empty>
         )}
-      </Card>
+      </TitledCard>
     )
   },
 }
