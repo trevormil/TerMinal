@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Ticket as TicketIcon, CircleDot, Circle, TriangleAlert } from 'lucide-react'
-import { Card, Empty } from '../../components/ui'
+import { Empty } from '../../components/ui/display'
 import type { Plugin, Ticket } from '../../lib/types'
 import { ticketsView } from './model'
 import { TicketModal } from './TicketModal'
@@ -10,7 +10,7 @@ function Dot({ status }: { status: string }) {
     return <CircleDot size={12} strokeWidth={2.25} className="gt-pulse text-[var(--gt-yellow)]" />
   if (status === 'stuck')
     return <TriangleAlert size={12} strokeWidth={2.25} className="text-[var(--gt-red)]" />
-  return <Circle size={12} strokeWidth={2.25} className="text-zinc-600" />
+  return <Circle size={12} strokeWidth={2.25} className="text-muted-foreground" />
 }
 
 // Proper component (not inline render JSX) so paging + modal state survive the
@@ -19,22 +19,9 @@ function TicketsWidget({ data }: { data: Ticket[] | null }) {
   const [pages, setPages] = useState(1)
   const [openSlug, setOpenSlug] = useState<string | null>(null)
   const v = ticketsView(data || [], pages)
-  if (!v.total && !v.closed)
-    return (
-      <Card icon={TicketIcon} title="Tickets">
-        <Empty>No tickets</Empty>
-      </Card>
-    )
+  if (!v.total && !v.closed) return <Empty>No tickets</Empty>
   return (
-    <Card
-      icon={TicketIcon}
-      title="Tickets"
-      right={
-        <span className="text-[9px] tabular-nums text-zinc-600">
-          {v.active}/{v.total} active
-        </span>
-      }
-    >
+    <>
       <div className="space-y-0.5">
         {v.rows.map((t) => (
           <button
@@ -48,9 +35,9 @@ function TicketsWidget({ data }: { data: Ticket[] | null }) {
               <Dot status={t.status} />
             </span>
             <span
-              className={`min-w-0 flex-1 truncate transition-colors ${t.status === 'in-progress' ? 'text-zinc-100 group-hover/row:text-white' : 'text-zinc-400 group-hover/row:text-zinc-100'}`}
+              className={`min-w-0 flex-1 truncate transition-colors ${t.status === 'in-progress' ? 'text-foreground group-hover/row:text-foreground' : 'text-muted-foreground group-hover/row:text-foreground'}`}
             >
-              <span className="tabular-nums text-zinc-500">{t.key}</span> {t.title}
+              <span className="tabular-nums text-muted-foreground">{t.key}</span> {t.title}
             </span>
           </button>
         ))}
@@ -60,7 +47,7 @@ function TicketsWidget({ data }: { data: Ticket[] | null }) {
               <button
                 type="button"
                 onClick={() => setPages((p) => p + 1)}
-                className="cursor-pointer text-[10px] text-zinc-600 hover:text-zinc-300 focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--gt-accent-2)]"
+                className="cursor-pointer text-[10px] text-muted-foreground hover:text-foreground/80 focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--gt-accent-2)]"
               >
                 +{v.overflow} more
               </button>
@@ -69,17 +56,17 @@ function TicketsWidget({ data }: { data: Ticket[] | null }) {
               <button
                 type="button"
                 onClick={() => setPages(1)}
-                className="cursor-pointer text-[10px] text-zinc-600 hover:text-zinc-300 focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--gt-accent-2)]"
+                className="cursor-pointer text-[10px] text-muted-foreground hover:text-foreground/80 focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--gt-accent-2)]"
               >
                 Show less
               </button>
             )}
           </div>
         )}
-        {v.closed > 0 && <div className="text-[10px] text-zinc-600">▸ {v.closed} closed</div>}
+        {v.closed > 0 && <div className="text-[10px] text-muted-foreground">▸ {v.closed} closed</div>}
       </div>
       {openSlug && <TicketModal slug={openSlug} onClose={() => setOpenSlug(null)} />}
-    </Card>
+    </>
   )
 }
 

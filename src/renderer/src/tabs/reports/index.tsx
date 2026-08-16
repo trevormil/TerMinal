@@ -1,10 +1,27 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ClipboardList, FileText, ChevronDown, ChevronRight, ExternalLink } from 'lucide-react'
-import { Badge } from '../../components/ui'
-import type { BadgeTone } from '../../components/ui'
+import { Badge } from '@/components/ui/badge'
 import { Markdown } from '../../components/Markdown'
 import type { Tab, TabContext, DocsTree, DocEntry } from '../../lib/types'
 import { relativeTime } from '../../lib/time'
+
+// Local re-declaration of the legacy badge tone union so this tab no longer
+// imports the legacy `components/ui` module (types are erased at runtime).
+type BadgeTone = 'ok' | 'warn' | 'bad' | 'mute' | 'red' | 'yellow' | 'green' | 'blue' | 'accent'
+
+// Map a legacy badge tone to the shadcn badge variant.
+const badgeVariantFor = (tone: BadgeTone) =>
+  tone === 'green' || tone === 'ok'
+    ? ('success' as const)
+    : tone === 'red' || tone === 'bad'
+      ? ('destructive' as const)
+      : tone === 'yellow' || tone === 'warn'
+        ? ('warning' as const)
+        : tone === 'blue'
+          ? ('info' as const)
+          : tone === 'accent'
+            ? ('default' as const)
+            : ('secondary' as const)
 
 // Reports viewer — focused, status-aware sibling to the Docs tab. Groups
 // reports/<kind>/<sha>.md by agent kind, parses each run's frontmatter to show
@@ -220,7 +237,9 @@ function ReportsTab({ ctx }: { ctx: TabContext }) {
                     <span className="text-zinc-700">·</span>
                     <span className="text-[10px] tabular-nums text-zinc-600">{g.runs.length}</span>
                     {latest?.meta.status && (
-                      <Badge tone={statusTone(latest.meta.status)}>{latest.meta.status}</Badge>
+                      <Badge variant={badgeVariantFor(statusTone(latest.meta.status))}>
+                        {latest.meta.status}
+                      </Badge>
                     )}
                     <span className="ml-auto text-[9.5px] text-zinc-700">
                       {reltime(latest?.meta.generated)}
@@ -251,7 +270,9 @@ function ReportsTab({ ctx }: { ctx: TabContext }) {
                               {r.meta.sha || r.entry.title}
                             </span>
                             {r.meta.status && (
-                              <Badge tone={statusTone(r.meta.status)}>{r.meta.status}</Badge>
+                              <Badge variant={badgeVariantFor(statusTone(r.meta.status))}>
+                                {r.meta.status}
+                              </Badge>
                             )}
                             <span className="text-[9.5px] text-zinc-600">
                               {reltime(r.meta.generated)}
@@ -260,7 +281,7 @@ function ReportsTab({ ctx }: { ctx: TabContext }) {
                           {chips.length > 0 && (
                             <div className="flex flex-wrap gap-1 pl-4">
                               {chips.map((c, i) => (
-                                <Badge key={i} tone={c.tone || 'mute'}>
+                                <Badge key={i} variant={badgeVariantFor(c.tone || 'mute')}>
                                   {c.label}
                                 </Badge>
                               ))}
@@ -289,7 +310,9 @@ function ReportsTab({ ctx }: { ctx: TabContext }) {
                 {selectedRun.meta.sha || selectedRun.entry.title}
               </span>
               {selectedRun.meta.status && (
-                <Badge tone={statusTone(selectedRun.meta.status)}>{selectedRun.meta.status}</Badge>
+                <Badge variant={badgeVariantFor(statusTone(selectedRun.meta.status))}>
+                  {selectedRun.meta.status}
+                </Badge>
               )}
               <span className="text-[10.5px] text-zinc-600">
                 {reltime(selectedRun.meta.generated)}
@@ -306,7 +329,7 @@ function ReportsTab({ ctx }: { ctx: TabContext }) {
               )}
               {Array.isArray(selectedRun.meta.tickets_filed) &&
                 selectedRun.meta.tickets_filed.length > 0 && (
-                  <Badge tone="blue">{selectedRun.meta.tickets_filed.length} tickets</Badge>
+                  <Badge variant="info">{selectedRun.meta.tickets_filed.length} tickets</Badge>
                 )}
             </header>
             <article className="min-h-0 flex-1 overflow-y-auto px-8 py-6">

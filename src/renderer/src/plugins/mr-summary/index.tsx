@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { GitPullRequest, Circle, TriangleAlert } from 'lucide-react'
-import { Card, Empty, badgeClasses, type BadgeTone } from '../../components/ui'
+import { Empty } from '../../components/ui/display'
+import { Badge } from '../../components/ui/badge'
 import type { Plugin, MrListResult } from '../../lib/types'
 import { prsView, type PrRow } from './model'
 import { PrModal } from './PrModal'
@@ -12,12 +13,13 @@ function Dot({ ci }: { ci: PrRow['ci'] }) {
     return <Circle size={12} strokeWidth={2.25} className="text-[var(--gt-green)]" />
   if (ci === 'fail')
     return <TriangleAlert size={12} strokeWidth={2.25} className="text-[var(--gt-red)]" />
-  return <Circle size={12} strokeWidth={2.25} className="text-zinc-600" />
+  return <Circle size={12} strokeWidth={2.25} className="text-muted-foreground" />
 }
 
-// Verdict → tone: approve green / request-changes amber / blocked red.
-const verdictBadgeTone = (v: string): BadgeTone =>
-  v === 'approve' ? 'green' : v === 'request-changes' ? 'yellow' : v === 'blocked' ? 'red' : 'mute'
+// Verdict → variant: approve success / request-changes warning / blocked
+// destructive.
+const verdictBadgeVariant = (v: string) =>
+  v === 'approve' ? 'success' : v === 'request-changes' ? 'warning' : v === 'blocked' ? 'destructive' : 'secondary'
 const verdictShort = (v: string) => (v === 'request-changes' ? 'changes' : v)
 
 // Proper component (not inline render JSX) so paging + modal state survive the
@@ -26,25 +28,11 @@ function PrsWidget({ data }: { data: MrListResult | null }) {
   const [pages, setPages] = useState(1)
   const [openIid, setOpenIid] = useState<number | null>(null)
   if (!data) return null
-  if (data.error)
-    return (
-      <Card icon={GitPullRequest} title="PRs / MRs">
-        <Empty>{data.error}</Empty>
-      </Card>
-    )
+  if (data.error) return <Empty>{data.error}</Empty>
   const v = prsView(data.mrs, pages)
-  if (!v.total && !v.done)
-    return (
-      <Card icon={GitPullRequest} title="PRs / MRs">
-        <Empty>No PRs / MRs</Empty>
-      </Card>
-    )
+  if (!v.total && !v.done) return <Empty>No PRs / MRs</Empty>
   return (
-    <Card
-      icon={GitPullRequest}
-      title="PRs / MRs"
-      right={<span className="text-[9px] tabular-nums text-zinc-600">{v.open} open</span>}
-    >
+    <>
       <div className="space-y-0.5">
         {v.rows.map((r) => (
           <button
@@ -58,19 +46,17 @@ function PrsWidget({ data }: { data: MrListResult | null }) {
               <Dot ci={r.ci} />
             </span>
             <span
-              className={`min-w-0 flex-1 truncate transition-colors ${r.draft ? 'text-zinc-500 group-hover/row:text-zinc-300' : 'text-zinc-100 group-hover/row:text-white'}`}
+              className={`min-w-0 flex-1 truncate transition-colors ${r.draft ? 'text-muted-foreground group-hover/row:text-foreground/80' : 'text-foreground group-hover/row:text-foreground'}`}
             >
-              <span className="tabular-nums text-zinc-500">#{r.iid}</span> {r.title}
+              <span className="tabular-nums text-muted-foreground">#{r.iid}</span> {r.title}
             </span>
-            <span className="max-w-[90px] shrink-0 truncate font-mono text-[9px] text-zinc-600">
+            <span className="max-w-[90px] shrink-0 truncate font-mono text-[9px] text-muted-foreground">
               {r.branch}
             </span>
             {r.verdict && (
-              <span
-                className={`shrink-0 rounded border px-1 text-[8.5px] font-semibold uppercase tracking-wide ${badgeClasses(verdictBadgeTone(r.verdict))}`}
-              >
+              <Badge variant={verdictBadgeVariant(r.verdict)} className="shrink-0 px-1 text-[8.5px]">
                 {verdictShort(r.verdict)}
-              </span>
+              </Badge>
             )}
           </button>
         ))}
@@ -80,7 +66,7 @@ function PrsWidget({ data }: { data: MrListResult | null }) {
               <button
                 type="button"
                 onClick={() => setPages((p) => p + 1)}
-                className="cursor-pointer text-[10px] text-zinc-600 hover:text-zinc-300 focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--gt-accent-2)]"
+                className="cursor-pointer text-[10px] text-muted-foreground hover:text-foreground/80 focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--gt-accent-2)]"
               >
                 +{v.overflow} more
               </button>
@@ -89,17 +75,17 @@ function PrsWidget({ data }: { data: MrListResult | null }) {
               <button
                 type="button"
                 onClick={() => setPages(1)}
-                className="cursor-pointer text-[10px] text-zinc-600 hover:text-zinc-300 focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--gt-accent-2)]"
+                className="cursor-pointer text-[10px] text-muted-foreground hover:text-foreground/80 focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--gt-accent-2)]"
               >
                 Show less
               </button>
             )}
           </div>
         )}
-        {v.done > 0 && <div className="text-[10px] text-zinc-600">▸ {v.done} merged/closed</div>}
+        {v.done > 0 && <div className="text-[10px] text-muted-foreground">▸ {v.done} merged/closed</div>}
       </div>
       {openIid !== null && <PrModal iid={openIid} onClose={() => setOpenIid(null)} />}
-    </Card>
+    </>
   )
 }
 

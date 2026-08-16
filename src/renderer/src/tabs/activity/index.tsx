@@ -24,13 +24,43 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { activityTone } from '../../lib/badges'
-import { badgeClasses, Empty } from '../../components/ui'
+import { Badge } from '@/components/ui/badge'
+import { Empty } from '@/components/ui/display'
 import { navigateTo } from '../../lib/nav'
 import { InlineMd, Markdown } from '../../components/Markdown'
 import type { Tab, TabContext, ActivityCursor, ActivityEvent, ActivityKind } from '../../lib/types'
 import { relativeTime } from '../../lib/time'
 import { usePolled } from '../../lib/usePolled'
 import { getPref, setPref } from '../../lib/prefs'
+
+// Map a legacy badge tone (from lib/badges.ts) to the shadcn badge variant.
+const badgeVariantFor = (tone: string) =>
+  tone === 'green' || tone === 'ok'
+    ? ('success' as const)
+    : tone === 'red' || tone === 'bad'
+      ? ('destructive' as const)
+      : tone === 'yellow' || tone === 'warn'
+        ? ('warning' as const)
+        : tone === 'blue'
+          ? ('info' as const)
+          : tone === 'accent'
+            ? ('default' as const)
+            : ('secondary' as const)
+
+// Border/text colour for the timeline's icon node — a circular glyph, not a
+// text badge, so it takes only the tint's border/text over the panel bg.
+const toneIconClasses = (tone: string) =>
+  tone === 'green' || tone === 'ok'
+    ? 'border-[var(--gt-green)]/25 text-[var(--gt-green)]'
+    : tone === 'red' || tone === 'bad'
+      ? 'border-destructive/25 text-destructive'
+      : tone === 'yellow' || tone === 'warn'
+        ? 'border-[var(--gt-yellow)]/25 text-[var(--gt-yellow)]'
+        : tone === 'blue'
+          ? 'border-[var(--gt-blue)]/25 text-[var(--gt-blue)]'
+          : tone === 'accent'
+            ? 'border-primary/30 text-[var(--gt-accent-light)]'
+            : 'border-border text-muted-foreground'
 
 // Decide where clicking an activity row should take you. Priority:
 //   runId  → Runs tab + pre-select that run
@@ -357,14 +387,13 @@ export function ActivityTab({
             Activity
           </button>
           <div className="flex-1" />
-          <span
-            className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-px text-[9.5px] font-medium uppercase tracking-wide ${badgeClasses(
-              tone,
-            )}`}
+          <Badge
+            variant={badgeVariantFor(tone)}
+            className="gap-1 rounded-full px-1.5 py-px text-[9.5px] font-medium uppercase tracking-wide"
           >
             <Icon size={10} strokeWidth={2.25} />
             {KIND_LABEL[e.kind] || e.kind}
-          </span>
+          </Badge>
           {onClose && (
             <button
               onClick={onClose}
@@ -554,7 +583,7 @@ export function ActivityTab({
                     <div className="relative flex w-5 shrink-0 justify-center">
                       <span className="absolute top-0 bottom-0 left-1/2 w-px -translate-x-1/2 bg-[var(--gt-border)]/70" />
                       <span
-                        className={`relative z-10 mt-0.5 flex h-5 w-5 items-center justify-center rounded-full border bg-[var(--gt-bg)] ${badgeClasses(
+                        className={`relative z-10 mt-0.5 flex h-5 w-5 items-center justify-center rounded-full border bg-[var(--gt-bg)] ${toneIconClasses(
                           tone,
                         )} ${isNew ? 'gt-pulse' : ''}`}
                       >
@@ -595,13 +624,12 @@ export function ActivityTab({
                             </div>
                           )}
                           <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                            <span
-                              className={`rounded-full border px-1.5 py-px text-[9.5px] font-medium uppercase tracking-wide ${badgeClasses(
-                                tone,
-                              )}`}
+                            <Badge
+                              variant={badgeVariantFor(tone)}
+                              className="rounded-full px-1.5 py-px text-[9.5px] font-medium uppercase tracking-wide"
                             >
                               {KIND_LABEL[e.kind] || e.kind}
-                            </span>
+                            </Badge>
                             {showRepoChip && (
                               <span className="truncate font-mono text-[10px] text-zinc-600">
                                 {e.repo}

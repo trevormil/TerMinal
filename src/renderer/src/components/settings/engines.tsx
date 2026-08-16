@@ -7,8 +7,9 @@ import {
   engineEffortsOf,
   engineLabel,
 } from '../../lib/engines'
-import { EditDetails, Readiness, SecretInput, Section, inp, tilde } from './shared'
+import { EditDetails, Readiness, SecretInput, Section, tilde } from './shared'
 import type { SettingsCtx, SettingsSectionSpec } from './shared'
+import { Input } from '@/components/ui/input'
 
 function Component({ ctx }: { ctx: SettingsCtx }) {
   const { s, save, env, selectedDaemon, selectedProbe, selectedIsRemote, saveDaemon, profile } = ctx
@@ -70,7 +71,7 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
             {engineAllowsCustomModel(e) ? (
               // hermes/openrouter take any provider/model slug — free-text, like
               // the per-run EngineModelPicker, instead of a closed menu.
-              <input
+              <Input
                 key={`${profile}-${e}-model-${defModel}`}
                 defaultValue={defModel}
                 onBlur={(ev) =>
@@ -79,7 +80,7 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
                 }
                 placeholder="(engine default) — any slug"
                 spellCheck={false}
-                className="w-52 rounded-md border border-[var(--gt-border)] bg-black/30 px-1.5 py-0.5 font-mono text-[11px] text-zinc-200 outline-none"
+                className="w-52 font-mono text-[11px]"
               />
             ) : (
               <select
@@ -121,7 +122,7 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
         {e === 'openai-compat' && (
           <label className="mt-2 block text-[10.5px] text-zinc-500">
             Base URL — an OpenAI-compatible /v1 endpoint (vLLM, Ollama, LM Studio, TGI, …)
-            <input
+            <Input
               key={`${profile}-${e}-baseurl-${selectedDaemon.engines[e].baseUrl}`}
               defaultValue={selectedDaemon.engines[e].baseUrl}
               onBlur={(ev) =>
@@ -130,12 +131,12 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
               }
               placeholder="http://10.0.0.5:8000/v1"
               spellCheck={false}
-              className={`${inp} mt-1 font-mono`}
+              className="mt-1 font-mono"
             />
           </label>
         )}
         <EditDetails label="Override binary path">
-          <input
+          <Input
             key={`${profile}-${e}-path-${overridePath}`}
             defaultValue={overridePath}
             onBlur={(ev) =>
@@ -144,7 +145,7 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
             }
             placeholder={`${e} or /absolute/path/to/${e}`}
             spellCheck={false}
-            className={`${inp} font-mono`}
+            className="font-mono"
           />
         </EditDetails>
       </div>

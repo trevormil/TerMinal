@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ArrowUpRight, X } from 'lucide-react'
+import { Button } from '../../components/ui/button'
 import { TicketDetail } from '../../components/TicketDetail'
 import { useWebSurface } from '../../tabs/browser/webSurface'
 import { navigateTo } from '../../lib/nav'
@@ -96,38 +97,35 @@ export function TicketModal({ slug, onClose }: { slug: string; onClose: () => vo
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex shrink-0 items-center justify-between border-b border-[var(--gt-border)] px-4 py-2">
-          <span className="font-mono text-[11px] text-zinc-500">
+          <span className="font-mono text-[11px] text-muted-foreground">
             {ticket ? ticket.externalKey || `#${ticket.id}` : curSlug}
             {ticket?.linear ? ` · ${ticket.linear.stateName}` : ''}
           </span>
           <div className="flex items-center gap-1.5">
-            <button
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={() => {
                 if (linearUrl) openInTicketsTabView(linearUrl)
                 else openInTicketsTab(curSlug)
                 onClose()
               }}
-              className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200"
             >
               <ArrowUpRight size={11} strokeWidth={2} />
               Open in Tickets tab
-            </button>
-            <button
-              onClick={onClose}
-              title="Close (Esc)"
-              className="rounded-md p-1 text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
-            >
+            </Button>
+            <Button variant="ghost" size="icon" aria-label="Close (Esc)" title="Close (Esc)" onClick={onClose}>
               <X size={14} strokeWidth={2} />
-            </button>
+            </Button>
           </div>
         </div>
         {/* TicketDetail owns its own scrolling (pinned header + tab strip), so
             this only bounds the height. */}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {ticket === undefined ? (
-            <div className="p-6 text-[12px] text-zinc-600">Loading…</div>
+            <div className="p-6 text-[12px] text-muted-foreground">Loading…</div>
           ) : ticket === null ? (
-            <div className="p-6 text-[12px] text-zinc-600">Ticket not found.</div>
+            <div className="p-6 text-[12px] text-muted-foreground">Ticket not found.</div>
           ) : linearUrl ? (
             <LinearIssueSurface url={linearUrl} />
           ) : (

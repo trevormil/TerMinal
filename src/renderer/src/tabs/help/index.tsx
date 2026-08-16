@@ -22,6 +22,7 @@ import {
   Wand2,
   type LucideIcon,
 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import type { Tab, TabContext } from '../../lib/types'
 
 function Section({
@@ -432,15 +433,15 @@ function HelpTab(_props: { ctx: TabContext }) {
           <p className="mb-3 text-[12px] leading-relaxed text-zinc-400">
             TerMinal is open source — bugs and feature requests go straight to the GitHub tracker.
           </p>
-          <button
+          <Button
+            variant="outline"
             onClick={() =>
               window.gt.openExternal('https://github.com/trevormil/TerMinal/issues/new/choose')
             }
-            className="inline-flex items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)] px-3 py-1.5 text-[12px] font-medium text-zinc-200 hover:bg-white/5"
           >
             <Bug size={13} strokeWidth={2} />
             Report a bug or request a feature
-          </button>
+          </Button>
         </Section>
       </div>
     </div>

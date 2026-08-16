@@ -2,6 +2,14 @@ import { Moon, Monitor, Palette, Sun } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { AppearanceMode, AppearanceTabLayout } from '../../lib/types'
 import { ACCENT_SWATCHES, THEMES } from '../../lib/themes'
+import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Section, type SettingsCtx, type SettingsSectionSpec } from './shared'
 
 function Component({ ctx }: { ctx: SettingsCtx }) {
@@ -60,12 +68,14 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
                 <div className="text-[12px] font-semibold text-zinc-200">UI scale</div>
                 <div className="text-[10.5px] text-zinc-500">Scales the whole app shell.</div>
               </div>
-              <button
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
                 onClick={() => save({ appearance: { uiScale: 1 } })}
-                className="rounded-md border border-[var(--gt-border)] px-2 py-1 text-[10.5px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
               >
                 {scalePct}%
-              </button>
+              </Button>
             </div>
             <input
               type="range"
@@ -86,17 +96,21 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
         <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
           <label className="flex min-w-0 items-center gap-2 rounded-lg border border-[var(--gt-border)] bg-black/20 px-2.5 py-2 text-[12px] text-zinc-400">
             Theme
-            <select
+            <Select
               value={s.appearance.theme}
-              onChange={(e) => save({ appearance: { theme: e.target.value } })}
-              className="min-w-0 flex-1 rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[12px] text-zinc-200 outline-none"
+              onValueChange={(v) => save({ appearance: { theme: v } })}
             >
-              {THEMES.map((theme) => (
-                <option key={theme.id} value={theme.id} className="bg-[var(--gt-panel)]">
-                  {theme.title}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger className="min-w-0 flex-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {THEMES.map((theme) => (
+                  <SelectItem key={theme.id} value={theme.id}>
+                    {theme.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </label>
           <div className="flex items-center gap-1 rounded-lg border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">
             {ACCENT_SWATCHES.map((swatch) => {

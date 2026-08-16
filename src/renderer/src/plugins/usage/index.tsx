@@ -1,5 +1,8 @@
 import { Gauge as GaugeIcon } from 'lucide-react'
-import { Card, Gauge, Row, Badge, Empty } from '../../components/ui'
+import { TitledCard } from '../../components/ui/titled-card'
+import { Gauge } from '../../components/ui/gauge'
+import { Row, Empty } from '../../components/ui/display'
+import { Badge } from '../../components/ui/badge'
 import type { Plugin, Usage, UsageWindow } from '../../lib/types'
 
 function resetIn(resetsAt: number | null): string {
@@ -12,16 +15,16 @@ function resetIn(resetsAt: number | null): string {
 }
 
 function WindowRow({ label, w }: { label: string; w: UsageWindow }) {
-  if (!w) return <Row label={label} value={<span className="text-zinc-600">—</span>} />
-  const tone = w.pct > 90 ? '#ff5c7c' : w.pct > 70 ? '#ffb35c' : 'var(--gt-accent-2)'
+  if (!w) return <Row label={label} value={<span className="text-muted-foreground">—</span>} />
+  const tone = w.pct > 90 ? 'var(--gt-red)' : w.pct > 70 ? 'var(--gt-yellow)' : 'var(--gt-accent-2)'
   return (
     <div className="mb-2">
       <div className="mb-1 flex items-baseline justify-between text-[12px]">
-        <span className="text-zinc-400">{label}</span>
-        <span className="tabular-nums text-zinc-200">
+        <span className="text-muted-foreground">{label}</span>
+        <span className="tabular-nums text-foreground/90">
           {w.pct.toFixed(0)}%
           {w.resetsAt && (
-            <span className="ml-1.5 text-[10.5px] text-zinc-600">↻ {resetIn(w.resetsAt)}</span>
+            <span className="ml-1.5 text-[10.5px] text-muted-foreground">↻ {resetIn(w.resetsAt)}</span>
           )}
         </span>
       </div>
@@ -46,25 +49,25 @@ const plugin: Plugin<Usage> = {
     if (!d) return null
     if (!d.ok && !d.fiveHour && !d.sevenDay)
       return (
-        <Card icon={GaugeIcon} title="Plan Usage">
+        <TitledCard icon={GaugeIcon} title="Plan Usage">
           <Empty>{d.error || 'Usage unavailable'}</Empty>
-        </Card>
+        </TitledCard>
       )
     return (
-      <Card
+      <TitledCard
         icon={GaugeIcon}
         title="Plan Usage"
-        right={d.stale ? <Badge tone="mute">Cached</Badge> : undefined}
+        right={d.stale ? <Badge variant="secondary">Cached</Badge> : undefined}
       >
         <WindowRow label="5-hour" w={d.fiveHour} />
         <WindowRow label="Weekly" w={d.sevenDay} />
         {d.overagePct != null && d.overagePct > 0 && (
           <Row
             label="Overage"
-            value={<span className="text-amber-300">{d.overagePct.toFixed(0)}%</span>}
+            value={<span className="text-[var(--gt-yellow)]">{d.overagePct.toFixed(0)}%</span>}
           />
         )}
-      </Card>
+      </TitledCard>
     )
   },
 }

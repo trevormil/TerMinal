@@ -1,5 +1,7 @@
 import { Bot } from 'lucide-react'
-import { Card, Row, CopyButton, Empty } from '../../components/ui'
+import { TitledCard } from '../../components/ui/titled-card'
+import { Row, Empty } from '../../components/ui/display'
+import { CopyButton } from '../../components/ui'
 import type { Plugin, TranscriptStats } from '../../lib/types'
 
 const plugin: Plugin<TranscriptStats> = {
@@ -16,13 +18,13 @@ const plugin: Plugin<TranscriptStats> = {
   render: (d) => {
     if (!d?.ok)
       return (
-        <Card icon={Bot} title="Model">
+        <TitledCard icon={Bot} title="Model">
           <Empty>No active Claude session</Empty>
-        </Card>
+        </TitledCard>
       )
     return (
-      <Card icon={Bot} title="Model">
-        <div className="mb-1 truncate text-[13px] font-semibold text-zinc-100" title={d.model}>
+      <TitledCard icon={Bot} title="Model">
+        <div className="mb-1 truncate text-[13px] font-semibold text-foreground" title={d.model}>
           {d.model}
         </div>
         <Row label="Turns" value={d.turns} />
@@ -35,7 +37,7 @@ const plugin: Plugin<TranscriptStats> = {
           }
         />
         {d.gitBranch && <Row label="Branch" value={d.gitBranch} />}
-      </Card>
+      </TitledCard>
     )
   },
 }

@@ -9,13 +9,28 @@ const SEARCH_CAP = 'sessionSearch'
 // but registerSessionSearchIpc is wired by hand in index.ts — until it is,
 // every invoke rejects, so don't offer the sub-tab at all.
 void probeCapability(SEARCH_CAP, () => window.gt.searchSessions(''))
-import { Badge, Empty } from '../../components/ui'
+import { Badge } from '@/components/ui/badge'
+import { Empty } from '@/components/ui/display'
 import { Markdown } from '../../components/Markdown'
 import { SkillHint } from '../../components/SkillHint'
 import { sessionStatusTone } from '../../lib/badges'
 import type { Tab, TabContext, ProjectSession } from '../../lib/types'
 
 const STATUSES = ['active', 'closed', 'abandoned']
+
+// Map a legacy badge tone (from lib/badges.ts) to the shadcn badge variant.
+const badgeVariantFor = (tone: string) =>
+  tone === 'green' || tone === 'ok'
+    ? ('success' as const)
+    : tone === 'red' || tone === 'bad'
+      ? ('destructive' as const)
+      : tone === 'yellow' || tone === 'warn'
+        ? ('warning' as const)
+        : tone === 'blue'
+          ? ('info' as const)
+          : tone === 'accent'
+            ? ('default' as const)
+            : ('secondary' as const)
 
 // NOT relativeTime: a session has no seconds tier — it starts at minutes,
 // since "an active session 40s old" is noise at this granularity.
@@ -89,7 +104,7 @@ function SessionsTab({ ctx }: { ctx: TabContext }) {
         )}
         {mode === 'docs' && (
           <>
-            {activeCount > 0 && <Badge tone="green">{activeCount} active</Badge>}
+            {activeCount > 0 && <Badge variant="success">{activeCount} active</Badge>}
             <span className="mx-1 text-zinc-700">·</span>
             <Chip active={fStatus === 'all'} onClick={() => setFStatus('all')}>
               All
@@ -140,7 +155,7 @@ function SessionsTab({ ctx }: { ctx: TabContext }) {
                     <span className="min-w-0 flex-1 truncate text-[13px] text-zinc-200">
                       {s.title}
                     </span>
-                    <Badge tone={sessionStatusTone(s.status)}>{s.status}</Badge>
+                    <Badge variant={badgeVariantFor(sessionStatusTone(s.status))}>{s.status}</Badge>
                   </div>
                   <div className="mt-0.5 flex items-center gap-2 truncate text-[11px] text-zinc-600">
                     {s.tickets.length > 0 && (
@@ -171,7 +186,7 @@ function SessionsTab({ ctx }: { ctx: TabContext }) {
               <div className="p-5">
                 <div className="mb-1 flex flex-wrap items-center gap-2 text-[11px] text-zinc-600">
                   <span className="font-mono">{sel.anchor || `#${sel.id}`}</span>
-                  <Badge tone={sessionStatusTone(sel.status)}>{sel.status}</Badge>
+                  <Badge variant={badgeVariantFor(sessionStatusTone(sel.status))}>{sel.status}</Badge>
                   {sel.started && <span>started {reldate(sel.started)}</span>}
                   {sel.ended && <span>ended {reldate(sel.ended)}</span>}
                 </div>

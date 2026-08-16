@@ -1,5 +1,7 @@
 import { FlaskConical, TriangleAlert } from 'lucide-react'
-import { Card, Big, Badge, Row, Empty } from '../../components/ui'
+import { TitledCard } from '../../components/ui/titled-card'
+import { Big, Row, Empty } from '../../components/ui/display'
+import { Badge } from '../../components/ui/badge'
 import { navigateTo } from '../../lib/nav'
 import type { Plugin, TddInfo } from '../../lib/types'
 
@@ -10,10 +12,10 @@ const openPr = (iid: number) => {
   setTimeout(() => navigateTo('mrs', { iid }), 50)
 }
 
-const verdictTone = (v: string): 'ok' | 'warn' | 'bad' | 'mute' =>
-  v === 'approve' ? 'ok' : v === 'request-changes' || v === 'blocked' ? 'bad' : 'mute'
-const testTone = (s: string): 'ok' | 'warn' | 'bad' | 'mute' =>
-  s === 'pass' ? 'ok' : s === 'fail' ? 'bad' : 'mute'
+const verdictTone = (v: string): 'success' | 'destructive' | 'secondary' =>
+  v === 'approve' ? 'success' : v === 'request-changes' || v === 'blocked' ? 'destructive' : 'secondary'
+const testTone = (s: string): 'success' | 'destructive' | 'secondary' =>
+  s === 'pass' ? 'success' : s === 'fail' ? 'destructive' : 'secondary'
 
 const plugin: Plugin<TddInfo> = {
   id: 'tdd',
@@ -27,31 +29,31 @@ const plugin: Plugin<TddInfo> = {
   render: (d) => {
     if (!d?.ok)
       return (
-        <Card icon={FlaskConical} title="TDD / Review">
+        <TitledCard icon={FlaskConical} title="TDD / Review">
           <Empty>{d?.repo ? `No tracked review · ${d.repo}` : 'Not a tracked repo'}</Empty>
-        </Card>
+        </TitledCard>
       )
     const card = (
-      <Card
+      <TitledCard
         icon={FlaskConical}
         title="TDD / Review"
         right={
           d.stale ? (
-            <Badge tone="warn">
+            <Badge variant="warning">
               <TriangleAlert size={9} strokeWidth={2.5} />
               Stale{d.commitsBehind ? ` ${d.commitsBehind}↓` : ''}
             </Badge>
           ) : (
-            <Badge tone="ok">Current</Badge>
+            <Badge variant="success">Current</Badge>
           )
         }
       >
         <div className="mb-2">
           <Big value={d.overall ?? '—'} sub={`${d.repo} #${d.number}`} />
         </div>
-        <Row label="Verdict" value={<Badge tone={verdictTone(d.verdict)}>{d.verdict}</Badge>} />
-        <Row label="Tests" value={<Badge tone={testTone(d.testStatus)}>{d.testStatus}</Badge>} />
-      </Card>
+        <Row label="Verdict" value={<Badge variant={verdictTone(d.verdict)}>{d.verdict}</Badge>} />
+        <Row label="Tests" value={<Badge variant={testTone(d.testStatus)}>{d.testStatus}</Badge>} />
+      </TitledCard>
     )
     // Deep-link to the PR when we have its number; otherwise leave it inert.
     if (!d.number) return card
