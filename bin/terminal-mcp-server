@@ -559,7 +559,9 @@ function inboxPaths(cfgDir) {
 function inboxPathsFor(hotFile) {
   return inboxPaths(hotFile.replace(/\/?hitl\.json$/, ""));
 }
+var INBOX_COUNTS_VERSION = 2;
 var EMPTY_COUNTS = {
+  version: 0,
   live: 0,
   unread: 0,
   archived: 0,
@@ -570,19 +572,35 @@ function isInboxLive(h) {
   return !h.readAt && h.status !== "resolved";
 }
 var CATEGORY_FALLBACK = "Uncategorized";
-function inboxCountsOf(live, archived) {
-  const byCategory = {};
+function emptyCategoryCount() {
+  return { live: 0, unread: 0, archived: 0, total: 0 };
+}
+function inboxCountsOf(live, archive) {
+  const byCategory = Object.create(null);
   let unread = 0;
   for (const h of live) {
     const cat = h.category || CATEGORY_FALLBACK;
-    const slot = byCategory[cat] ??= { live: 0, unread: 0 };
+    const slot = byCategory[cat] ??= emptyCategoryCount();
     slot.live++;
+    slot.total++;
     if (!h.readAt) {
       slot.unread++;
       unread++;
     }
   }
-  return { live: live.length, unread, archived, byCategory, updatedAt: Date.now() };
+  for (const [cat, archived] of Object.entries(archive.byCategory)) {
+    const slot = byCategory[cat] ??= emptyCategoryCount();
+    slot.archived += archived;
+    slot.total += archived;
+  }
+  return {
+    version: INBOX_COUNTS_VERSION,
+    live: live.length,
+    unread,
+    archived: archive.total,
+    byCategory,
+    updatedAt: Date.now()
+  };
 }
 function readJsonArray(file) {
   let raw;
@@ -613,7 +631,15 @@ function readInboxCounts(p) {
     const parsed = JSON.parse(readFileSync4(p.counts, "utf8"));
     if (typeof parsed?.live !== "number" || typeof parsed?.archived !== "number")
       return { ...EMPTY_COUNTS };
-    return { ...EMPTY_COUNTS, ...parsed, byCategory: parsed.byCategory ?? {} };
+    const byCategory = Object.create(null);
+    for (const [cat, raw] of Object.entries(parsed.byCategory ?? {})) {
+      const slot = raw;
+      const live = typeof slot.live === "number" ? slot.live : 0;
+      const unread = typeof slot.unread === "number" ? slot.unread : 0;
+      const archived = typeof slot.archived === "number" ? slot.archived : 0;
+      byCategory[cat] = { live, unread, archived, total: live + archived };
+    }
+    return { ...EMPTY_COUNTS, ...parsed, byCategory };
   } catch {
     return { ...EMPTY_COUNTS };
   }
@@ -756,7 +782,7 @@ function updateInbox(p, fn, opts = {}) {
     if (next === undefined) {
       if (!strays.length)
         return false;
-      return commit(p, live, strays, [], readInboxCounts(p));
+      return commit(p, live, strays, [], readInboxCounts(p), new Map);
     }
     const nextLive = [];
     const retiring = [];
@@ -771,11 +797,44 @@ function updateInbox(p, fn, opts = {}) {
     ];
     const nextIds = new Set(next.map((h) => h.id));
     const dropped = [...before.keys()].filter((id) => !nextIds.has(id));
-    return commit(p, nextLive, toArchive, dropped, readInboxCounts(p));
+    return commit(p, nextLive, toArchive, dropped, readInboxCounts(p), pulled);
   });
 }
-function commit(p, live, toArchive, dropped, prev) {
-  const base = prev.updatedAt ? prev.archived : countArchive(p);
+function commit(p, live, toArchive, dropped, prev, previouslyArchived) {
+  const archive = prev.version === INBOX_COUNTS_VERSION ? {
+    total: prev.archived,
+    byCategory: Object.fromEntries(Object.entries(prev.byCategory).filter(([, slot]) => slot.archived > 0).map(([cat, slot]) => [cat, slot.archived]))
+  } : summarizeArchive(p, new Set(live.map((item) => item.id)));
+  const adjustArchiveCategory = (item, delta) => {
+    const cat = item.category || CATEGORY_FALLBACK;
+    archive.byCategory[cat] = Math.max(0, (archive.byCategory[cat] ?? 0) + delta);
+    if (!archive.byCategory[cat])
+      delete archive.byCategory[cat];
+  };
+  for (const item of toArchive) {
+    const prior = previouslyArchived.get(item.id);
+    if (prior) {
+      adjustArchiveCategory(prior, -1);
+    } else {
+      archive.total++;
+    }
+    adjustArchiveCategory(item, 1);
+  }
+  const liveIds = new Set(live.map((item) => item.id));
+  const rearchivedIds = new Set(toArchive.map((item) => item.id));
+  for (const [id, prior] of previouslyArchived) {
+    if (!liveIds.has(id) || rearchivedIds.has(id))
+      continue;
+    archive.total = Math.max(0, archive.total - 1);
+    adjustArchiveCategory(prior, -1);
+  }
+  for (const id of dropped) {
+    const prior = previouslyArchived.get(id);
+    if (!prior)
+      continue;
+    archive.total = Math.max(0, archive.total - 1);
+    adjustArchiveCategory(prior, -1);
+  }
   if (toArchive.length)
     appendFileSync(p.archive, toArchive.map((h) => `${JSON.stringify(h)}
 `).join(""));
@@ -786,8 +845,7 @@ function commit(p, live, toArchive, dropped, prev) {
     writeJsonAtomicShared(p.hidden, { ids: [...hidden] });
   }
   writeJsonAtomicShared(p.hot, live);
-  const archived = Math.max(0, base + toArchive.length - dropped.length);
-  writeJsonAtomicShared(p.counts, inboxCountsOf(live, archived));
+  writeJsonAtomicShared(p.counts, inboxCountsOf(live, archive));
   return true;
 }
 function importLegacyDailyArchives(p) {
@@ -814,23 +872,28 @@ function importLegacyDailyArchives(p) {
     renameSync2(dir, `${dir}.imported-${Date.now()}`);
   } catch {}
 }
-function countArchive(p) {
+function summarizeArchive(p, liveIds) {
   try {
     const hidden = readHidden(p.hidden);
-    const ids = new Set;
+    const records = new Map;
     for (const line of readFileSync4(p.archive, "utf8").split(`
 `)) {
       if (!line.trim())
         continue;
       try {
-        const id = JSON.parse(line).id;
-        if (id && !hidden.has(id))
-          ids.add(id);
+        const item = JSON.parse(line);
+        if (item.id && !hidden.has(item.id) && !liveIds.has(item.id))
+          records.set(item.id, item);
       } catch {}
     }
-    return ids.size;
+    const byCategory = Object.create(null);
+    for (const item of records.values()) {
+      const cat = item.category || CATEGORY_FALLBACK;
+      byCategory[cat] = (byCategory[cat] ?? 0) + 1;
+    }
+    return { total: records.size, byCategory };
   } catch {
-    return 0;
+    return { total: 0, byCategory: {} };
   }
 }
 function readInboxLive(p) {
@@ -848,10 +911,10 @@ function readInboxLive(p) {
 }
 function inboxCounts(p) {
   const stored = readInboxCounts(p);
-  if (stored.updatedAt)
+  if (stored.version === INBOX_COUNTS_VERSION)
     return stored;
-  const live = readInboxLive(p);
-  return inboxCountsOf(live, countArchive(p));
+  updateInbox(p, (live) => live);
+  return readInboxCounts(p);
 }
 
 // src/shared/activity-log.ts
