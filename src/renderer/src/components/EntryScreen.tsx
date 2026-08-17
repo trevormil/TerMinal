@@ -248,12 +248,17 @@ export function EntryScreen({
   const [visibleSessionCount, setVisibleSessionCount] = useState(SESSION_PAGE_SIZE)
   const [sessionSearch, setSessionSearch] = useState('')
   const [cwd, setCwd] = useState(lockedRemote?.cwd || lockedCwd || '') // new-session target
-  const [filterDir, setFilterDir] = useState(lockedCwd || '') // resume filter ('' = all)
   // Captured once at mount — the tag stays on the restored engine even as the
   // user clicks around; clicks persist for the NEXT open via selectEngine.
   const [recentEngine] = useState<SessionEngine | null>(readLastEngine)
   const [engine, setEngine] = useState<SessionEngine>(recentEngine ?? 'local')
   const [scratchEngine, setScratchEngine] = useState<SessionEngine>('claude')
+  // Resume is self-contained: its own engine, independent of the New-session picker.
+  const [resumeEngine, setResumeEngine] = useState<Engine>(
+    recentEngine && isAiEngine(recentEngine) && recentEngine !== 'openrouter'
+      ? recentEngine
+      : 'claude',
+  )
   const [model, setModel] = useState<string | undefined>(undefined) // '' semantics: undefined = engine default
   const [effort, setEffort] = useState<string | undefined>(undefined) // undefined = engine default
   const [openrouterHarness, setOpenrouterHarness] = useState<'codex' | 'hermes'>('codex')
@@ -388,7 +393,7 @@ export function EntryScreen({
   }
   // A restored recent engine should behave like a click — load its resume list.
   useEffect(() => {
-    if (isAiEngine(engine)) loadEngineSessions(engine)
+    if (isAiEngine(resumeEngine) && resumeEngine !== 'openrouter') loadEngineSessions(resumeEngine)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -401,8 +406,11 @@ export function EntryScreen({
     }
     setModel(undefined) // model is engine-specific — reset to the new engine's default
     setEffort(undefined) // effort levels are engine-specific too
+  }
+  const selectResumeEngine = (next: Engine) => {
+    setResumeEngine(next)
     setVisibleSessionCount(SESSION_PAGE_SIZE)
-    if (isAiEngine(next)) loadEngineSessions(next)
+    if (next !== 'openrouter') loadEngineSessions(next)
   }
   const switchMode = (next: 'single' | 'loop') => {
     setMode(next)
@@ -412,7 +420,6 @@ export function EntryScreen({
   }
   const switchLocation = (next: 'local' | 'remote') => {
     setLocation(next)
-    setFilterDir('')
     if (lockedCwd) return
     if (next === 'local') {
       setCwd('')
@@ -434,7 +441,7 @@ export function EntryScreen({
 
   useEffect(() => {
     setVisibleSessionCount(SESSION_PAGE_SIZE)
-  }, [engine, filterDir, sessionSearch])
+  }, [resumeEngine, sessionSearch])
 
   // One-click throwaway session: spin up an engine in the app-owned scratch dir
   // (no repo, no folder-picking). For a quick chat you don't want to file away.
@@ -464,7 +471,6 @@ export function EntryScreen({
   // selecting a folder targets the new session there AND filters resume to it
   const selectDir = (path: string) => {
     setCwd(path)
-    setFilterDir(path)
   }
   const browse = async () => {
     const dir = await window.gt.pickDir()
@@ -473,22 +479,17 @@ export function EntryScreen({
 
   // openrouter is one-shot with no resumable local store — hide its resume list.
   // Hermes resumes from its ~/.hermes SQLite store, so it's allowed.
-  const canResume =
-    isAiEngine(engine) && engine !== 'openrouter' && location === 'local' && !lockedRemote
-  const sessions = canResume ? sessionsByEngine[engine] : undefined
+  const canResume = isAiEngine(resumeEngine) && resumeEngine !== 'openrouter' && !lockedRemote
+  const sessions = canResume ? sessionsByEngine[resumeEngine] : undefined
   // Memoized — these scans (6 fields per session) used to re-run on every
   // keystroke AND every unrelated re-render of this large component.
-  const scopedSessionCount = useMemo(
-    () => (sessions ? filterSessionMetas(sessions, { filterDir }).length : 0),
-    [sessions, filterDir],
-  )
   const shown = useMemo(
-    () => (sessions ? filterSessionMetas(sessions, { filterDir, query: sessionSearch }) : []),
-    [sessions, filterDir, sessionSearch],
+    () => (sessions ? filterSessionMetas(sessions, { query: sessionSearch }) : []),
+    [sessions, sessionSearch],
   )
   const visibleShown = shown.slice(0, visibleSessionCount)
   const hiddenShown = Math.max(0, shown.length - visibleShown.length)
-  const isLoadingThisEngine = canResume ? !!loadingSessions[engine] : false
+  const isLoadingThisEngine = canResume ? !!loadingSessions[resumeEngine] : false
   const remoteHost = lockedRemote
     ? {
         id: lockedRemote.hostId,
@@ -578,11 +579,7 @@ export function EntryScreen({
       },
     }
   }
-  const resumeCountLabel = sessions
-    ? ` · showing ${visibleShown.length} of ${shown.length}${
-        scopedSessionCount !== shown.length ? ` (${scopedSessionCount} in scope)` : ''
-      }`
-    : ''
+  const resumeCountLabel = sessions ? ` · ${shown.length}` : ''
   const projectParentLabel =
     location === 'remote'
       ? remoteDisplayPath(projParent || cwd || remoteCwd || '~')
@@ -616,15 +613,15 @@ export function EntryScreen({
 
   return (
     <div className="h-full w-full overflow-y-auto bg-background">
-      <div className="mx-auto w-full max-w-[860px] px-8 py-8">
+      <div className="mx-auto w-full max-w-[820px] px-6 py-5">
         {/* Header */}
-        <header className="mb-6 flex items-center gap-3">
-          <img src={logo} alt="" draggable={false} className="h-10 w-10 rounded-xl" />
+        <header className="mb-4 flex items-center gap-3">
+          <img src={logo} alt="" draggable={false} className="h-9 w-9 rounded-lg" />
           <div className="min-w-0 flex-1">
-            <h1 className="gt-grad-text text-[22px] font-bold leading-tight tracking-tight">
+            <h1 className="gt-grad-text text-[20px] font-bold leading-tight tracking-tight">
               TerMinal
             </h1>
-            <p className="mt-0.5 text-[13px] text-muted-foreground">
+            <p className="text-[12px] text-muted-foreground">
               {lockedCwd ? (
                 <>
                   New session in{' '}
@@ -644,7 +641,7 @@ export function EntryScreen({
 
         {/* Intent switcher */}
         <Tabs value={intent} onValueChange={(v) => setIntent(v as Intent)}>
-          <TabsList className="mb-5 h-9 w-full justify-start rounded-xl px-1">
+          <TabsList className="mb-3 h-9 w-full justify-start rounded-xl px-1">
             <TabsTrigger value="new" className="gap-1.5">
               <SquareTerminal className="size-3.5" /> New session
             </TabsTrigger>
@@ -664,7 +661,7 @@ export function EntryScreen({
           </TabsList>
 
           {/* ── New session / Paired loop ─────────────────────────────── */}
-          <TabsContent value="new" className="space-y-4 pt-4">
+          <TabsContent value="new" className="space-y-3 pt-3">
             {loopsOn && !lockedCwd && (
               <div className="inline-flex items-center gap-1 rounded-xl border border-border bg-muted/40 p-1">
                 {(['single', 'loop'] as const).map((m) => (
@@ -732,16 +729,16 @@ export function EntryScreen({
                   )
                 }
                 return (
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     {pins.length > 0 && (
                       <div>
-                        <div className={sectionTitle + ' mb-2'}>Pinned</div>
+                        <div className={sectionTitle + ' mb-1.5'}>Pinned</div>
                         <div className="flex flex-wrap gap-1.5">{pins.map(chip)}</div>
                       </div>
                     )}
                     {recents.length > 0 && (
                       <div>
-                        <div className={sectionTitle + ' mb-2'}>Recent workspaces</div>
+                        <div className={sectionTitle + ' mb-1.5'}>Recent workspaces</div>
                         <div className="flex flex-wrap gap-1.5">{recents.map(chip)}</div>
                       </div>
                     )}
@@ -750,7 +747,7 @@ export function EntryScreen({
               })()}
 
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
+              <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0 py-3">
                 <CardTitle className="flex items-center gap-2 text-[13px]">
                   {mode === 'loop' ? (
                     <Repeat size={14} strokeWidth={2} className="text-[var(--gt-accent-2)]" />
@@ -763,11 +760,11 @@ export function EntryScreen({
                   {location === 'remote' ? 'SSH daemon' : 'Local daemon'}
                 </Badge>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-3 pt-3">
                 {mode === 'loop' ? (
                   <>
                     <div>
-                      <div className={sectionTitle + ' mb-2'}>Goal</div>
+                      <div className={sectionTitle + ' mb-1.5'}>Goal</div>
                       <Textarea
                         value={goal}
                         onChange={(e) => setGoal(e.target.value)}
@@ -776,7 +773,7 @@ export function EntryScreen({
                       />
                     </div>
                     <div>
-                      <div className={sectionTitle + ' mb-2'}>Topology</div>
+                      <div className={sectionTitle + ' mb-1.5'}>Topology</div>
                       <div className="grid grid-cols-2 gap-2">
                         {(
                           [
@@ -800,7 +797,7 @@ export function EntryScreen({
                       </div>
                     </div>
                     <div>
-                      <div className={sectionTitle + ' mb-2'}>
+                      <div className={sectionTitle + ' mb-1.5'}>
                         {loopTopology === 'single' ? 'Generator' : 'Role agents'}
                       </div>
                       <div className="flex gap-3">
@@ -833,7 +830,7 @@ export function EntryScreen({
                   <>
                     {/* Engine */}
                     <div>
-                      <div className={sectionTitle + ' mb-2'}>Engine</div>
+                      <div className={sectionTitle + ' mb-1.5'}>Engine</div>
                       <div className="grid grid-cols-3 gap-2">
                         {engineOptions.map((e) => (
                           <button key={e} onClick={() => selectEngine(e)} className={pickButton(engine === e)}>
@@ -854,7 +851,7 @@ export function EntryScreen({
                         ))}
                       </div>
                       {engine === 'openrouter' && (
-                        <div className="mt-3">
+                        <div className="mt-2.5">
                           <div className="mb-1.5 text-[10.5px] uppercase tracking-wide text-muted-foreground">Harness</div>
                           <div className="grid grid-cols-2 gap-2">
                             {(['codex', 'hermes'] as const).map((h) => (
@@ -869,7 +866,7 @@ export function EntryScreen({
                         </div>
                       )}
                       {isAiEngine(engine) && (
-                        <div className="mt-3">
+                        <div className="mt-2.5">
                           <div className="mb-1.5 text-[10.5px] uppercase tracking-wide text-muted-foreground">Model</div>
                           <div className="max-h-[240px] space-y-3 overflow-y-auto pr-0.5">
                             <ModelSelect engine={engine} model={model} onChange={setModel} />
@@ -884,7 +881,7 @@ export function EntryScreen({
                     {/* Daemon profile */}
                     {!lockedCwd && (
                       <div>
-                        <div className={sectionTitle + ' mb-2'}>Daemon profile</div>
+                        <div className={sectionTitle + ' mb-1.5'}>Daemon profile</div>
                         <div className="grid grid-cols-2 gap-2">
                           <button onClick={() => switchLocation('local')} className={pickButton(location === 'local')}>
                             <FolderOpen size={16} strokeWidth={2} className="shrink-0 text-muted-foreground" />
@@ -911,7 +908,7 @@ export function EntryScreen({
 
                 {/* Workspace (shared by single + loop) */}
                 <div>
-                  <div className={sectionTitle + ' mb-2'}>Workspace</div>
+                  <div className={sectionTitle + ' mb-1.5'}>Workspace</div>
                   {location === 'remote' && (
                     <div className="mb-2 space-y-2">
                       {remoteHosts.map((h) => (
@@ -1025,7 +1022,7 @@ export function EntryScreen({
                       onSaveCustom={(p) => persistPrompts([...savedPrompts, p])}
                       onDeleteCustom={(id) => persistPrompts(savedPrompts.filter((p) => p.id !== id))}
                     />
-                    <div className="flex items-center gap-2 border-t border-border pt-4">
+                    <div className="flex items-center gap-2 border-t border-border pt-3">
                       <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Session name (optional)" className="flex-1" />
                       <Button onClick={() => onChoose(withSpawn(buildChoice()))} disabled={location === 'remote' && !remoteHost}>
                         <Plus className="size-4" /> New session
@@ -1050,105 +1047,99 @@ export function EntryScreen({
             </Card>
           </TabsContent>
 
-          {/* ── Resume ─────────────────────────────────────────────────── */}
-          <TabsContent value="resume" className="pt-4">
-            {canResume ? (
-              <>
-                <div className="mb-3 flex items-center gap-2">
-                  <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                    {engineLabel(engine)} sessions {resumeCountLabel}
-                  </span>
-                  <Button variant="secondary" size="xs" onClick={() => loadEngineSessions(undefined, true)} disabled={isLoadingThisEngine}>
-                    <RefreshCw size={11} strokeWidth={2} className={isLoadingThisEngine ? 'animate-spin' : ''} />
-                    {sessions ? 'Refresh' : 'Load sessions'}
-                  </Button>
-                  {filterDir && (
-                    <button onClick={() => setFilterDir('')} className="text-[11px] text-[var(--gt-accent-2)] hover:underline">
-                      Show all
-                    </button>
-                  )}
-                  {sessions && (
-                    <label className="relative ml-auto min-w-[180px]">
-                      <Search size={11} strokeWidth={2} className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                      <input
-                        value={sessionSearch}
-                        onChange={(e) => setSessionSearch(e.target.value)}
-                        placeholder="Search sessions..."
-                        className="w-full rounded-md border border-border bg-muted/40 py-1 pl-6 pr-2 text-[11px] text-foreground outline-none placeholder:text-muted-foreground focus:border-primary/60"
-                      />
-                    </label>
-                  )}
-                </div>
-                {!sessions && !isLoadingThisEngine ? (
-                  <button onClick={() => loadEngineSessions()} className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border p-6 text-center text-[12px] text-muted-foreground hover:border-primary/50 hover:text-foreground">
-                    <EngineLogo engine={engine} size={13} /> Load prior {engineLabel(engine)} sessions
+          {/* ── Resume (self-contained) ───────────────────────────────── */}
+          <TabsContent value="resume" className="pt-3">
+            <div className="mb-3 flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-1">
+                {ENGINE_IDS.filter((e) => e !== 'openrouter').map((e) => (
+                  <button
+                    key={e}
+                    onClick={() => selectResumeEngine(e)}
+                    className={`flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[11.5px] font-semibold transition-colors ${
+                      resumeEngine === e
+                        ? 'border-primary/60 bg-primary/15 text-foreground'
+                        : 'border-border text-muted-foreground hover:border-primary/50 hover:text-foreground'
+                    }`}
+                  >
+                    <EngineLogo engine={e} size={12} />
+                    {engineLabel(e)}
                   </button>
-                ) : isLoadingThisEngine ? (
-                  <div className="flex items-center justify-center gap-2 rounded-xl border border-dashed border-border p-6 text-[12px] text-muted-foreground">
-                    <RefreshCw size={13} strokeWidth={2} className="animate-spin" /> Scanning {engineLabel(engine)} sessions…
-                  </div>
-                ) : shown.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-border p-6 text-center text-[12px] text-muted-foreground">
-                    {sessionSearch.trim()
-                      ? 'No sessions match that search.'
-                      : filterDir
-                        ? 'No sessions for this folder — start a new one.'
-                        : `No prior ${engineLabel(engine)} sessions found.`}
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {visibleShown.map((s) => (
-                      <button
-                        key={s.id}
-                        onClick={() => onChoose({ mode: 'resume', engine: s.engine, sessionId: s.id, cwd: s.cwd })}
-                        className="flex w-full items-center gap-3 rounded-xl border border-border bg-card p-3 text-left transition-colors hover:border-primary/60 hover:bg-muted/40"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate text-[13px] text-foreground">
-                            {s.firstUserText || <span className="italic text-muted-foreground">Untitled session</span>}
-                          </div>
-                          <div className="mt-0.5 flex items-center gap-2 truncate text-[11px] text-muted-foreground">
-                            <EngineLogo engine={s.engine} size={10} />
-                            <span className="font-mono">{tilde(s.cwd) || '~'}</span>
-                            {s.gitBranch && (
-                              <span className="inline-flex items-center gap-0.5 text-muted-foreground/70">
-                                <GitBranch size={11} strokeWidth={2} /> {s.gitBranch}
-                              </span>
-                            )}
-                            <span>· {s.turns} turns</span>
-                          </div>
-                        </div>
-                        <div className="shrink-0 text-right text-[10.5px] text-muted-foreground">
-                          <div>{rel(s.mtime)}</div>
-                          <div className="font-mono text-muted-foreground/70">{s.id.slice(0, 8)}</div>
-                        </div>
-                      </button>
-                    ))}
-                    {hiddenShown > 0 && (
-                      <button
-                        onClick={() => setVisibleSessionCount((n) => n + SESSION_PAGE_SIZE)}
-                        className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-muted/20 p-3 text-[12px] text-muted-foreground hover:border-primary/50 hover:text-foreground"
-                      >
-                        Load {Math.min(SESSION_PAGE_SIZE, hiddenShown)} more
-                        <span className="text-muted-foreground/70">· {hiddenShown} remaining</span>
-                      </button>
-                    )}
-                  </div>
-                )}
-              </>
-            ) : (
+                ))}
+              </div>
+              <span className="ml-auto shrink-0 text-[10.5px] text-muted-foreground">{resumeCountLabel}</span>
+              <Button variant="secondary" size="xs" onClick={() => loadEngineSessions(resumeEngine, true)} disabled={isLoadingThisEngine}>
+                <RefreshCw size={11} strokeWidth={2} className={isLoadingThisEngine ? 'animate-spin' : ''} />
+                {sessions ? 'Refresh' : 'Load'}
+              </Button>
+            </div>
+            {sessions && (
+              <label className="relative mb-2 block">
+                <Search size={11} strokeWidth={2} className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  value={sessionSearch}
+                  onChange={(e) => setSessionSearch(e.target.value)}
+                  placeholder="Search sessions…"
+                  className="w-full rounded-md border border-border bg-muted/40 py-1.5 pl-6 pr-2 text-[11px] text-foreground outline-none placeholder:text-muted-foreground focus:border-primary/60"
+                />
+              </label>
+            )}
+            {!sessions && !isLoadingThisEngine ? (
+              <button onClick={() => loadEngineSessions(resumeEngine)} className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border p-6 text-center text-[12px] text-muted-foreground hover:border-primary/50 hover:text-foreground">
+                <EngineLogo engine={resumeEngine} size={13} /> Load prior {engineLabel(resumeEngine)} sessions
+              </button>
+            ) : isLoadingThisEngine ? (
+              <div className="flex items-center justify-center gap-2 rounded-xl border border-dashed border-border p-6 text-[12px] text-muted-foreground">
+                <RefreshCw size={13} strokeWidth={2} className="animate-spin" /> Scanning {engineLabel(resumeEngine)} sessions…
+              </div>
+            ) : shown.length === 0 ? (
               <div className="rounded-xl border border-dashed border-border p-6 text-center text-[12px] text-muted-foreground">
-                {engine === 'openrouter'
-                  ? 'OpenRouter runs are one-shot and not resumable.'
-                  : 'Resume is available for local AI-engine sessions.'}
+                {sessionSearch.trim() ? 'No sessions match that search.' : `No prior ${engineLabel(resumeEngine)} sessions found.`}
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {visibleShown.map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => onChoose({ mode: 'resume', engine: s.engine, sessionId: s.id, cwd: s.cwd })}
+                    className="flex w-full items-center gap-3 rounded-xl border border-border bg-card p-2.5 text-left transition-colors hover:border-primary/60 hover:bg-muted/40"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-[13px] text-foreground">
+                        {s.firstUserText || <span className="italic text-muted-foreground">Untitled session</span>}
+                      </div>
+                      <div className="mt-0.5 flex items-center gap-2 truncate text-[11px] text-muted-foreground">
+                        <span className="font-mono">{tilde(s.cwd) || '~'}</span>
+                        {s.gitBranch && (
+                          <span className="inline-flex items-center gap-0.5 text-muted-foreground/70">
+                            <GitBranch size={11} strokeWidth={2} /> {s.gitBranch}
+                          </span>
+                        )}
+                        <span>· {s.turns} turns</span>
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-right text-[10.5px] text-muted-foreground">
+                      <div>{rel(s.mtime)}</div>
+                      <div className="font-mono text-muted-foreground/70">{s.id.slice(0, 8)}</div>
+                    </div>
+                  </button>
+                ))}
+                {hiddenShown > 0 && (
+                  <button
+                    onClick={() => setVisibleSessionCount((n) => n + SESSION_PAGE_SIZE)}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-muted/20 p-2.5 text-[12px] text-muted-foreground hover:border-primary/50 hover:text-foreground"
+                  >
+                    Load {Math.min(SESSION_PAGE_SIZE, hiddenShown)} more
+                    <span className="text-muted-foreground/70">· {hiddenShown} remaining</span>
+                  </button>
+                )}
               </div>
             )}
           </TabsContent>
 
           {/* ── Scratch ────────────────────────────────────────────────── */}
-          <TabsContent value="scratch" className="pt-4">
+          <TabsContent value="scratch" className="pt-3">
             <Card>
-              <CardHeader>
+              <CardHeader className="py-3">
                 <CardTitle className="flex items-center gap-2 text-[13px]">
                   <Zap size={14} strokeWidth={2} className="text-[var(--gt-accent-2)]" /> Scratch session
                 </CardTitle>
@@ -1157,9 +1148,9 @@ export function EntryScreen({
                   <span className="font-mono">~/.config/TerMinal/scratch</span>, no repo attached.
                 </p>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-3 pt-3">
                 <div>
-                  <div className={sectionTitle + ' mb-2'}>Engine</div>
+                  <div className={sectionTitle + ' mb-1.5'}>Engine</div>
                   <div className="grid grid-cols-3 gap-2">
                     {engineOptions.map((e) => (
                       <button key={e} onClick={() => setScratchEngine(e)} className={pickButton(scratchEngine === e)}>
@@ -1188,9 +1179,9 @@ export function EntryScreen({
           </TabsContent>
 
           {/* ── New repo ───────────────────────────────────────────────── */}
-          <TabsContent value="repo" className="pt-4">
+          <TabsContent value="repo" className="pt-3">
             <Card>
-              <CardHeader>
+              <CardHeader className="py-3">
                 <CardTitle className="flex items-center gap-2 text-[13px]">
                   <FolderPlus size={14} strokeWidth={2} className="text-[var(--gt-accent-2)]" /> New project from template
                 </CardTitle>
@@ -1198,7 +1189,7 @@ export function EntryScreen({
                   Clones your template repo into a new folder, then opens a session there.
                 </p>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-3 pt-3">
                 <div className="flex items-center gap-2">
                   <Input
                     value={projName}
