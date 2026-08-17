@@ -13,12 +13,12 @@ import { cn } from '@/lib/utils'
 // (`/10` → `/20`), not a solid — depth from the border, per §2.1/§2.2.
 
 const buttonVariants = cva(
-  "inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 disabled:pointer-events-none disabled:opacity-40 [&_svg]:pointer-events-none [&_svg]:size-3.5",
+  "inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-40 [&_svg]:pointer-events-none [&_svg]:size-3.5",
   {
     variants: {
       variant: {
         default:
-          'border border-primary/40 bg-primary/10 font-semibold text-[var(--gt-accent-light)] hover:bg-primary/20',
+          'border border-primary/40 bg-primary/10 font-semibold text-[var(--gt-accent-light)] shadow-sm shadow-primary/20 hover:bg-primary/20',
         destructive:
           'border border-destructive/50 bg-destructive/10 text-destructive hover:bg-destructive/20',
         outline:

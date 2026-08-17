@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils'
 // tone keeps the lighter-violet label the brand already uses on violet tints.
 
 const badgeVariants = cva(
-  'inline-flex items-center gap-0.5 rounded-md border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition-colors focus:outline-none [&_svg]:pointer-events-none [&_svg]:size-2.5',
+  'inline-flex items-center gap-0.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition-colors focus:outline-none [&_svg]:pointer-events-none [&_svg]:size-2.5',
   {
     variants: {
       variant: {
