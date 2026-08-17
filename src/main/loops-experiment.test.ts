@@ -54,10 +54,12 @@ describe('the gate is wired where it matters', () => {
   test('the EntryScreen loop affordance is behind useExperiment', () => {
     const src = read('src/renderer/src/components/EntryScreen.tsx')
     expect(src).toContain("useExperiment('loops')")
-    // The mode toggle must not offer 'loop' when the flag is off: the whole
-    // single/loop toggle renders only behind `loopsOn &&`.
-    expect(src).toContain("loopsOn && !lockedCwd && (")
-    expect(src).toContain("['single', 'loop'] as const")
+    // The intent select must not offer 'loop' when the flag is off: the option
+    // list filters on loopsOn…
+    expect(src).toContain("i.id !== 'loop' || loopsOn")
+    // …and flipping the flag off mid-session must not strand the screen in a
+    // loop form whose launch button main would refuse.
+    expect(src).toMatch(/if \(!loopsOn\) setIntent\(/)
   })
 
   test('the renderer consumes stop and state — every startable loop is stoppable', () => {
