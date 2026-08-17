@@ -22,7 +22,8 @@ import {
   ShieldCheck,
   Wrench,
 } from 'lucide-react'
-import { Badge, Gauge } from '../../components/ui'
+import { Badge } from '../../components/ui/badge'
+import { Gauge } from '../../components/ui/gauge'
 import { Markdown } from '../../components/Markdown'
 import { EngineLogo } from '../../components/EngineLogo'
 import type { BadgeTone } from '../../components/ui'
@@ -113,6 +114,20 @@ function duration(ms?: number): string {
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`
   return `${Math.round(ms / 60_000)}m`
 }
+
+// Map a legacy badge tone to the shadcn badge variant.
+const badgeVariantFor = (tone: string) =>
+  tone === 'green' || tone === 'ok'
+    ? ('success' as const)
+    : tone === 'red' || tone === 'bad'
+      ? ('destructive' as const)
+      : tone === 'yellow' || tone === 'warn'
+        ? ('warning' as const)
+        : tone === 'blue'
+          ? ('info' as const)
+          : tone === 'accent'
+            ? ('default' as const)
+            : ('secondary' as const)
 
 function statusTone(status: string): BadgeTone {
   if (status === 'ok' || status === 'closed' || status === 'root') return 'green'
@@ -255,8 +270,8 @@ function SummaryView({
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <EnginePill engine={session.engine} />
-        <Badge tone={session.telemetry === 'ready' ? 'green' : 'yellow'}>{session.telemetry}</Badge>
-        {session.model && <Badge tone="mute">{session.model}</Badge>}
+        <Badge variant={badgeVariantFor(session.telemetry === 'ready' ? 'green' : 'yellow')}>{session.telemetry}</Badge>
+        {session.model && <Badge variant="secondary">{session.model}</Badge>}
         <span className="text-[11px] text-zinc-600">{session.cwd || 'Unknown cwd'}</span>
       </div>
       <h2 className="text-lg font-semibold leading-snug text-zinc-100">{session.title}</h2>
@@ -390,7 +405,7 @@ function TimelineRow({
         ) : (
           <span className="w-[13px] shrink-0" />
         )}
-        <Badge tone={eventTone(event)}>{event.kind.replace('_', ' ')}</Badge>
+        <Badge variant={badgeVariantFor(eventTone(event))}>{event.kind.replace('_', ' ')}</Badge>
         {event.toolName && (
           <span className="shrink-0 text-[12px] font-semibold text-zinc-200">{event.toolName}</span>
         )}
@@ -702,7 +717,7 @@ function ToolsView({
                       }`}
                     >
                       <div className="flex min-w-0 items-center gap-2">
-                        <Badge tone={statusTone(tool.status)}>{tool.status}</Badge>
+                        <Badge variant={badgeVariantFor(statusTone(tool.status))}>{tool.status}</Badge>
                         <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-zinc-200">
                           {tool.toolName}
                         </span>
@@ -739,15 +754,15 @@ function ToolsView({
 
           <div className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-md border border-[var(--gt-border)] bg-black/15">
             <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--gt-border)] px-3 py-2">
-              <Badge tone={statusTone(selected?.status || 'open')}>
+              <Badge variant={badgeVariantFor(statusTone(selected?.status || 'open'))}>
                 {selected?.status || 'none'}
               </Badge>
               <span className="min-w-0 truncate text-[12px] font-semibold text-zinc-100">
                 {selected?.toolName || 'Select a call'}
               </span>
               {payloadBusy && <RefreshCw size={12} className="animate-spin text-zinc-600" />}
-              {selected?.skillName && <Badge tone="accent">{selected.skillName}</Badge>}
-              {selected?.agentRole && <Badge tone="blue">{selected.agentRole}</Badge>}
+              {selected?.skillName && <Badge variant="default">{selected.skillName}</Badge>}
+              {selected?.agentRole && <Badge variant="info">{selected.agentRole}</Badge>}
               {selected && (
                 <span className="ml-auto text-[10.5px] text-zinc-600">
                   line {selected.line}
@@ -915,7 +930,7 @@ function AgentTree({ detail }: { detail: ObservabilitySessionDetail }) {
           className="mb-2 inline-flex items-center gap-2 rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)] px-2.5 py-1.5"
         >
           <GitBranch size={12} className="text-zinc-500" />
-          <Badge tone={statusTone(edge.status)}>{edge.status}</Badge>
+          <Badge variant={badgeVariantFor(statusTone(edge.status))}>{edge.status}</Badge>
           <span className="text-[11px] text-zinc-500">{edge.toolCallId}</span>
         </div>
       ))}
@@ -926,7 +941,7 @@ function AgentTree({ detail }: { detail: ObservabilitySessionDetail }) {
             className="rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)] p-3"
           >
             <div className="flex items-center gap-2">
-              <Badge tone={statusTone(node.status)}>{node.status}</Badge>
+              <Badge variant={badgeVariantFor(statusTone(node.status))}>{node.status}</Badge>
               <span className="text-[10px] uppercase tracking-wider text-zinc-600">
                 depth {node.depth}
               </span>
@@ -1555,7 +1570,7 @@ function ResultGrid({
             />
           </div>
           {busy && <RefreshCw size={13} className="animate-spin text-zinc-600" />}
-          {query && <Badge tone="mute">{nf.format(rows.length)} rows</Badge>}
+          {query && <Badge variant="secondary">{nf.format(rows.length)} rows</Badge>}
         </div>
         {quickSorts.length > 0 && (
           <div className="flex min-w-0 items-center gap-1 overflow-x-auto">
@@ -1688,7 +1703,7 @@ function CallFocus({
     <div className="flex min-h-0 flex-1 flex-col gap-2">
       <div className="shrink-0 rounded-md border border-[var(--gt-border)] bg-black/15 p-2">
         <div className="flex min-w-0 items-center gap-2">
-          <Badge tone={statusTone(call?.status || payload?.status || 'open')}>
+          <Badge variant={badgeVariantFor(statusTone(call?.status || payload?.status || 'open'))}>
             {call?.status || payload?.status || 'call'}
           </Badge>
           <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-zinc-100">
@@ -1860,7 +1875,7 @@ function PayloadInspect({ row }: { row: Record<string, unknown> | null }) {
     <div className="flex min-h-0 flex-1 flex-col gap-2">
       <div className="shrink-0 rounded-md border border-[var(--gt-border)] bg-black/15 p-2">
         <div className="flex min-w-0 items-center gap-2">
-          {status && <Badge tone={statusTone(status)}>{status}</Badge>}
+          {status && <Badge variant={badgeVariantFor(statusTone(status))}>{status}</Badge>}
           <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-zinc-100">
             {tool || 'Stored payload'}
           </span>
@@ -1989,13 +2004,13 @@ function InspectorPane({
         <div className="shrink-0 border-b border-[var(--gt-border)] bg-black/10 p-3">
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <Badge
-              tone={
+              variant={badgeVariantFor(
                 selection?.query === 'tool_calls'
                   ? 'accent'
                   : selection?.query === 'audit'
                     ? 'yellow'
-                    : 'blue'
-              }
+                    : 'blue',
+              )}
             >
               {(selection?.query || 'row').replaceAll('_', ' ')}
             </Badge>
@@ -2134,7 +2149,7 @@ function ContextBar({
   }
   crumbs.push(
     <Crumb key="mode">
-      <Badge tone="accent">{MODE_LABELS[mode]}</Badge>
+      <Badge variant="default">{MODE_LABELS[mode]}</Badge>
     </Crumb>,
   )
 
@@ -2428,7 +2443,7 @@ function ObservabilityTab({ ctx }: { ctx: TabContext }) {
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--gt-border)] px-3">
         <RadioTower size={15} strokeWidth={2.25} className="text-[var(--gt-accent-light)]" />
         <span className="text-[12px] font-semibold text-zinc-100">Observability</span>
-        {indexQuery && <Badge tone="mute">{indexQuery.query.replaceAll('_', ' ')}</Badge>}
+        {indexQuery && <Badge variant="secondary">{indexQuery.query.replaceAll('_', ' ')}</Badge>}
         {snap && <span className="text-[10.5px] text-zinc-600">updated {reltime(snap.ts)}</span>}
         {err && <span className="text-[11px] text-[var(--gt-red)]">{err}</span>}
         <button

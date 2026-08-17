@@ -1,5 +1,6 @@
 import { SquareTerminal } from 'lucide-react'
-import { Card, Row, Empty } from '../components/ui'
+import { TitledCard } from '@/components/ui/titled-card'
+import { Row, Empty } from '@/components/ui/display'
 import type { CommandWidget, Plugin } from './types'
 
 function renderOut(out: string | null, mode: CommandWidget['mode']) {
@@ -51,13 +52,13 @@ export function commandWidgetToPlugin(w: CommandWidget): Plugin {
       return r.stdout || (r.ok ? '' : `exit ${r.code}`)
     },
     render: (out) => (
-      <Card
+      <TitledCard
         icon={SquareTerminal}
         title={w.title}
         right={<span className="text-[9px] uppercase tracking-wide text-zinc-600">{w.source}</span>}
       >
         {renderOut(out as string | null, w.mode)}
-      </Card>
+      </TitledCard>
     ),
   }
 }

@@ -10,7 +10,9 @@ import {
   spawnSummary,
   type PromptOption,
 } from '../lib/spawnOptions'
-import { Button, IconButton, Input, Select } from './ui'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Select } from './ui'
 
 export type SpawnOptionsValue = {
   /** How many sessions one pick spawns. 1 = today's behavior exactly. */
@@ -216,20 +218,23 @@ export function SpawnOptions({
                   className="min-w-[180px] flex-1"
                 />
                 <Button
-                  icon={Save}
+                  size="sm"
                   onClick={saveCurrent}
                   disabled={!saveName.trim() || !value.text.trim()}
                 >
+                  <Save size={11} strokeWidth={2} className="shrink-0" />
                   Save
                 </Button>
                 {isCustom && (
-                  <IconButton
-                    label="Delete this saved prompt"
-                    variant="danger"
+                  <Button
+                    variant="destructive"
+                    size="icon"
+                    aria-label="Delete this saved prompt"
+                    title="Delete this saved prompt"
                     onClick={deleteCurrent}
                   >
                     <Trash2 size={12} strokeWidth={2} />
-                  </IconButton>
+                  </Button>
                 )}
               </div>
             </>

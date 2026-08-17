@@ -12,7 +12,7 @@ import {
   X,
   AlertTriangle,
 } from 'lucide-react'
-import { Badge } from '../../components/ui'
+import { Badge } from '../../components/ui/badge'
 import type { BadgeTone } from '../../components/ui'
 import { useResizableWidth, ResizeHandle } from '../../components/ResizeHandle'
 import { relativeTime } from '../../lib/time'
@@ -67,6 +67,20 @@ const TYPE_HELP: Record<MonitorType, string> = {
 const TYPES: MonitorType[] = ['http', 'tls-cert', 'tcp', 'dns', 'command']
 
 // ---- helpers ---------------------------------------------------------------
+// Map a legacy badge tone to the shadcn badge variant.
+const badgeVariantFor = (tone: string) =>
+  tone === 'green' || tone === 'ok'
+    ? ('success' as const)
+    : tone === 'red' || tone === 'bad'
+      ? ('destructive' as const)
+      : tone === 'yellow' || tone === 'warn'
+        ? ('warning' as const)
+        : tone === 'blue'
+          ? ('info' as const)
+          : tone === 'accent'
+            ? ('default' as const)
+            : ('secondary' as const)
+
 function stateTone(status: MonitorState | null | undefined): BadgeTone {
   if (status === 'ok') return 'green'
   if (status === 'warn') return 'yellow'
@@ -610,8 +624,8 @@ function MonitorDetail({ m }: { m: MonitorWithState }) {
           <div className="flex items-center gap-2">
             <StatusDot status={st?.status} />
             <span className="text-[14px] font-semibold text-zinc-100">{m.name}</span>
-            <Badge tone={stateTone(st?.status)}>{st?.status ?? 'no data'}</Badge>
-            {!m.enabled && <Badge tone="mute">disabled</Badge>}
+            <Badge variant={badgeVariantFor(stateTone(st?.status))}>{st?.status ?? 'no data'}</Badge>
+            {!m.enabled && <Badge variant="secondary">disabled</Badge>}
           </div>
           <div className="min-w-0 pl-[18px]">
             <div className="mt-0.5 font-mono text-[11px] text-zinc-500">{m.target}</div>
@@ -787,12 +801,12 @@ function MonitorDetail({ m }: { m: MonitorWithState }) {
             Notifications
           </div>
           <div className="flex flex-wrap gap-1.5">
-            <Badge tone={m.notify.onFailure === 'off' ? 'mute' : 'blue'}>
+            <Badge variant={badgeVariantFor(m.notify.onFailure === 'off' ? 'mute' : 'blue')}>
               fail: {m.notify.onFailure}
             </Badge>
-            {m.notify.onRecovery && <Badge tone="green">recovery</Badge>}
-            <Badge tone="mute">renotify {m.notify.renotifyAfterSec}s</Badge>
-            {m.notify.dailyDigest && <Badge tone="mute">digest @ {m.notify.digestHour}h</Badge>}
+            {m.notify.onRecovery && <Badge variant="success">recovery</Badge>}
+            <Badge variant="secondary">renotify {m.notify.renotifyAfterSec}s</Badge>
+            {m.notify.dailyDigest && <Badge variant="secondary">digest @ {m.notify.digestHour}h</Badge>}
           </div>
         </div>
 
@@ -847,13 +861,13 @@ function MonitorRow({
             {m.name}
           </span>
           {m.type === 'tls-cert' && certDays(m) !== null && (
-            <Badge tone={expiryTone(certDays(m)!)}>{expiryLabel(certDays(m)!)}</Badge>
+            <Badge variant={badgeVariantFor(expiryTone(certDays(m)!))}>{expiryLabel(certDays(m)!)}</Badge>
           )}
-          {stale && <Badge tone="yellow">stale</Badge>}
-          {st?.paused && <Badge tone="mute">paused</Badge>}
+          {stale && <Badge variant="warning">stale</Badge>}
+          {st?.paused && <Badge variant="secondary">paused</Badge>}
           {blip && !st?.paused && (
             <span title={blip.detail}>
-              <Badge tone="yellow">{blip.badge}</Badge>
+              <Badge variant="warning">{blip.badge}</Badge>
             </span>
           )}
           <span className="shrink-0 text-[9.5px] tabular-nums text-zinc-700">
@@ -1054,7 +1068,7 @@ function MonitoringTab(_: { ctx: TabContext }) {
           <Activity size={14} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
           <span className="text-[12px] font-semibold text-zinc-200">Monitoring</span>
           <span className="text-[11px] text-zinc-600">{monitors?.length ?? 0}</span>
-          {failingCount > 0 && <Badge tone="red">{failingCount} failing</Badge>}
+          {failingCount > 0 && <Badge variant="destructive">{failingCount} failing</Badge>}
           <div className="flex-1" />
           <button
             onClick={() => {
@@ -1184,7 +1198,7 @@ function MonitoringTab(_: { ctx: TabContext }) {
             <header className="flex shrink-0 items-center gap-2 border-b border-[var(--gt-border)] px-6 py-2.5">
               <StatusDot status={selected.state?.status} />
               <span className="text-[13px] font-semibold text-zinc-100">{selected.name}</span>
-              <Badge tone="mute">{TYPE_LABEL[selected.type]}</Badge>
+              <Badge variant="secondary">{TYPE_LABEL[selected.type]}</Badge>
               <div className="flex-1" />
               <button
                 onClick={() => handleRun(selected.id)}
