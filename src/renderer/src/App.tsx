@@ -1348,7 +1348,7 @@ export default function App() {
         {/* session tab bar (top-level, also the window drag region) */}
         <header
           style={drag}
-          className={`flex h-9 shrink-0 items-center border-b border-[var(--gt-border)] bg-[var(--gt-bg)] pr-2 ${fullscreen ? 'pl-3' : 'pl-[78px]'}`}
+          className={`flex h-9 shrink-0 items-center border-b border-[var(--gt-border)] bg-[var(--gt-bg)]/70 pr-2 backdrop-blur-md ${fullscreen ? 'pl-3' : 'pl-[78px]'}`}
         >
           {/* brand mark — the logo asset is already tightly cropped, so it fills
             the box at scale-1 (no extra zoom) */}
