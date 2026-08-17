@@ -54,8 +54,10 @@ describe('the gate is wired where it matters', () => {
   test('the EntryScreen loop affordance is behind useExperiment', () => {
     const src = read('src/renderer/src/components/EntryScreen.tsx')
     expect(src).toContain("useExperiment('loops')")
-    // The mode toggle must not offer 'loop' when the flag is off.
-    expect(src).toContain("loopsOn ? (['single', 'loop'] as const) : (['single'] as const)")
+    // The mode toggle must not offer 'loop' when the flag is off: the whole
+    // single/loop toggle renders only behind `loopsOn &&`.
+    expect(src).toContain("loopsOn && !lockedCwd && (")
+    expect(src).toContain("['single', 'loop'] as const")
   })
 
   test('the renderer consumes stop and state — every startable loop is stoppable', () => {
