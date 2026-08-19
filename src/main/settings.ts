@@ -4,7 +4,7 @@ import { join, dirname } from 'node:path'
 import { homedir } from 'node:os'
 import { quarantineCorruptFile, readJsonState, withFileLock, writeFileAtomic } from './atomic-write'
 import { configPath } from './config-dir'
-import { firstInstalledEditor, firstInstalledBrowser } from './apps'
+import { firstInstalledEditor, firstInstalledBrowser, installedBrowsers } from './apps'
 import { DEFAULT_BRIDGE_PORT } from './bridge/identity'
 import {
   NOTIFY_CATEGORIES,
@@ -935,3 +935,12 @@ export const resolvedEditorApp = () =>
   readSettings().apps.editor || firstInstalledEditor() || DEFAULT_EDITOR
 export const resolvedBrowserApp = () =>
   readSettings().apps.browser || firstInstalledBrowser() || DEFAULT_BROWSER
+/** The browser handoff's full candidate chain, best first: the configured app,
+ *  then every other installed browser. The configured app leads even when we
+ *  can't see it in /Applications — it may live somewhere we don't scan — but a
+ *  machine that simply doesn't have it now falls through to a browser it DOES
+ *  have instead of bailing to the OS default. */
+export const resolvedBrowserApps = (): string[] => {
+  const chain = [...new Set([readSettings().apps.browser, ...installedBrowsers()].filter(Boolean))]
+  return chain.length ? chain : [DEFAULT_BROWSER]
+}

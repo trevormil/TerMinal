@@ -39,3 +39,8 @@ export function detectApps(): { editors: string[]; browsers: string[] } {
  *  Used as the default handoff target before falling back to a hardcoded app. */
 export const firstInstalledEditor = (): string => EDITOR_APPS.find(appInstalled) || ''
 export const firstInstalledBrowser = (): string => BROWSER_APPS.find(appInstalled) || ''
+
+/** Every installed browser, in preference order. The handoff walks this as a
+ *  chain so a configured browser that is missing on THIS machine falls through
+ *  to the next real one instead of straight to the OS default. */
+export const installedBrowsers = (): string[] => BROWSER_APPS.filter(appInstalled)
