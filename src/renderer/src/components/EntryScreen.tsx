@@ -1383,15 +1383,20 @@ export function EntryScreen({
               <>
                 <div>
                   <div className={sectionTitle + ' mb-1.5'}>Engine</div>
-                  <div className="flex flex-wrap gap-1.5">
+                  {/* Same control as the model step's engine picker — this is
+                      the question the step opens on, so it gets the same weight
+                      there rather than reading as a filter chip. */}
+                  <div className="grid grid-cols-3 gap-2">
                     {ENGINE_IDS.filter((e) => e !== 'openrouter').map((e) => (
                       <button
                         key={e}
                         onClick={() => selectResumeEngine(e)}
-                        className={chip(resumeEngine === e)}
+                        className={pickButton(resumeEngine === e)}
                       >
-                        <EngineLogo engine={e} size={12} />
-                        {engineLabel(e)}
+                        <EngineLogo engine={e} size={16} />
+                        <span className="min-w-0 truncate text-[12.5px] font-semibold">
+                          {engineLabel(e)}
+                        </span>
                       </button>
                     ))}
                   </div>
@@ -1479,29 +1484,29 @@ export function EntryScreen({
                             cwd: s.cwd,
                           })
                         }
-                        className="flex w-full items-center gap-3 rounded-xl border border-border bg-card p-2.5 text-left transition-colors hover:border-primary/60 hover:bg-muted/40"
+                        className="group flex w-full items-center gap-3 rounded-xl border border-border/40 bg-black/20 p-2.5 text-left transition-colors hover:border-primary/50 hover:bg-muted/30"
                       >
                         <div className="min-w-0 flex-1">
-                          <div className="truncate text-[13px] text-foreground">
+                          <div className="truncate text-[13px] text-foreground/65 transition-colors group-hover:text-foreground">
                             {s.firstUserText || (
-                              <span className="italic text-muted-foreground">Untitled session</span>
+                              <span className="italic text-muted-foreground/60">
+                                Untitled session
+                              </span>
                             )}
                           </div>
-                          <div className="mt-0.5 flex items-center gap-2 truncate text-[11px] text-muted-foreground">
+                          <div className="mt-0.5 flex items-center gap-2 truncate text-[11px] text-muted-foreground/55">
                             <span className="font-mono">{tilde(s.cwd) || '~'}</span>
                             {s.gitBranch && (
-                              <span className="inline-flex items-center gap-0.5 text-muted-foreground/70">
+                              <span className="inline-flex items-center gap-0.5">
                                 <GitBranch size={11} strokeWidth={2} /> {s.gitBranch}
                               </span>
                             )}
                             <span>· {s.turns} turns</span>
                           </div>
                         </div>
-                        <div className="shrink-0 text-right text-[10.5px] text-muted-foreground">
+                        <div className="shrink-0 text-right text-[10.5px] text-muted-foreground/50">
                           <div>{rel(s.mtime)}</div>
-                          <div className="font-mono text-muted-foreground/70">
-                            {s.id.slice(0, 8)}
-                          </div>
+                          <div className="font-mono">{s.id.slice(0, 8)}</div>
                         </div>
                       </button>
                     ))}
