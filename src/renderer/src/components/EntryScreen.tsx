@@ -193,16 +193,33 @@ const readLastEngine = (): SessionEngine | null => {
   }
 }
 
-/** What the user is launching. Picked in step 1 as a select — one wizard, not
- *  four parallel tabs, so every path answers one question per step. */
+/** WHERE the work happens. Answered first, because every other question —
+ *  including whether "resume" is even on the table — depends on it. */
+type Target = 'existing' | 'repo' | 'scratch'
+/** WHAT to do once the workspace is known. Only an existing repo offers all
+ *  three; a fresh scaffold and a scratch dir have nothing to resume into. */
+type Action = 'new' | 'resume' | 'loop'
+/** The two axes collapsed back into the single value the rest of the screen
+ *  (steps, summary, launch) is written against. */
 type Intent = 'new' | 'resume' | 'loop' | 'scratch' | 'repo'
-const INTENTS: { id: Intent; label: string; hint: string; icon: typeof SquareTerminal }[] = [
+
+const TARGETS: { id: Target; label: string; hint: string; icon: typeof SquareTerminal }[] = [
   {
-    id: 'new',
-    label: 'New session',
-    hint: 'Pick a workspace and start an agent in it.',
-    icon: SquareTerminal,
+    id: 'existing',
+    label: 'Existing repo',
+    hint: 'Work in a repo you already have.',
+    icon: FolderOpen,
   },
+  {
+    id: 'repo',
+    label: 'New repo',
+    hint: 'Scaffold a project from your template.',
+    icon: FolderPlus,
+  },
+  { id: 'scratch', label: 'Scratch', hint: 'Throwaway — no repo attached.', icon: Zap },
+]
+const ACTIONS: { id: Action; label: string; hint: string; icon: typeof SquareTerminal }[] = [
+  { id: 'new', label: 'New session', hint: 'Start an agent in this repo.', icon: SquareTerminal },
   { id: 'resume', label: 'Resume a session', hint: 'Pick up a prior session.', icon: RefreshCw },
   {
     id: 'loop',
@@ -210,21 +227,13 @@ const INTENTS: { id: Intent; label: string; hint: string; icon: typeof SquareTer
     hint: 'Two agents grade each other until the goal is met.',
     icon: Repeat,
   },
-  { id: 'scratch', label: 'Scratch session', hint: 'Throwaway — no repo attached.', icon: Zap },
-  {
-    id: 'repo',
-    label: 'New repo',
-    hint: 'Scaffold a project from your template, then open it.',
-    icon: FolderPlus,
-  },
 ]
 
-type StepId = 'start' | 'workspace' | 'model' | 'project' | 'goal' | 'roles' | 'sessions' | 'review'
+type StepId = 'workspace' | 'action' | 'model' | 'goal' | 'roles' | 'sessions' | 'review'
 const STEP_TITLE: Record<StepId, string> = {
-  start: 'Start',
   workspace: 'Workspace',
+  action: 'Action',
   model: 'Model',
-  project: 'Project',
   goal: 'Goal',
   roles: 'Agents',
   sessions: 'Session',
@@ -258,14 +267,23 @@ export function EntryScreen({
   // Top-level intent: which of the launch actions the user is composing. It is
   // the first field of the wizard (a select), not a tab bar — every intent runs
   // through the same one-question-per-step form.
-  const [intent, setIntent] = useState<Intent>(initialMode === 'loop' ? 'loop' : 'new')
+  // Split across the two axes the old single list conflated: `target` is WHERE
+  // (asked first — it decides which actions even exist), `action` is WHAT.
+  const [target, setTarget] = useState<Target>('existing')
+  const [action, setAction] = useState<Action>(initialMode === 'loop' ? 'loop' : 'new')
+  // Everything downstream still reads one value. A non-repo target has no
+  // action of its own — there is nothing to resume or loop over.
+  const intent: Intent = target === 'existing' ? action : target
   // Index into `steps` (derived from the intent below).
   const [stepIndex, setStepIndex] = useState(0)
-  useEffect(() => setIntent(initialMode === 'loop' ? 'loop' : 'new'), [initialMode])
+  useEffect(() => {
+    setTarget('existing')
+    setAction(initialMode === 'loop' ? 'loop' : 'new')
+  }, [initialMode])
   // Flipping the flag off while the screen sits in loop mode must not leave a
   // loop form on screen with a launch button main would reject.
   useEffect(() => {
-    if (!loopsOn) setIntent((i) => (i === 'loop' ? 'new' : i))
+    if (!loopsOn) setAction((a) => (a === 'loop' ? 'new' : a))
   }, [loopsOn])
   // Live-paired loop fields (mode === 'loop').
   const [goal, setGoal] = useState('')
@@ -451,10 +469,16 @@ export function EntryScreen({
     setVisibleSessionCount(SESSION_PAGE_SIZE)
     if (next !== 'openrouter') loadEngineSessions(next)
   }
-  const selectIntent = (next: Intent) => {
-    setIntent(next)
+  const selectTarget = (next: Target) => {
+    setTarget(next)
     setLoopErr('')
     setScaffoldErr('')
+    // Only an existing repo can be resumed into or looped over.
+    if (next !== 'existing') setAction('new')
+  }
+  const selectAction = (next: Action) => {
+    setAction(next)
+    setLoopErr('')
     // Loops run in a local git worktree — remote daemons aren't supported.
     if (next === 'loop' && location === 'remote') switchLocation('local')
     if (next === 'resume' && isAiEngine(resumeEngine) && resumeEngine !== 'openrouter') {
@@ -659,25 +683,29 @@ export function EntryScreen({
         : '~'
 
   // ── Wizard ───────────────────────────────────────────────────────────────
-  // One question per step. The step list is derived from the intent, so an
-  // intent that needs no workspace (scratch) or no model (resume) never shows
-  // that step at all.
-  const intentOptions = INTENTS.filter(
-    (i) =>
-      (i.id !== 'loop' || loopsOn) &&
-      (!lockedCwd || i.id === 'new' || i.id === 'resume' || i.id === 'loop'),
-  )
+  // Workspace FIRST, then what to do in it. The old single "start" list mixed
+  // the two, so you had to commit to "new session" before knowing the repo —
+  // and it offered Resume for a scratch dir that can never have one.
+  // A locked repo answers the workspace question already, so the target picker
+  // (and the scaffold/scratch options it carries) has nothing left to ask.
+  const targetOptions = lockedCwd ? [] : TARGETS
+  const actionOptions = ACTIONS.filter((a) => a.id !== 'loop' || loopsOn)
   const steps: StepId[] = useMemo(() => {
-    // Resume gets a workspace step too — the session list is long enough that
-    // "which repo" is the first thing you actually filter by.
-    if (intent === 'resume')
-      return lockedCwd ? ['start', 'sessions'] : ['start', 'workspace', 'sessions']
-    if (intent === 'scratch') return ['start', 'model', 'review']
-    if (intent === 'repo') return ['start', 'project', 'model', 'review']
-    if (intent === 'loop')
-      return lockedCwd ? ['start', 'goal', 'roles'] : ['start', 'workspace', 'goal', 'roles']
-    return lockedCwd ? ['start', 'model', 'review'] : ['start', 'workspace', 'model', 'review']
-  }, [intent, lockedCwd])
+    const tail: StepId[] =
+      intent === 'resume'
+        ? ['sessions']
+        : intent === 'loop'
+          ? ['goal', 'roles']
+          : ['model', 'review']
+    // A locked repo skips the workspace step; every other path opens on it.
+    // The action step only earns its place when more than one action applies.
+    const head: StepId[] = lockedCwd
+      ? ['action']
+      : target === 'existing'
+        ? ['workspace', 'action']
+        : ['workspace']
+    return [...head, ...tail]
+  }, [intent, target, lockedCwd])
   const step = steps[Math.min(stepIndex, steps.length - 1)]
   const stepNumber = steps.indexOf(step) + 1
   const back = () => setStepIndex((i) => Math.max(0, i - 1))
@@ -690,7 +718,7 @@ export function EntryScreen({
   // up to (and including) the FIRST such step is reachable, so the rail can be
   // clicked forward as well as back — you don't have to walk through Next.
   const stepBlocked = (s: StepId) =>
-    (s === 'project' && !projName.trim()) ||
+    (s === 'workspace' && target === 'repo' && !projName.trim()) ||
     (s === 'goal' && !goal.trim()) ||
     (s === 'workspace' && intent === 'loop' && !loopRepoRoot)
   const firstBlocked = steps.findIndex(stepBlocked)
@@ -706,6 +734,14 @@ export function EntryScreen({
           ? 'cursor-not-allowed border-[var(--gt-border)] bg-black/10 text-zinc-700'
           : 'border-[var(--gt-border)] bg-black/20 text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200'
     }`
+  /** A big pick-one card: icon, label, hint. Shared by the two axes so the
+   *  workspace targets and the actions read as the same kind of choice. */
+  const optionCard = (active: boolean) =>
+    `flex items-start gap-2.5 rounded-xl border p-3 text-left transition-colors ${
+      active
+        ? 'border-primary/70 bg-primary/10'
+        : 'border-border bg-muted/20 hover:border-primary/50'
+    }`
   /** Compact inline option — the small-scale sibling of pickButton. Used where
    *  the whole option set fits on one row (hosts, resume engines). */
   const chip = (active: boolean) =>
@@ -716,13 +752,12 @@ export function EntryScreen({
     }`
 
   const STEP_COPY: Record<StepId, { title: string; hint: string }> = {
-    start: { title: 'What do you want to do?', hint: 'Everything else follows from this.' },
     workspace: {
       title: 'Which workspace?',
-      hint: 'Pick a repo — nothing launches until the last step.',
+      hint: 'Where the work happens — nothing launches until the last step.',
     },
+    action: { title: 'What do you want to do here?', hint: 'Scoped to the workspace above.' },
     model: { title: 'Which model?', hint: 'Engine first, then the model it runs.' },
-    project: { title: 'Name the new project', hint: 'Cloned from your template repo.' },
     goal: {
       title: 'What should the loop converge on?',
       hint: 'The driver turns this into a gradable contract.',
@@ -867,22 +902,18 @@ export function EntryScreen({
             <p className="text-[11px] text-muted-foreground">{stepHint}</p>
           </CardHeader>
           <CardContent className="space-y-3 pt-3">
-            {/* ── Step · Start ─────────────────────────────────────────── */}
-            {step === 'start' && (
+            {/* ── Step · Action ────────────────────────────────────────── */}
+            {step === 'action' && (
               <div className="grid grid-cols-2 gap-2">
-                {intentOptions.map(({ id, label, hint, icon: Icon }) => (
+                {actionOptions.map(({ id, label, hint, icon: Icon }) => (
                   <button
                     key={id}
-                    onClick={() => selectIntent(id)}
-                    className={`flex items-start gap-2.5 rounded-xl border p-3 text-left transition-colors ${
-                      intent === id
-                        ? 'border-primary/70 bg-primary/10'
-                        : 'border-border bg-muted/20 hover:border-primary/50'
-                    }`}
+                    onClick={() => selectAction(id)}
+                    className={optionCard(action === id)}
                   >
                     <Icon
                       className={`mt-0.5 size-4 shrink-0 ${
-                        intent === id ? 'text-[var(--gt-accent-2)]' : 'text-muted-foreground'
+                        action === id ? 'text-[var(--gt-accent-2)]' : 'text-muted-foreground'
                       }`}
                     />
                     <span className="min-w-0">
@@ -901,195 +932,292 @@ export function EntryScreen({
             {/* ── Step · Workspace ─────────────────────────────────────── */}
             {step === 'workspace' && (
               <>
-                {/* Resume reads local transcript stores, so it has no remote
-                    dimension — only "which repo". */}
-                {intent !== 'loop' && intent !== 'resume' && (
+                {targetOptions.length > 0 && (
                   <div>
-                    <div className={sectionTitle + ' mb-1.5'}>Location</div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        onClick={() => switchLocation('local')}
-                        className={pickButton(location === 'local')}
-                      >
-                        <FolderOpen size={16} strokeWidth={2} className="shrink-0" />
-                        <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold">
-                          Local
-                        </span>
-                      </button>
-                      <button
-                        onClick={() => switchLocation('remote')}
-                        disabled={remoteHosts.length === 0}
-                        className={pickButton(location === 'remote', remoteHosts.length === 0)}
-                      >
-                        <Server size={16} strokeWidth={2} className="shrink-0" />
-                        <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold">
-                          Remote SSH
-                        </span>
-                      </button>
-                    </div>
-                    {remoteHosts.length === 0 && (
-                      <div className="mt-1.5 text-[10.5px] text-muted-foreground">
-                        SSH profiles are configured in Settings → SSH Hosts.
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {location === 'remote' && remoteHosts.length > 0 && (
-                  <div>
-                    <div className={sectionTitle + ' mb-1.5'}>Host</div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {remoteHosts.map((h) => (
+                    <div className={sectionTitle + ' mb-1.5'}>Target</div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {targetOptions.map(({ id, label, hint, icon: Icon }) => (
                         <button
-                          key={h.id}
-                          onClick={() => {
-                            setRemoteHostId(h.id)
-                            const nextCwd = h.defaultCwd || h.daemon.projectsDir || ''
-                            setCwd(nextCwd)
-                            setProjParent(nextCwd)
-                          }}
-                          className={chip(remoteHostId === h.id)}
+                          key={id}
+                          onClick={() => selectTarget(id)}
+                          className={optionCard(target === id)}
                         >
-                          <Server size={12} strokeWidth={2} className="shrink-0" />
-                          <span className="max-w-[180px] truncate">{h.label || h.sshTarget}</span>
+                          <Icon
+                            className={`mt-0.5 size-4 shrink-0 ${
+                              target === id ? 'text-[var(--gt-accent-2)]' : 'text-muted-foreground'
+                            }`}
+                          />
+                          <span className="min-w-0">
+                            <span className="block text-[12.5px] font-semibold text-foreground">
+                              {label}
+                            </span>
+                            <span className="block text-[10.5px] leading-snug text-muted-foreground">
+                              {hint}
+                            </span>
+                          </span>
                         </button>
                       ))}
                     </div>
                   </div>
                 )}
 
-                {location === 'remote' ? (
-                  <div className="rounded-lg border border-border bg-muted/20">
-                    <div className="flex items-center gap-1.5 border-b border-border p-2">
-                      <Input
-                        value={cwd}
-                        onChange={(e) => setCwd(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && loadRemoteDir(cwd, { select: true })}
-                        placeholder={remoteHost?.defaultCwd || '~ (remote home)'}
-                        className="border-0 bg-transparent font-mono shadow-none focus-visible:ring-0"
-                      />
-                      <button
-                        onClick={() => loadRemoteDir('~', { select: true })}
-                        title="Remote home"
-                        className="rounded-md border border-border p-1.5 text-muted-foreground hover:border-primary/50 hover:text-foreground"
-                      >
-                        <Home size={13} strokeWidth={2} />
-                      </button>
-                      <button
-                        onClick={() =>
-                          remoteListing?.parent &&
-                          loadRemoteDir(remoteListing.parent, { select: true })
-                        }
-                        disabled={!remoteListing?.parent}
-                        title="Parent folder"
-                        className="rounded-md border border-border p-1.5 text-muted-foreground hover:border-primary/50 hover:text-foreground disabled:opacity-35"
-                      >
-                        <ArrowUp size={13} strokeWidth={2} />
-                      </button>
-                      <button
-                        onClick={() =>
-                          loadRemoteDir(cwd || remoteListing?.cwd || '~', { select: true })
-                        }
-                        title="Refresh"
-                        className="rounded-md border border-border p-1.5 text-muted-foreground hover:border-primary/50 hover:text-foreground"
-                      >
-                        <RefreshCw
-                          size={13}
-                          strokeWidth={2}
-                          className={remoteListingLoading ? 'animate-spin' : ''}
-                        />
-                      </button>
-                    </div>
-                    <div className="max-h-44 overflow-y-auto p-1.5">
-                      {remoteListingLoading && !remoteListing ? (
-                        <div className="flex items-center justify-center gap-2 py-6 text-[11px] text-muted-foreground">
-                          <RefreshCw size={12} strokeWidth={2} className="animate-spin" /> Loading
-                          folders…
-                        </div>
-                      ) : remoteListingErr ? (
-                        <div className="px-2 py-3 text-[11px] text-destructive">
-                          {remoteListingErr}
-                        </div>
-                      ) : remoteListing && remoteListing.entries.length === 0 ? (
-                        <div className="px-2 py-3 text-[11px] text-muted-foreground">
-                          No child folders.
-                        </div>
-                      ) : (
-                        remoteListing?.entries.map((d) => (
-                          <button
-                            key={d.path}
-                            onClick={() => loadRemoteDir(d.path, { select: true })}
-                            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12px] text-foreground/80 hover:bg-muted"
-                          >
-                            <FolderOpen
-                              size={13}
-                              strokeWidth={2}
-                              className="shrink-0 text-muted-foreground"
-                            />
-                            <span className="truncate">{d.name}</span>
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                ) : (
+                {target === 'scratch' && (
+                  <p className="text-[11.5px] text-muted-foreground">
+                    A throwaway session in the app-owned scratch dir. No repo, nothing to file away.
+                  </p>
+                )}
+
+                {target === 'repo' && (
                   <>
-                    {(pins.length > 0 || recents.length > 0) && (
-                      <div className="space-y-2">
-                        {pins.length > 0 && (
-                          <div>
-                            <div className={sectionTitle + ' mb-1.5'}>Pinned</div>
-                            <div className="flex flex-wrap gap-1.5">{pins.map(workspaceChip)}</div>
-                          </div>
-                        )}
-                        {recents.length > 0 && (
-                          <div>
-                            <div className={sectionTitle + ' mb-1.5'}>Recent</div>
-                            <div className="flex flex-wrap gap-1.5">
-                              {recents.map(workspaceChip)}
-                            </div>
-                          </div>
-                        )}
+                    {remoteHosts.length > 0 && (
+                      <div>
+                        <div className={sectionTitle + ' mb-1.5'}>Location</div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            onClick={() => switchLocation('local')}
+                            className={pickButton(location === 'local')}
+                          >
+                            <FolderOpen size={16} strokeWidth={2} className="shrink-0" />
+                            <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold">
+                              Local
+                            </span>
+                          </button>
+                          <button
+                            onClick={() => switchLocation('remote')}
+                            className={pickButton(location === 'remote')}
+                          >
+                            <Server size={16} strokeWidth={2} className="shrink-0" />
+                            <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold">
+                              Remote SSH
+                            </span>
+                          </button>
+                        </div>
                       </div>
                     )}
                     <div>
-                      <div className={sectionTitle + ' mb-1.5'}>Folder</div>
+                      <div className={sectionTitle + ' mb-1.5'}>Name</div>
                       <div className="flex items-center gap-2">
-                        <Button variant="secondary" size="sm" onClick={browse}>
-                          <FolderOpen size={13} strokeWidth={2} /> Browse
-                        </Button>
                         <Input
-                          value={cwd}
-                          onChange={(e) => setCwd(e.target.value)}
-                          placeholder={intent === 'resume' ? 'Every workspace' : '~ (home)'}
+                          value={projName}
+                          onChange={(e) => {
+                            setProjName(e.target.value)
+                            setScaffoldErr('')
+                          }}
+                          placeholder="project-name"
                           className="flex-1 font-mono"
                         />
-                        {/* Resume can legitimately span every repo — a new
-                            session cannot, so the escape hatch is resume-only. */}
-                        {intent === 'resume' && cwd.trim() && (
-                          <Button variant="ghost" size="sm" onClick={() => setCwd('')}>
-                            <X className="size-3.5" /> Clear
-                          </Button>
-                        )}
+                        <Button
+                          variant="secondary"
+                          onClick={pickParent}
+                          title="Choose parent directory"
+                        >
+                          {location === 'remote' ? (
+                            <Server size={13} strokeWidth={2} />
+                          ) : (
+                            <FolderOpen size={13} strokeWidth={2} />
+                          )}
+                          <span className="max-w-[180px] truncate">{projectParentLabel}</span>
+                        </Button>
                       </div>
                     </div>
                   </>
                 )}
 
-                {/* Remote only — the local path input above already IS the
-                    confirmation, so repeating it there is noise. */}
-                {location === 'remote' && (
-                  <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/20 px-3 py-2 text-[12px]">
-                    <Check
-                      size={13}
-                      strokeWidth={2.5}
-                      className="shrink-0 text-[var(--gt-accent-2)]"
-                    />
-                    <span className="shrink-0 text-muted-foreground">{daemonLabel}</span>
-                    <span className="min-w-0 truncate font-mono text-foreground">
-                      {selectedWorkspaceLabel}
-                    </span>
-                  </div>
+                {target === 'existing' && (
+                  <>
+                    <div>
+                      <div className={sectionTitle + ' mb-1.5'}>Location</div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => switchLocation('local')}
+                          className={pickButton(location === 'local')}
+                        >
+                          <FolderOpen size={16} strokeWidth={2} className="shrink-0" />
+                          <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold">
+                            Local
+                          </span>
+                        </button>
+                        <button
+                          onClick={() => switchLocation('remote')}
+                          disabled={remoteHosts.length === 0}
+                          className={pickButton(location === 'remote', remoteHosts.length === 0)}
+                        >
+                          <Server size={16} strokeWidth={2} className="shrink-0" />
+                          <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold">
+                            Remote SSH
+                          </span>
+                        </button>
+                      </div>
+                      {remoteHosts.length === 0 && (
+                        <div className="mt-1.5 text-[10.5px] text-muted-foreground">
+                          SSH profiles are configured in Settings → SSH Hosts.
+                        </div>
+                      )}
+                    </div>
+
+                    {location === 'remote' && remoteHosts.length > 0 && (
+                      <div>
+                        <div className={sectionTitle + ' mb-1.5'}>Host</div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {remoteHosts.map((h) => (
+                            <button
+                              key={h.id}
+                              onClick={() => {
+                                setRemoteHostId(h.id)
+                                const nextCwd = h.defaultCwd || h.daemon.projectsDir || ''
+                                setCwd(nextCwd)
+                                setProjParent(nextCwd)
+                              }}
+                              className={chip(remoteHostId === h.id)}
+                            >
+                              <Server size={12} strokeWidth={2} className="shrink-0" />
+                              <span className="max-w-[180px] truncate">
+                                {h.label || h.sshTarget}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {location === 'remote' ? (
+                      <div className="rounded-lg border border-border bg-muted/20">
+                        <div className="flex items-center gap-1.5 border-b border-border p-2">
+                          <Input
+                            value={cwd}
+                            onChange={(e) => setCwd(e.target.value)}
+                            onKeyDown={(e) =>
+                              e.key === 'Enter' && loadRemoteDir(cwd, { select: true })
+                            }
+                            placeholder={remoteHost?.defaultCwd || '~ (remote home)'}
+                            className="border-0 bg-transparent font-mono shadow-none focus-visible:ring-0"
+                          />
+                          <button
+                            onClick={() => loadRemoteDir('~', { select: true })}
+                            title="Remote home"
+                            className="rounded-md border border-border p-1.5 text-muted-foreground hover:border-primary/50 hover:text-foreground"
+                          >
+                            <Home size={13} strokeWidth={2} />
+                          </button>
+                          <button
+                            onClick={() =>
+                              remoteListing?.parent &&
+                              loadRemoteDir(remoteListing.parent, { select: true })
+                            }
+                            disabled={!remoteListing?.parent}
+                            title="Parent folder"
+                            className="rounded-md border border-border p-1.5 text-muted-foreground hover:border-primary/50 hover:text-foreground disabled:opacity-35"
+                          >
+                            <ArrowUp size={13} strokeWidth={2} />
+                          </button>
+                          <button
+                            onClick={() =>
+                              loadRemoteDir(cwd || remoteListing?.cwd || '~', { select: true })
+                            }
+                            title="Refresh"
+                            className="rounded-md border border-border p-1.5 text-muted-foreground hover:border-primary/50 hover:text-foreground"
+                          >
+                            <RefreshCw
+                              size={13}
+                              strokeWidth={2}
+                              className={remoteListingLoading ? 'animate-spin' : ''}
+                            />
+                          </button>
+                        </div>
+                        <div className="max-h-44 overflow-y-auto p-1.5">
+                          {remoteListingLoading && !remoteListing ? (
+                            <div className="flex items-center justify-center gap-2 py-6 text-[11px] text-muted-foreground">
+                              <RefreshCw size={12} strokeWidth={2} className="animate-spin" />{' '}
+                              Loading folders…
+                            </div>
+                          ) : remoteListingErr ? (
+                            <div className="px-2 py-3 text-[11px] text-destructive">
+                              {remoteListingErr}
+                            </div>
+                          ) : remoteListing && remoteListing.entries.length === 0 ? (
+                            <div className="px-2 py-3 text-[11px] text-muted-foreground">
+                              No child folders.
+                            </div>
+                          ) : (
+                            remoteListing?.entries.map((d) => (
+                              <button
+                                key={d.path}
+                                onClick={() => loadRemoteDir(d.path, { select: true })}
+                                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12px] text-foreground/80 hover:bg-muted"
+                              >
+                                <FolderOpen
+                                  size={13}
+                                  strokeWidth={2}
+                                  className="shrink-0 text-muted-foreground"
+                                />
+                                <span className="truncate">{d.name}</span>
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        {(pins.length > 0 || recents.length > 0) && (
+                          <div className="space-y-2">
+                            {pins.length > 0 && (
+                              <div>
+                                <div className={sectionTitle + ' mb-1.5'}>Pinned</div>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {pins.map(workspaceChip)}
+                                </div>
+                              </div>
+                            )}
+                            {recents.length > 0 && (
+                              <div>
+                                <div className={sectionTitle + ' mb-1.5'}>Recent</div>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {recents.map(workspaceChip)}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        <div>
+                          <div className={sectionTitle + ' mb-1.5'}>Folder</div>
+                          <div className="flex items-center gap-2">
+                            <Button variant="secondary" size="sm" onClick={browse}>
+                              <FolderOpen size={13} strokeWidth={2} /> Browse
+                            </Button>
+                            <Input
+                              value={cwd}
+                              onChange={(e) => setCwd(e.target.value)}
+                              placeholder={intent === 'resume' ? 'Every workspace' : '~ (home)'}
+                              className="flex-1 font-mono"
+                            />
+                            {/* Resume can legitimately span every repo — a new
+                            session cannot, so the escape hatch is resume-only. */}
+                            {intent === 'resume' && cwd.trim() && (
+                              <Button variant="ghost" size="sm" onClick={() => setCwd('')}>
+                                <X className="size-3.5" /> Clear
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    {/* Remote only — the local path input above already IS the
+                        confirmation, so repeating it there is noise. */}
+                    {location === 'remote' && (
+                      <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/20 px-3 py-2 text-[12px]">
+                        <Check
+                          size={13}
+                          strokeWidth={2.5}
+                          className="shrink-0 text-[var(--gt-accent-2)]"
+                        />
+                        <span className="shrink-0 text-muted-foreground">{daemonLabel}</span>
+                        <span className="min-w-0 truncate font-mono text-foreground">
+                          {selectedWorkspaceLabel}
+                        </span>
+                      </div>
+                    )}
+                  </>
                 )}
               </>
             )}
@@ -1162,63 +1290,6 @@ export function EntryScreen({
                     A plain shell — no model, no agent.
                   </p>
                 )}
-              </>
-            )}
-
-            {/* ── Step · Project (scaffold) ────────────────────────────── */}
-            {step === 'project' && (
-              <>
-                {remoteHosts.length > 0 && (
-                  <div>
-                    <div className={sectionTitle + ' mb-1.5'}>Location</div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        onClick={() => switchLocation('local')}
-                        className={pickButton(location === 'local')}
-                      >
-                        <FolderOpen size={16} strokeWidth={2} className="shrink-0" />
-                        <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold">
-                          Local
-                        </span>
-                      </button>
-                      <button
-                        onClick={() => switchLocation('remote')}
-                        className={pickButton(location === 'remote')}
-                      >
-                        <Server size={16} strokeWidth={2} className="shrink-0" />
-                        <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold">
-                          Remote SSH
-                        </span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-                <div>
-                  <div className={sectionTitle + ' mb-1.5'}>Name</div>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      value={projName}
-                      onChange={(e) => {
-                        setProjName(e.target.value)
-                        setScaffoldErr('')
-                      }}
-                      placeholder="project-name"
-                      className="flex-1 font-mono"
-                    />
-                    <Button
-                      variant="secondary"
-                      onClick={pickParent}
-                      title="Choose parent directory"
-                    >
-                      {location === 'remote' ? (
-                        <Server size={13} strokeWidth={2} />
-                      ) : (
-                        <FolderOpen size={13} strokeWidth={2} />
-                      )}
-                      <span className="max-w-[180px] truncate">{projectParentLabel}</span>
-                    </Button>
-                  </div>
-                </div>
               </>
             )}
 
