@@ -545,8 +545,6 @@ export function EntryScreen({
     const dir = await window.gt.pickDir()
     if (!dir) return
     selectWorkspace(dir)
-    // Confirming a folder in the native dialog is as decisive as a chip click.
-    advance()
   }
 
   // openrouter is one-shot with no resumable local store — hide its resume list.
@@ -684,13 +682,6 @@ export function EntryScreen({
   const stepNumber = steps.indexOf(step) + 1
   const back = () => setStepIndex((i) => Math.max(0, i - 1))
   const next = () => setStepIndex((i) => Math.min(steps.length - 1, i + 1))
-  /** Optimistic advance: a click that FULLY answers the step moves straight on,
-   *  so the common path needs no Next at all. Reserved for one-click answers
-   *  (the intent cards, a workspace chip, a picked folder) — never for a step
-   *  that still has fields the user may reasonably want to touch, like the
-   *  engine step's engine + model + effort trio. Every step stays reachable
-   *  from the rail, so an over-eager advance costs one click to undo. */
-  const advance = next
   // Changing the intent re-derives the steps; never strand the user past the end.
   useEffect(() => {
     setStepIndex((i) => Math.min(i, steps.length - 1))
@@ -764,10 +755,7 @@ export function EntryScreen({
         }`}
       >
         <button
-          onClick={() => {
-            selectWorkspace(r)
-            advance()
-          }}
+          onClick={() => selectWorkspace(r)}
           className="inline-flex min-w-0 items-center gap-1.5 text-left"
         >
           {isSelected ? (
@@ -885,10 +873,7 @@ export function EntryScreen({
                 {intentOptions.map(({ id, label, hint, icon: Icon }) => (
                   <button
                     key={id}
-                    onClick={() => {
-                      selectIntent(id)
-                      advance()
-                    }}
+                    onClick={() => selectIntent(id)}
                     className={`flex items-start gap-2.5 rounded-xl border p-3 text-left transition-colors ${
                       intent === id
                         ? 'border-primary/70 bg-primary/10'
