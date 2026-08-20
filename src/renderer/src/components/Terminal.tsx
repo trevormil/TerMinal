@@ -382,6 +382,12 @@ export function TerminalPane({
       lineHeight: 1.25,
       cursorBlink: true,
       allowProposedApi: true,
+      // OSC 8 hyperlinks — the form Claude Code / codex / cursor actually
+      // emit. Without a linkHandler xterm parses them and drops the click;
+      // only the plain-text URL regex (WebLinksAddon below) was live.
+      linkHandler: {
+        activate: (_e, uri) => void window.gt.openInBrowser(uri),
+      },
       minimumContrastRatio: 4.5,
       scrollback: 10000,
       theme: xtermThemeFromCss(),
@@ -391,7 +397,8 @@ export function TerminalPane({
     const searchAddon = new SearchAddon()
     term.loadAddon(fit)
     term.loadAddon(searchAddon)
-    term.loadAddon(new WebLinksAddon((_e, uri) => window.gt.openExternal(uri)))
+    // Plain-text URLs walk the same configured-browser chain as OSC 8 links.
+    term.loadAddon(new WebLinksAddon((_e, uri) => void window.gt.openInBrowser(uri)))
     searchAddonRef.current = searchAddon
     term.open(el)
     fit.fit()
