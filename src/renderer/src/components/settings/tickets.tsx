@@ -15,7 +15,9 @@ import type {
   TicketProviderKind,
   TicketProviderTestResult,
 } from '../../lib/types'
-import { Section, inp, type SettingsSectionSpec } from './shared'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Section, type SettingsSectionSpec } from './shared'
 
 const defaultLinearConfig = (team = ''): NonNullable<RepoTicketsConfig['linear']> => ({
   mcp: {
@@ -166,8 +168,6 @@ function TicketProviderPanel() {
     </button>
   )
 
-  const action =
-    'inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-black/25 px-3 text-[12px] text-zinc-200 transition-colors hover:border-[var(--gt-accent)]/60 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-50'
   const providerChanged = JSON.stringify(saved) !== JSON.stringify(draft)
   const repoLabel = ctx?.repoPath || ctx?.repoRoot || 'Current repo'
 
@@ -251,20 +251,23 @@ function TicketProviderPanel() {
                 ))}
               </select>
             </label>
-            <button onClick={loadTeams} disabled={busy === 'teams'} className={action}>
-              {busy === 'teams' ? (
-                <Loader2 size={13} className="animate-spin" />
-              ) : (
-                <RotateCcw size={13} strokeWidth={2} />
-              )}
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={loadTeams}
+              disabled={busy === 'teams'}
+              aria-busy={busy === 'teams' || undefined}
+            >
+              {busy === 'teams' ? <Loader2 className="animate-spin" /> : <RotateCcw strokeWidth={2} />}
               Teams
-            </button>
+            </Button>
           </div>
           <label className="block space-y-1">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
               Workspace URL
             </span>
-            <input
+            <Input
               value={draft.linear?.workspace || ''}
               onChange={(e) =>
                 setDraft({
@@ -278,7 +281,7 @@ function TicketProviderPanel() {
               }
               placeholder="https://linear.app/your-workspace — start page for the embedded Linear view"
               spellCheck={false}
-              className="h-[33px] w-full rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 font-mono text-[12px] text-zinc-200 outline-none"
+              className="font-mono"
             />
           </label>
           <details>
@@ -286,7 +289,7 @@ function TicketProviderPanel() {
               Advanced MCP command
             </summary>
             <div className="mt-2 grid gap-2 md:grid-cols-[0.8fr_1.2fr]">
-              <input
+              <Input
                 value={draft.linear?.mcp?.command || 'bunx'}
                 onChange={(e) =>
                   setDraft({
@@ -298,10 +301,10 @@ function TicketProviderPanel() {
                     },
                   })
                 }
-                className={`${inp} font-mono`}
+                className="font-mono"
                 spellCheck={false}
               />
-              <input
+              <Input
                 value={(
                   draft.linear?.mcp?.args || ['mcp-remote@0.1.38', 'https://mcp.linear.app/mcp']
                 ).join(' ')}
@@ -318,7 +321,7 @@ function TicketProviderPanel() {
                     },
                   })
                 }
-                className={`${inp} font-mono`}
+                className="font-mono"
                 spellCheck={false}
               />
             </div>
@@ -333,7 +336,7 @@ function TicketProviderPanel() {
               <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
                 Label
               </span>
-              <input
+              <Input
                 value={draft.webview?.label ?? ''}
                 onChange={(e) =>
                   setDraft({
@@ -342,7 +345,6 @@ function TicketProviderPanel() {
                   })
                 }
                 placeholder="Tickets"
-                className={inp}
                 spellCheck={false}
               />
             </label>
@@ -350,7 +352,7 @@ function TicketProviderPanel() {
               <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
                 URL
               </span>
-              <input
+              <Input
                 value={draft.webview?.url ?? ''}
                 onChange={(e) =>
                   setDraft({
@@ -359,7 +361,7 @@ function TicketProviderPanel() {
                   })
                 }
                 placeholder="https://linear.app/your-team/team/ENG/active"
-                className={`${inp} font-mono`}
+                className="font-mono"
                 spellCheck={false}
               />
             </label>
@@ -383,19 +385,21 @@ function TicketProviderPanel() {
               their own MCP.
             </div>
           </div>
-          <button
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
             onClick={() =>
               setDraft({ ...draft, views: [...(draft.views || []), { label: '', url: '' }] })
             }
-            className={action}
           >
-            <Plus size={13} strokeWidth={2} />
+            <Plus strokeWidth={2} />
             Add
-          </button>
+          </Button>
         </div>
         {(draft.views || []).map((v, i) => (
           <div key={i} className="grid gap-2 md:grid-cols-[0.5fr_1.5fr_auto]">
-            <input
+            <Input
               value={v.label}
               onChange={(e) => {
                 const views = [...(draft.views || [])]
@@ -403,10 +407,9 @@ function TicketProviderPanel() {
                 setDraft({ ...draft, views })
               }}
               placeholder="Linear"
-              className={inp}
               spellCheck={false}
             />
-            <input
+            <Input
               value={v.url}
               onChange={(e) => {
                 const views = [...(draft.views || [])]
@@ -414,18 +417,22 @@ function TicketProviderPanel() {
                 setDraft({ ...draft, views })
               }}
               placeholder="https://linear.app/acme/team/ENG/active"
-              className={`${inp} font-mono`}
+              className="font-mono"
               spellCheck={false}
             />
-            <button
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
               onClick={() =>
                 setDraft({ ...draft, views: (draft.views || []).filter((_, j) => j !== i) })
               }
-              className={action}
               title="Remove this view"
+              aria-label="Remove this view"
+              className="text-zinc-500 hover:text-[var(--gt-red)]"
             >
-              <Trash2 size={13} strokeWidth={2} />
-            </button>
+              <Trash2 strokeWidth={2} />
+            </Button>
           </div>
         ))}
         {!(draft.views || []).length && (
@@ -436,49 +443,50 @@ function TicketProviderPanel() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <button onClick={saveProvider} disabled={busy === 'save'} className={action}>
-          {busy === 'save' ? (
-            <Loader2 size={13} className="animate-spin" />
-          ) : (
-            <CircleCheck size={13} strokeWidth={2} />
-          )}
+        <Button
+          type="button"
+          variant="default"
+          size="sm"
+          onClick={saveProvider}
+          disabled={busy === 'save'}
+          aria-busy={busy === 'save' || undefined}
+        >
+          {busy === 'save' ? <Loader2 className="animate-spin" /> : <CircleCheck strokeWidth={2} />}
           Save
-        </button>
-        <button
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
           onClick={() => runTest(false)}
           disabled={busy === 'test' || providerChanged}
-          className={action}
+          aria-busy={busy === 'test' || undefined}
           title={
             providerChanged
               ? 'Save before testing this provider.'
               : 'Non-mutating connection check.'
           }
         >
-          {busy === 'test' ? (
-            <Loader2 size={13} className="animate-spin" />
-          ) : (
-            <Activity size={13} strokeWidth={2} />
-          )}
+          {busy === 'test' ? <Loader2 className="animate-spin" /> : <Activity strokeWidth={2} />}
           Test
-        </button>
+        </Button>
         {provider !== 'webview' && (
-          <button
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
             onClick={() => runTest(true)}
             disabled={busy === 'smoke' || providerChanged}
-            className={action}
+            aria-busy={busy === 'smoke' || undefined}
             title={
               providerChanged
                 ? 'Save before running smoke.'
                 : 'Creates, updates, and closes a real smoke ticket.'
             }
           >
-            {busy === 'smoke' ? (
-              <Loader2 size={13} className="animate-spin" />
-            ) : (
-              <Send size={13} strokeWidth={2} />
-            )}
+            {busy === 'smoke' ? <Loader2 className="animate-spin" /> : <Send strokeWidth={2} />}
             Smoke
-          </button>
+          </Button>
         )}
         {providerChanged && (
           <span className="text-[10.5px] text-amber-300">Save changes before testing.</span>
@@ -499,12 +507,14 @@ function TicketProviderPanel() {
             <span className="ml-1 text-zinc-500">({result.count} tickets)</span>
           )}
           {result.smoke?.key && (
-            <button
+            <Button
+              type="button"
+              variant="link"
+              className="ml-2 h-auto p-0 text-[11px] underline underline-offset-2"
               onClick={() => result.smoke?.url && window.gt.openExternal(result.smoke.url)}
-              className="ml-2 underline underline-offset-2"
             >
               {result.smoke.key}
-            </button>
+            </Button>
           )}
         </div>
       )}

@@ -7,6 +7,7 @@ import {
   RotateCcw,
   TerminalSquare,
 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { Section, tilde, type SettingsCtx, type SettingsSectionSpec } from './shared'
 
 function Component({ ctx }: { ctx: SettingsCtx }) {
@@ -61,51 +62,65 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
       desc="One-time helpers for a fresh machine. Agents inherit your global ~/.claude and ~/.codex config + skills."
     >
       <div className="space-y-2">
-        <button
+        <Button
+          type="button"
+          variant="secondary"
+          className="w-full justify-start"
           onClick={copySetupPrompt}
-          className="flex w-full items-center gap-2 rounded-lg border border-[var(--gt-border)] bg-black/20 px-3 py-2 text-left text-[12px] text-zinc-200 hover:border-[var(--gt-accent)]/40"
         >
           {copied ? (
-            <CircleCheck size={14} strokeWidth={2} className="text-[var(--gt-green)]" />
+            <CircleCheck strokeWidth={2} className="text-[var(--gt-green)]" />
           ) : (
-            <ClipboardCopy size={14} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
+            <ClipboardCopy strokeWidth={2} className="text-[var(--gt-accent-light)]" />
           )}
-          Copy global-skills setup prompt
-          <span className="ml-auto text-[10.5px] text-zinc-600">
+          <span className="font-normal">Copy global-skills setup prompt</span>
+          <span className="ml-auto text-[10.5px] font-normal text-zinc-600">
             {copied ? 'copied — paste into Claude' : 'paste into Claude'}
           </span>
-        </button>
-        <button
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          className="w-full justify-start"
           onClick={installNotify}
           disabled={notify?.busy}
-          className="flex w-full items-center gap-2 rounded-lg border border-[var(--gt-border)] bg-black/20 px-3 py-2 text-left text-[12px] text-zinc-200 hover:border-[var(--gt-accent)]/40 disabled:opacity-50"
+          aria-busy={notify?.busy || undefined}
         >
           {notify?.busy ? (
-            <Loader2 size={14} className="animate-spin" />
+            <Loader2 className="animate-spin" />
           ) : (
-            <TerminalSquare size={14} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
+            <TerminalSquare strokeWidth={2} className="text-[var(--gt-accent-light)]" />
           )}
-          Install <span className="font-mono">gt-notify</span> to ~/.local/bin
-          <span className="ml-auto text-[10.5px] text-zinc-600">Activity feed hook</span>
-        </button>
+          <span className="font-normal">
+            Install <span className="font-mono">gt-notify</span> to ~/.local/bin
+          </span>
+          <span className="ml-auto text-[10.5px] font-normal text-zinc-600">
+            Activity feed hook
+          </span>
+        </Button>
         {notify && !notify.busy && (
           <div className={`text-[11px] ${notify.ok ? 'text-[var(--gt-green)]' : 'text-amber-400'}`}>
             {notify.ok ? `✓ Installed at ${tilde(notify.path || '')}` : notify.error}
           </div>
         )}
-        <button
+        <Button
+          type="button"
+          variant="secondary"
+          className="w-full justify-start"
           onClick={installMcp}
           disabled={mcpState?.busy}
-          className="flex w-full items-center gap-2 rounded-lg border border-[var(--gt-border)] bg-black/20 px-3 py-2 text-left text-[12px] text-zinc-200 hover:border-[var(--gt-accent)]/40 disabled:opacity-50"
+          aria-busy={mcpState?.busy || undefined}
         >
           {mcpState?.busy ? (
-            <Loader2 size={14} className="animate-spin" />
+            <Loader2 className="animate-spin" />
           ) : (
-            <TerminalSquare size={14} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
+            <TerminalSquare strokeWidth={2} className="text-[var(--gt-accent-light)]" />
           )}
-          Install MCP server (Claude Code + Codex)
-          <span className="ml-auto text-[10.5px] text-zinc-600">Cross-session views</span>
-        </button>
+          <span className="font-normal">Install MCP server (Claude Code + Codex)</span>
+          <span className="ml-auto text-[10.5px] font-normal text-zinc-600">
+            Cross-session views
+          </span>
+        </Button>
         {mcpState && !mcpState.busy && (
           <div
             className={`text-[11px] ${mcpState.ok ? 'text-[var(--gt-green)]' : 'text-amber-400'}`}
@@ -115,13 +130,15 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
               : mcpState.error}
           </div>
         )}
-        <button
+        <Button
+          type="button"
+          variant="secondary"
+          className="w-full justify-start"
           onClick={onRerunSetup}
-          className="flex w-full items-center gap-2 rounded-lg border border-[var(--gt-border)] bg-black/20 px-3 py-2 text-left text-[12px] text-zinc-200 hover:border-[var(--gt-accent)]/40"
         >
-          <RotateCcw size={14} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
-          Re-run first-time setup
-        </button>
+          <RotateCcw strokeWidth={2} className="text-[var(--gt-accent-light)]" />
+          <span className="font-normal">Re-run first-time setup</span>
+        </Button>
       </div>
     </Section>
   )

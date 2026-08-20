@@ -1,5 +1,7 @@
 import { History } from 'lucide-react'
-import { Card, CopyButton, Empty } from '../../components/ui'
+import { TitledCard } from '../../components/ui/titled-card'
+import { Empty } from '../../components/ui/display'
+import { CopyButton } from '../../components/ui'
 import { relativeTime } from '../../lib/time'
 import type { Plugin, TranscriptStats } from '../../lib/types'
 
@@ -26,7 +28,7 @@ const plugin: Plugin<TranscriptStats> = {
     // reversing so the next render doesn't get a re-reversed list.
     const prompts = [...(d?.recentPrompts ?? [])].reverse().slice(0, SHOWN)
     return (
-      <Card icon={History} title="Recent Prompts">
+      <TitledCard icon={History} title="Recent Prompts">
         {prompts.length === 0 ? (
           <Empty>No prompts yet</Empty>
         ) : (
@@ -39,13 +41,13 @@ const plugin: Plugin<TranscriptStats> = {
                 className="w-full items-start !gap-1.5 text-left"
               >
                 <span
-                  className="min-w-0 flex-1 truncate text-[11.5px] text-zinc-400"
+                  className="min-w-0 flex-1 truncate text-[11.5px] text-muted-foreground"
                   title={p.text}
                 >
                   {p.text}
                 </span>
                 {p.ts > 0 && (
-                  <span className="shrink-0 pt-px text-[9px] tabular-nums text-zinc-600">
+                  <span className="shrink-0 pt-px text-[9px] tabular-nums text-muted-foreground">
                     {relativeTime(p.ts)}
                   </span>
                 )}
@@ -53,7 +55,7 @@ const plugin: Plugin<TranscriptStats> = {
             ))}
           </div>
         )}
-      </Card>
+      </TitledCard>
     )
   },
 }

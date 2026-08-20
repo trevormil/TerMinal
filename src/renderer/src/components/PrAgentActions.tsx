@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Eye, Repeat2, Check, type LucideIcon } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { EnginePicker } from './EnginePicker'
 import type { AgentDefinition, Engine, Persona } from '../lib/types'
 import { openPromptInTerminal } from '../lib/launch'
@@ -58,23 +59,25 @@ export function PrAgentActions({ pr, sym = '!' }: { pr: PrLite; sym?: string }) 
   }
 
   const btn = (k: 'review' | 'iterate', Icon: LucideIcon, label: string) => (
-    <button
+    <Button
+      type="button"
+      variant="secondary"
+      size="sm"
       onClick={(ev) => {
         ev.stopPropagation()
         setKind(k)
       }}
-      className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-300 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
     >
       <Icon size={12} strokeWidth={2} />
       {label}
-    </button>
+    </Button>
   )
 
   return (
     <>
       {done ? (
         <span
-          className={`inline-flex items-center gap-1 text-[11px] ${done.ok ? 'text-emerald-400' : 'text-amber-400'}`}
+          className={`inline-flex items-center gap-1 text-[11px] ${done.ok ? 'text-[var(--gt-green)]' : 'text-[var(--gt-yellow)]'}`}
         >
           {done.ok && <Check size={12} strokeWidth={2.5} />}
           {done.msg}

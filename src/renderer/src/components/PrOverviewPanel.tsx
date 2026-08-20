@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { EyeOff, Eye, TriangleAlert } from 'lucide-react'
-import { Badge, Empty } from './ui'
+import { Badge } from '@/components/ui/badge'
+import { Empty } from '@/components/ui/display'
+import { Button } from '@/components/ui/button'
 import type {
   PrAggregates,
   PrClassTotals,
@@ -310,12 +312,12 @@ export function PrOverviewPanel({
         )}
         {reviewMeta && reviewMeta.riskTier !== 'unscored' && (
           <Badge
-            tone={
+            variant={
               reviewMeta.riskTier === 'high'
-                ? 'red'
+                ? 'destructive'
                 : reviewMeta.riskTier === 'medium'
-                  ? 'yellow'
-                  : 'green'
+                  ? 'warning'
+                  : 'success'
             }
           >
             {reviewMeta.riskScore != null
@@ -326,15 +328,16 @@ export function PrOverviewPanel({
         <div className="ml-auto flex items-center gap-2">
           <NoiseSummary noise={overview.noise} />
           {noiseFiles > 0 && (
-            <button
+            <Button
               type="button"
+              variant="secondary"
+              size="xs"
               onClick={() => setShowNoise((v) => !v)}
               aria-pressed={showNoise}
-              className="inline-flex h-6 items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 text-[10.5px] font-semibold text-zinc-400 hover:text-zinc-200"
             >
               {showNoise ? <Eye size={11} strokeWidth={2} /> : <EyeOff size={11} strokeWidth={2} />}
               {showNoise ? 'Showing all' : 'Noise hidden'}
-            </button>
+            </Button>
           )}
         </div>
       </div>

@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { Loader2, MessageCircle, Send } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import {
   SecretInput,
   Section,
   Toggle,
-  actionButton,
   type SettingsCtx,
   type SettingsSectionSpec,
 } from './shared'
@@ -57,14 +57,17 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
               placeholder="Your numeric chat id"
             />
           </label>
-          <button onClick={testTelegram} disabled={tg?.busy} className={actionButton}>
-            {tg?.busy ? (
-              <Loader2 size={13} className="animate-spin" />
-            ) : (
-              <Send size={13} strokeWidth={2} />
-            )}
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={testTelegram}
+            disabled={tg?.busy}
+            aria-busy={tg?.busy || undefined}
+          >
+            {tg?.busy ? <Loader2 className="animate-spin" /> : <Send strokeWidth={2} />}
             Test
-          </button>
+          </Button>
         </div>
         {tg && !tg.busy && (
           <div className={`text-[11px] ${tg.ok ? 'text-[var(--gt-green)]' : 'text-amber-400'}`}>

@@ -7,7 +7,9 @@ import {
   ScanSearch,
   Zap,
 } from 'lucide-react'
-import { Badge, Empty, type BadgeTone } from '../../components/ui'
+import { Badge } from '@/components/ui/badge'
+import { Empty } from '@/components/ui/display'
+import type { BadgeTone } from '../../components/ui'
 import { Markdown } from '../../components/Markdown'
 import { ReplyBox, ReviewActions, CommentBox } from './ReviewActions'
 import type {
@@ -35,6 +37,19 @@ function toneForState(state: string): BadgeTone {
   if (state === 'REQUESTED') return 'warn'
   return 'mute'
 }
+
+const toneVariant = (tone: BadgeTone): 'default' | 'secondary' | 'destructive' | 'success' | 'warning' | 'info' =>
+  tone === 'ok' || tone === 'green'
+    ? 'success'
+    : tone === 'warn' || tone === 'yellow'
+      ? 'warning'
+      : tone === 'bad' || tone === 'red'
+        ? 'destructive'
+        : tone === 'blue'
+          ? 'info'
+          : tone === 'accent'
+            ? 'default'
+            : 'secondary'
 
 function fmtWhen(iso: string): string {
   if (!iso) return ''
@@ -78,13 +93,13 @@ export function ApprovalsRow({
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-[var(--gt-border)] px-3 py-2">
       {reviewDecision && (
-        <Badge tone={toneForState(reviewDecision)}>{humanState(reviewDecision)}</Badge>
+        <Badge variant={toneVariant(toneForState(reviewDecision))}>{humanState(reviewDecision)}</Badge>
       )}
       {reviewers.map((r) => (
         <span key={`${r.login}:${r.state}`} className="inline-flex items-center gap-1.5">
           <Avatar login={r.login} avatarUrl={r.avatarUrl} />
-          <span className="text-[11.5px] text-[var(--gt-text-soft)]">{r.login}</span>
-          <Badge tone={toneForState(r.state)}>{humanState(r.state)}</Badge>
+          <span className="text-[11.5px] text-muted-foreground">{r.login}</span>
+          <Badge variant={toneVariant(toneForState(r.state))}>{humanState(r.state)}</Badge>
         </span>
       ))}
     </div>
@@ -120,7 +135,7 @@ function ReviewCard({ r }: { r: PrReviewSubmission }) {
   return (
     <CommentCard
       c={{ ...r, databaseId: null }}
-      badge={<Badge tone={toneForState(r.state)}>{humanState(r.state)}</Badge>}
+      badge={<Badge variant={toneVariant(toneForState(r.state))}>{humanState(r.state)}</Badge>}
     />
   )
 }
@@ -155,8 +170,8 @@ function ThreadCard({
           {thread.path || 'file'}
           {thread.line != null && `:${thread.line}`}
         </span>
-        {thread.outdated && <Badge tone="mute">Outdated</Badge>}
-        {thread.resolved && <Badge tone="ok">Resolved</Badge>}
+        {thread.outdated && <Badge variant="secondary">Outdated</Badge>}
+        {thread.resolved && <Badge variant="success">Resolved</Badge>}
         <span className="text-[10.5px] tabular-nums text-[var(--gt-text-faint)]">
           {thread.comments.length}
         </span>

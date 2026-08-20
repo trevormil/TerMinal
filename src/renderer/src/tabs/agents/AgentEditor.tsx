@@ -1,6 +1,7 @@
 import { useReducer } from 'react'
 import { EngineModelPicker } from '../../components/EngineModelPicker'
 import { SkillHint } from '../../components/SkillHint'
+import { Dialog, DialogContent } from '../../components/ui/dialog'
 import type { Agent, AgentModelPolicy, AgentQuality, Engine } from '../../lib/types'
 import { FIELD } from './agentsShared'
 
@@ -130,13 +131,10 @@ export function AgentEditor({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6"
-      onClick={onClose}
-    >
-      <div
-        className="flex max-h-[86vh] w-[640px] flex-col gap-3 overflow-y-auto rounded-2xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-5"
-        onClick={(e) => e.stopPropagation()}
+    <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
+      <DialogContent
+        showCloseButton={false}
+        className="flex max-h-[86vh] w-[640px] flex-col gap-3 overflow-y-auto rounded-2xl bg-[var(--gt-panel)] p-5"
       >
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-bold text-zinc-100">
@@ -248,7 +246,7 @@ export function AgentEditor({
         >
           {busy ? 'Saving…' : 'Save agent'}
         </button>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

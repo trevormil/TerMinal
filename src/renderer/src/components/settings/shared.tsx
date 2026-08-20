@@ -1,6 +1,9 @@
 import { createContext, useContext, type ReactNode } from 'react'
 import { CircleCheck, CircleSlash, Loader2, Plus, Send, Trash2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
 import type {
   AlertChannelId,
   DaemonCfg,
@@ -138,20 +141,28 @@ export function Toggle({
 }) {
   return (
     <button
+      type="button"
       onClick={onToggle}
+      aria-pressed={on}
       className="flex w-full items-center justify-between rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 py-2 text-left transition-colors hover:border-[var(--gt-accent)]/40"
     >
       <span className="min-w-0">
         <span className="text-[12px] text-zinc-200">{label}</span>
         {hint && <span className="mt-0.5 block text-[10.5px] text-zinc-600">{hint}</span>}
       </span>
+      {/* Decorative switch track/knob (a <span>, not the Radix Switch — the row
+          <button> above is the real control, and a Radix Switch is itself a
+          <button>, which would nest buttons). Mirrors ui/switch's look. */}
       <span
-        className={`relative ml-3 inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
-          on ? 'bg-[var(--gt-accent)]' : 'bg-white/10'
+        aria-hidden="true"
+        className={`ml-3 inline-flex h-4.5 w-8 shrink-0 items-center rounded-full border-2 border-transparent transition-colors ${
+          on ? 'bg-primary' : 'bg-white/10'
         }`}
       >
         <span
-          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${on ? 'translate-x-4' : 'translate-x-0.5'}`}
+          className={`block size-3.5 rounded-full bg-background shadow-md transition-transform ${
+            on ? 'translate-x-3.5' : 'translate-x-0'
+          }`}
         />
       </span>
     </button>
@@ -216,7 +227,7 @@ export function SecretInput({
 }) {
   return (
     <div className="space-y-1">
-      <input
+      <Input
         type="password"
         defaultValue=""
         onBlur={(e) => {
@@ -228,15 +239,18 @@ export function SecretInput({
         placeholder={set ? '•••••••• (set — type to replace)' : placeholder}
         spellCheck={false}
         autoComplete="off"
-        className={`${inp} ${mono ? 'font-mono' : ''}`}
+        className={mono ? 'font-mono' : ''}
       />
       {set && (
-        <button
+        <Button
+          type="button"
+          variant="ghost"
+          size="xs"
           onClick={() => onSave('')}
-          className="text-[10.5px] text-zinc-600 underline-offset-2 hover:text-amber-400 hover:underline"
+          className="h-auto p-0 text-[10.5px] text-zinc-600 underline-offset-2 hover:text-amber-400 hover:underline"
         >
           Clear
-        </button>
+        </Button>
       )}
     </div>
   )
@@ -280,18 +294,20 @@ export function WebhookList({
             endpoint.
           </div>
         </div>
-        <button
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
           onClick={() =>
             save([
               ...stripped(),
               { id: crypto.randomUUID(), name: 'Webhook', url: '', enabled: false },
             ])
           }
-          className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 py-1 text-[11px] text-zinc-300 transition-colors hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
         >
           <Plus size={12} strokeWidth={2.25} />
           Add
-        </button>
+        </Button>
       </div>
 
       {webhooks.length === 0 ? (
@@ -309,34 +325,30 @@ export function WebhookList({
               <div className="flex items-center gap-2">
                 {/* A compact switch, not <Toggle> — that one is a full-width
                     labelled row and would swallow the rest of this line. */}
-                <button
-                  onClick={() => patch(w.id, { enabled: !w.enabled })}
+                <Switch
+                  checked={w.enabled}
+                  onCheckedChange={() => patch(w.id, { enabled: !w.enabled })}
                   title={w.enabled ? 'Disable this webhook' : 'Enable this webhook'}
-                  aria-pressed={w.enabled}
-                  className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
-                    w.enabled ? 'bg-[var(--gt-accent)]' : 'bg-white/10'
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      w.enabled ? 'translate-x-4' : 'translate-x-0.5'
-                    }`}
-                  />
-                </button>
-                <input
+                  aria-label={w.enabled ? 'Disable this webhook' : 'Enable this webhook'}
+                />
+                <Input
                   defaultValue={w.name}
                   onBlur={(e) => {
                     const name = e.target.value.trim() || 'Webhook'
                     if (name !== w.name) patch(w.id, { name })
                   }}
                   placeholder="Name"
-                  className={`${inp} h-8 flex-1`}
+                  className="h-8 flex-1"
                 />
-                <button
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
                   onClick={() => test('webhook', w.id)}
                   disabled={result?.busy}
+                  aria-busy={result?.busy || undefined}
                   title="Send a test alert to this endpoint"
-                  className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 text-[11.5px] text-zinc-200 transition-colors hover:border-[var(--gt-accent)]/60 disabled:opacity-50"
+                  className="h-8 px-2.5 text-[11.5px]"
                 >
                   {result?.busy ? (
                     <Loader2 size={12} className="animate-spin" />
@@ -344,14 +356,18 @@ export function WebhookList({
                     <Send size={12} strokeWidth={2} />
                   )}
                   Test
-                </button>
-                <button
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
                   onClick={() => save(stripped().filter((x) => x.id !== w.id))}
                   title="Remove this webhook"
-                  className="shrink-0 rounded-md p-1.5 text-zinc-600 transition-colors hover:text-amber-400"
+                  aria-label="Remove this webhook"
+                  className="text-zinc-600 hover:text-amber-400"
                 >
                   <Trash2 size={13} strokeWidth={2} />
-                </button>
+                </Button>
               </div>
 
               <SecretInput

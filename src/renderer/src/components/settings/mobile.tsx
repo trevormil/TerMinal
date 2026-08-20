@@ -9,7 +9,9 @@ import type {
   Settings,
   SettingsPatch,
 } from '../../lib/types'
-import { Section, Toggle, actionButton, type SettingsCtx, type SettingsSectionSpec } from './shared'
+import { Section, Toggle, type SettingsCtx, type SettingsSectionSpec } from './shared'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 
 // Pairing pane for the mobile bridge (TerMinal Remote for iOS). The QR carries
 // the bearer token and the pinned cert fingerprint — it IS the credential in
@@ -19,11 +21,9 @@ import { Section, Toggle, actionButton, type SettingsCtx, type SettingsSectionSp
 function MobileSection({
   cfg,
   save,
-  buttonClass,
 }: {
   cfg: Settings['bridge']
   save: (patch: SettingsPatch) => void
-  buttonClass: string
 }) {
   const [status, setStatus] = useState<BridgeStatus | null>(null)
   const [pairing, setPairing] = useState<BridgePairing | null>(null)
@@ -140,23 +140,29 @@ function MobileSection({
                 )}
               </div>
               <div className="flex flex-wrap gap-1.5">
-                <button
-                  className={buttonClass}
+                <Button
+                  type="button"
+                  variant="secondary"
                   onClick={() => {
                     void window.gt.clipboardWrite(payload)
                     setCopied(true)
                     setTimeout(() => setCopied(false), 1500)
                   }}
                 >
-                  <ClipboardCopy size={13} strokeWidth={2} />
+                  <ClipboardCopy strokeWidth={2} />
                   {copied ? 'Copied' : 'Copy pairing code'}
-                </button>
-                <button className={buttonClass} onClick={() => setRevealed((v) => !v)}>
-                  <Eye size={13} strokeWidth={2} />
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setRevealed((v) => !v)}
+                >
+                  <Eye strokeWidth={2} />
                   {revealed ? 'Hide' : 'Show'} pairing code
-                </button>
-                <button
-                  className={buttonClass}
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
                   onClick={() => {
                     void window.gt.bridge.rotateToken().then((next) => {
                       setPairing(next)
@@ -164,9 +170,9 @@ function MobileSection({
                     })
                   }}
                 >
-                  <RefreshCw size={13} strokeWidth={2} />
+                  <RefreshCw strokeWidth={2} />
                   Rotate token
-                </button>
+                </Button>
               </div>
               {revealed && (
                 <textarea
@@ -216,7 +222,7 @@ function MobileSection({
             <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
               Port
             </span>
-            <input
+            <Input
               type="number"
               defaultValue={cfg.port}
               onBlur={(e) => {
@@ -225,7 +231,7 @@ function MobileSection({
                   save({ bridge: { port } })
                 }
               }}
-              className="h-8 w-28 rounded-md border border-[var(--gt-border)] bg-black/30 px-2 font-mono text-[12px] text-zinc-200"
+              className="h-8 w-28 font-mono text-[12px]"
             />
           </label>
           <div className="text-[10.5px] leading-relaxed text-zinc-600">
@@ -239,7 +245,7 @@ function MobileSection({
 }
 
 function Component({ ctx }: { ctx: SettingsCtx }) {
-  return <MobileSection cfg={ctx.s.bridge} save={ctx.save} buttonClass={actionButton} />
+  return <MobileSection cfg={ctx.s.bridge} save={ctx.save} />
 }
 
 const section: SettingsSectionSpec = {

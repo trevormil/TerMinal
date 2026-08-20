@@ -1,5 +1,7 @@
 import { Brain } from 'lucide-react'
-import { Card, Gauge, Big, Empty } from '../../components/ui'
+import { TitledCard } from '../../components/ui/titled-card'
+import { Gauge } from '../../components/ui/gauge'
+import { Big, Empty } from '../../components/ui/display'
 import { fmtTokens } from '../../lib/format'
 import type { Plugin, TranscriptStats } from '../../lib/types'
 
@@ -17,21 +19,25 @@ const plugin: Plugin<TranscriptStats> = {
   render: (d) => {
     if (!d?.ok)
       return (
-        <Card icon={Brain} title="Context Window">
+        <TitledCard icon={Brain} title="Context Window">
           <Empty>No active Claude session</Empty>
-        </Card>
+        </TitledCard>
       )
     return (
-      <Card
+      <TitledCard
         icon={Brain}
         title="Context Window"
-        right={<span className="text-[10.5px] text-zinc-500">{fmtTokens(d.contextLimit)} cap</span>}
+        right={
+          <span className="text-[10.5px] text-muted-foreground">
+            {fmtTokens(d.contextLimit)} cap
+          </span>
+        }
       >
         <div className="mb-2">
           <Big value={`${d.contextPct.toFixed(1)}%`} sub={`${fmtTokens(d.contextTokens)} tok`} />
         </div>
         <Gauge pct={d.contextPct} />
-      </Card>
+      </TitledCard>
     )
   },
 }

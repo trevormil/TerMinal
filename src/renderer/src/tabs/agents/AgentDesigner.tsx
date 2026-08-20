@@ -3,6 +3,7 @@ import { Bot } from 'lucide-react'
 import { EngineLogo } from '../../components/EngineLogo'
 import { EngineModelPicker } from '../../components/EngineModelPicker'
 import { SkillHint } from '../../components/SkillHint'
+import { Dialog, DialogContent } from '../../components/ui/dialog'
 import { engineLabel } from '../../lib/engines'
 import { engineInstanceLabel, openPromptInTerminal, type LaunchMode } from '../../lib/launch'
 import type { AgentRun, Engine, TabContext } from '../../lib/types'
@@ -95,13 +96,10 @@ export function AgentDesigner({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6"
-      onClick={onClose}
-    >
-      <div
-        className="flex max-h-[86vh] w-[640px] flex-col gap-3 overflow-y-auto rounded-2xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-5"
-        onClick={(e) => e.stopPropagation()}
+    <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
+      <DialogContent
+        showCloseButton={false}
+        className="flex max-h-[86vh] w-[640px] flex-col gap-3 overflow-y-auto rounded-2xl bg-[var(--gt-panel)] p-5"
       >
         <div className="flex items-center gap-2">
           <Bot size={16} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
@@ -247,7 +245,7 @@ export function AgentDesigner({
           writing your agent's prompt so it follows this project's MR + ticket conventions
           (worktree, auto-mergeable label, sole-writer scope, depends_on).
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

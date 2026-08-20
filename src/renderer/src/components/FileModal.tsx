@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowUpRight } from 'lucide-react'
-import { Button, Modal } from './ui'
+import { ArrowUpRight, Loader2, X } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { CodeEditor } from './CodeEditor'
 import { FileViewer, hasViewer } from './FileViewer'
 import { defaultsToSource, needsBinaryRead, viewerKindFor } from '../../../shared/file-viewers'
@@ -17,9 +18,9 @@ const openInFilesTab = (path: string) => {
 
 /**
  * A single file, opened and edited without leaving the Terminal tab. Built on
- * the shared `Modal`, which portals it to document.body (so it escapes the
- * session grid's stacking context) and owns the backdrop, Escape, focus trap,
- * focus restore and scroll lock this file used to re-derive by hand.
+ * the shadcn `Dialog`, which portals it to document.body (so it escapes the
+ * session grid's stacking context) and — via Radix — owns the backdrop, Escape,
+ * focus trap, focus restore and scroll lock this file used to re-derive by hand.
  *
  * Rendering is the Files tab's `FileViewer`, not a second implementation:
  * images, PDFs, markdown, CSV, SVG and unknown binaries render the way they do
@@ -93,7 +94,7 @@ export function FileModal({ path, onClose }: { path: string; onClose: () => void
   )
 
   // ⌘S saves. Captured so the Files tab's own ⌘S (bound on window) can't also
-  // fire for a file this modal owns. Escape is Modal's job now.
+  // fire for a file this modal owns. Escape is the Dialog's job now.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
@@ -110,19 +111,22 @@ export function FileModal({ path, onClose }: { path: string; onClose: () => void
   const { Icon, cls } = fileIcon(path.split('/').pop() || path, false)
 
   return (
-    <Modal
-      onClose={onClose}
-      width="h-[80vh] w-[980px] max-w-[94vw]"
-      // The embedded CodeMirror / FileViewer scrolls itself.
-      scrollBody={false}
-      title={
-        <span className="flex min-w-0 items-center gap-2">
-          <Icon size={13} strokeWidth={2} className={`shrink-0 ${cls}`} />
-          <span className="truncate font-mono text-[11px] font-normal text-zinc-400">{path}</span>
-        </span>
-      }
-      actions={
-        <>
+    <Dialog
+      defaultOpen
+      onOpenChange={(open) => {
+        if (!open) onClose()
+      }}
+    >
+      <DialogContent
+        showCloseButton={false}
+        aria-describedby={undefined}
+        className="flex h-[80vh] w-[980px] max-w-[94vw] flex-col gap-0 overflow-hidden p-0"
+      >
+        <div className="flex shrink-0 items-center gap-2 border-b border-[var(--gt-border)] px-3 py-2">
+          <DialogTitle className="flex min-w-0 flex-1 items-center gap-2 truncate">
+            <Icon size={13} strokeWidth={2} className={`shrink-0 ${cls}`} />
+            <span className="truncate font-mono text-[11px] font-normal text-zinc-400">{path}</span>
+          </DialogTitle>
           {/* Save state belongs to the editor. A read-only kind has nothing to
               save, so it gets no status and no Save button. */}
           {!readOnly && content !== undefined && (
@@ -131,64 +135,82 @@ export function FileModal({ path, onClose }: { path: string; onClose: () => void
             </span>
           )}
           {dirty && (
-            <Button variant="primary" onClick={save} busy={saving}>
+            <Button
+              variant="default"
+              size="sm"
+              disabled={saving}
+              aria-busy={saving || undefined}
+              onClick={save}
+            >
+              {saving && <Loader2 size={11} strokeWidth={2.25} className="shrink-0 animate-spin" />}
               Save ⌘S
             </Button>
           )}
           <Button
-            icon={ArrowUpRight}
+            variant="secondary"
+            size="sm"
             onClick={() => {
               openInFilesTab(path)
               onClose()
             }}
           >
+            <ArrowUpRight size={11} strokeWidth={2} />
             View in Files tab
           </Button>
-        </>
-      }
-    >
-      <div className="flex h-full min-h-0 flex-col">
-        {err && !hasViewer(path) ? (
-          <div className="p-6 text-[12px] text-zinc-600">{err}</div>
-        ) : content === undefined ? (
-          <div className="p-6 text-[12px] text-zinc-600">Loading…</div>
-        ) : hasViewer(path) && !viewerSource ? (
-          // Rendered viewer (markdown/image/pdf/csv/svg/binary). Runs even
-          // when the utf8 read failed — an image legitimately fails that read
-          // and loads through the binary channel instead.
-          <FileViewer
-            key={path}
-            path={path}
-            text={content}
-            showSource={false}
-            onWantsSource={setViewerSource}
-          />
-        ) : (
-          <div className="flex h-full min-h-0 flex-col">
-            {hasViewer(path) && (
-              <FileViewer
-                key={`${path}:src`}
-                path={path}
-                text={content}
-                showSource
-                onWantsSource={setViewerSource}
-              />
-            )}
-            <div className="min-h-0 flex-1">
-              <CodeEditor
-                key={path}
-                value={content}
-                onChange={(v) => {
-                  latest.current = { content: v, dirty: true }
-                  setContent(v)
-                  setDirty(true)
-                }}
-                extensions={langForPath(path)}
-              />
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Close (Esc)"
+            title="Close (Esc)"
+            onClick={onClose}
+          >
+            <X size={14} strokeWidth={2} />
+          </Button>
+        </div>
+        {/* The embedded CodeMirror / FileViewer scrolls itself. */}
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {err && !hasViewer(path) ? (
+            <div className="p-6 text-[12px] text-zinc-600">{err}</div>
+          ) : content === undefined ? (
+            <div className="p-6 text-[12px] text-zinc-600">Loading…</div>
+          ) : hasViewer(path) && !viewerSource ? (
+            // Rendered viewer (markdown/image/pdf/csv/svg/binary). Runs even
+            // when the utf8 read failed — an image legitimately fails that read
+            // and loads through the binary channel instead.
+            <FileViewer
+              key={path}
+              path={path}
+              text={content}
+              showSource={false}
+              onWantsSource={setViewerSource}
+            />
+          ) : (
+            <div className="flex h-full min-h-0 flex-col">
+              {hasViewer(path) && (
+                <FileViewer
+                  key={`${path}:src`}
+                  path={path}
+                  text={content}
+                  showSource
+                  onWantsSource={setViewerSource}
+                />
+              )}
+              <div className="min-h-0 flex-1">
+                <CodeEditor
+                  key={path}
+                  value={content}
+                  onChange={(v) => {
+                    latest.current = { content: v, dirty: true }
+                    setContent(v)
+                    setDirty(true)
+                  }}
+                  extensions={langForPath(path)}
+                />
+              </div>
             </div>
-          </div>
-        )}
-      </div>
-    </Modal>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }

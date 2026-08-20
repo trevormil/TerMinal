@@ -1,25 +1,27 @@
 import { useState } from 'react'
 import { Sparkles, ChevronRight, ChevronDown } from 'lucide-react'
-import { Card, CopyButton, Empty } from '../../components/ui'
+import { TitledCard } from '../../components/ui/titled-card'
+import { Empty } from '../../components/ui/display'
+import { CopyButton } from '../../components/ui'
 import type { Plugin, SkillInfo } from '../../lib/types'
 
 function SkillRow({ s }: { s: SkillInfo }) {
   const command = `/${s.scope === 'plugin' && s.namespace ? `${s.namespace}:` : ''}${s.name}`
   return (
     <div className="border-b border-[var(--gt-border)]/30 py-1.5 last:border-0">
-      <div className="font-mono text-[11px] text-zinc-200">
+      <div className="font-mono text-[11px] text-foreground/90">
         <CopyButton value={command} title={`Copy ${command} — paste in terminal`}>
           {s.scope === 'plugin' && s.namespace ? (
-            <span className="text-zinc-500">{s.namespace}:</span>
+            <span className="text-muted-foreground">{s.namespace}:</span>
           ) : null}
           {s.name}
         </CopyButton>
         {s.platforms?.length ? (
-          <span className="ml-1 text-[9px] text-zinc-600">{s.platforms.join('+')}</span>
+          <span className="ml-1 text-[9px] text-muted-foreground">{s.platforms.join('+')}</span>
         ) : null}
       </div>
       {s.description && (
-        <div className="mt-0.5 line-clamp-2 text-[10.5px] leading-snug text-zinc-500">
+        <div className="mt-0.5 line-clamp-2 text-[10.5px] leading-snug text-muted-foreground">
           {s.description}
         </div>
       )}
@@ -37,18 +39,18 @@ function SkillsCard({ data }: { data: SkillInfo[] | null }) {
 
   if (ours.length === 0 && plugins.length === 0)
     return (
-      <Card icon={Sparkles} title="Skills">
+      <TitledCard icon={Sparkles} title="Skills">
         <Empty>No skills found</Empty>
-      </Card>
+      </TitledCard>
     )
 
   return (
-    <Card icon={Sparkles} title={`Skills · ${ours.length + plugins.length}`}>
+    <TitledCard icon={Sparkles} title={`Skills · ${ours.length + plugins.length}`}>
       <div className="max-h-72 overflow-y-auto pr-1">
         {ours.length > 0 ? (
           ours.map((s) => <SkillRow key={`${s.scope}:${s.name}`} s={s} />)
         ) : (
-          <div className="py-1 text-[10.5px] text-zinc-600">
+          <div className="py-1 text-[10.5px] text-muted-foreground">
             No project or personal skills — see plugin skills below.
           </div>
         )}
@@ -56,7 +58,7 @@ function SkillsCard({ data }: { data: SkillInfo[] | null }) {
           <>
             <button
               onClick={() => setShowPlugins((v) => !v)}
-              className="mt-1.5 flex w-full items-center gap-1 py-1 text-[10.5px] text-zinc-500 hover:text-zinc-300"
+              className="mt-1.5 flex w-full items-center gap-1 py-1 text-[10.5px] text-muted-foreground hover:text-foreground/80"
             >
               {showPlugins ? (
                 <ChevronDown size={11} strokeWidth={2} />
@@ -69,7 +71,7 @@ function SkillsCard({ data }: { data: SkillInfo[] | null }) {
           </>
         )}
       </div>
-    </Card>
+    </TitledCard>
   )
 }
 

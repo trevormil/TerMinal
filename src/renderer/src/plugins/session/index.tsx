@@ -1,6 +1,8 @@
 import { Cpu, GitBranch } from 'lucide-react'
-import { Card, Badge, CopyButton, Empty } from '../../components/ui'
-import type { BadgeTone } from '../../components/ui'
+import { TitledCard } from '../../components/ui/titled-card'
+import { Empty } from '../../components/ui/display'
+import { Badge } from '../../components/ui/badge'
+import { CopyButton } from '../../components/ui'
 import type { Plugin, TranscriptStats } from '../../lib/types'
 
 const shortModel = (m: string) =>
@@ -9,12 +11,12 @@ const shortModel = (m: string) =>
     .replace(/-(\d+)-(\d+)/, '-$1.$2')
     .replace(/\[1m\]/, ' 1M')
 
-const MODE: Record<string, { label: string; tone: BadgeTone }> = {
-  auto: { label: 'Auto', tone: 'yellow' },
-  bypassPermissions: { label: 'Auto', tone: 'yellow' },
-  acceptEdits: { label: 'Accept-edits', tone: 'blue' },
-  plan: { label: 'Plan', tone: 'blue' },
-  default: { label: 'Normal', tone: 'mute' },
+const MODE: Record<string, { label: string; variant: 'warning' | 'info' | 'secondary' }> = {
+  auto: { label: 'Auto', variant: 'warning' },
+  bypassPermissions: { label: 'Auto', variant: 'warning' },
+  acceptEdits: { label: 'Accept-edits', variant: 'info' },
+  plan: { label: 'Plan', variant: 'info' },
+  default: { label: 'Normal', variant: 'secondary' },
 }
 
 // Headline card: Claude's own session title + model + permission mode + branch + turns.
@@ -32,31 +34,31 @@ const plugin: Plugin<TranscriptStats> = {
   render: (d) => {
     if (!d?.ok)
       return (
-        <Card icon={Cpu} title="Session">
+        <TitledCard icon={Cpu} title="Session">
           <Empty>No active session</Empty>
-        </Card>
+        </TitledCard>
       )
     const mode = d.permissionMode ? MODE[d.permissionMode] : null
     return (
-      <Card
+      <TitledCard
         icon={Cpu}
         title="Session"
         right={
           <CopyButton
             value={d.sessionId}
             title="Copy session id"
-            className="font-mono text-[9px] text-zinc-600"
+            className="font-mono text-[9px] text-muted-foreground"
           >
             {d.sessionId.slice(0, 6)}
           </CopyButton>
         }
       >
-        <div className="mb-1.5 line-clamp-2 text-[12px] font-semibold leading-snug text-zinc-100">
+        <div className="mb-1.5 line-clamp-2 text-[12px] font-semibold leading-snug text-foreground">
           {d.aiTitle || d.firstUserText || 'Untitled session'}
         </div>
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-zinc-500">
-          <span className="font-medium text-zinc-300">{shortModel(d.model)}</span>
-          {mode && <Badge tone={mode.tone}>{mode.label}</Badge>}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-muted-foreground">
+          <span className="font-medium text-foreground/80">{shortModel(d.model)}</span>
+          {mode && <Badge variant={mode.variant}>{mode.label}</Badge>}
           {d.gitBranch && (
             <span className="inline-flex items-center gap-0.5">
               <GitBranch size={10} strokeWidth={2} />
@@ -65,7 +67,7 @@ const plugin: Plugin<TranscriptStats> = {
           )}
           <span className="tabular-nums">{d.turns} turns</span>
         </div>
-      </Card>
+      </TitledCard>
     )
   },
 }

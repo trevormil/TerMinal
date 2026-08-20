@@ -1,5 +1,6 @@
 import { Wrench } from 'lucide-react'
-import { Card, Empty } from '../../components/ui'
+import { TitledCard } from '../../components/ui/titled-card'
+import { Empty } from '../../components/ui/display'
 import type { Plugin, TranscriptStats } from '../../lib/types'
 
 // Compact breakdown of which tools the agent has used this session.
@@ -18,28 +19,28 @@ const plugin: Plugin<TranscriptStats> = {
     const entries = Object.entries(d?.toolCounts || {}).sort((a, b) => b[1] - a[1])
     if (!entries.length)
       return (
-        <Card icon={Wrench} title="Tool Use">
+        <TitledCard icon={Wrench} title="Tool Use">
           <Empty>None yet</Empty>
-        </Card>
+        </TitledCard>
       )
     const total = entries.reduce((s, [, n]) => s + n, 0)
     return (
-      <Card
+      <TitledCard
         icon={Wrench}
         title="Tool Use"
-        right={<span className="text-[9px] tabular-nums text-zinc-600">{total}</span>}
+        right={<span className="text-[9px] tabular-nums text-muted-foreground">{total}</span>}
       >
         <div className="flex flex-wrap gap-1">
           {entries.slice(0, 12).map(([name, n]) => (
             <span
               key={name}
-              className="rounded bg-black/30 px-1.5 py-0.5 text-[10px] text-zinc-400"
+              className="rounded bg-black/30 px-1.5 py-0.5 text-[10px] text-muted-foreground"
             >
-              {name} <span className="font-semibold tabular-nums text-zinc-200">{n}</span>
+              {name} <span className="font-semibold tabular-nums text-foreground/90">{n}</span>
             </span>
           ))}
         </div>
-      </Card>
+      </TitledCard>
     )
   },
 }

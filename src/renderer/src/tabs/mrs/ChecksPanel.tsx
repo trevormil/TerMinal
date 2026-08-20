@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { CheckCircle2, CircleDashed, ExternalLink, MinusCircle, XCircle } from 'lucide-react'
 import { usePolled } from '../../lib/usePolled'
-import { Empty } from '../../components/ui'
+import { Empty } from '@/components/ui/display'
+import { Button } from '@/components/ui/button'
 import type { PrCheckRun, PrChecksSummary } from '../../lib/types'
 
 // The PR's CI, GitHub-native: check runs and legacy commit statuses on the head
@@ -71,30 +72,32 @@ function CheckRow({ run }: { run: PrCheckRun }) {
   const duration = fmtDuration(run.durationMs)
   const label = run.conclusion || run.status.replace('_', ' ')
   return (
-    <div className="flex items-center gap-2 border-b border-[var(--gt-border)]/50 px-3 py-1.5 last:border-b-0">
+    <div className="flex items-center gap-2 border-b border-border/50 px-3 py-1.5 last:border-b-0">
       <ToneIcon tone={tone} />
-      <span className="min-w-0 flex-1 truncate text-[12px] text-[var(--gt-text-soft)]">
+      <span className="min-w-0 flex-1 truncate text-[12px] text-foreground/80">
         {run.name || 'Unnamed check'}
       </span>
       <span className="shrink-0 text-[11px]" style={{ color: TONE_COLOR[tone] }}>
         {label}
       </span>
       {duration && (
-        <span className="w-14 shrink-0 text-right text-[11px] tabular-nums text-[var(--gt-text-faint)]">
+        <span className="w-14 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">
           {duration}
         </span>
       )}
       {run.detailsUrl ? (
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="icon"
           // The existing safe-open path: main decides what a URL is allowed to do.
           onClick={() => window.gt.openExternal(run.detailsUrl)}
           title="Open this check on GitHub"
-          className="shrink-0 rounded p-1 text-[var(--gt-text-faint)] hover:bg-white/5 hover:text-[var(--gt-text-soft)]"
           aria-label={`Open ${run.name} details`}
+          className="size-6 text-muted-foreground hover:text-foreground"
         >
           <ExternalLink size={12} strokeWidth={2} />
-        </button>
+        </Button>
       ) : (
         <span className="w-6 shrink-0" />
       )}
@@ -125,10 +128,10 @@ export function ChecksPanel({ repoRoot, iid }: { repoRoot: string; iid: number }
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="flex items-center gap-2 border-b border-[var(--gt-border)] px-3 py-2">
+      <div className="flex items-center gap-2 border-b border-border px-3 py-2">
         <ChecksSummaryLine summary={data.summary} />
         {data.sha && (
-          <span className="ml-auto font-mono text-[10.5px] text-[var(--gt-text-faint)]">
+          <span className="ml-auto font-mono text-[10.5px] text-muted-foreground">
             {data.sha.slice(0, 7)}
           </span>
         )}

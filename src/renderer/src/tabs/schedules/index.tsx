@@ -12,7 +12,7 @@ import {
   X,
   AlertTriangle,
 } from 'lucide-react'
-import { Badge } from '../../components/ui'
+import { Badge } from '../../components/ui/badge'
 import { EngineLogo } from '../../components/EngineLogo'
 import { engineLabel } from '../../lib/engines'
 import {
@@ -76,6 +76,20 @@ function untilFire(ts?: number | null): string {
   if (s < 86400) return `in ${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`
   return `in ${Math.floor(s / 86400)}d`
 }
+// Map a legacy badge tone to the shadcn badge variant.
+const badgeVariantFor = (tone: string) =>
+  tone === 'green' || tone === 'ok'
+    ? ('success' as const)
+    : tone === 'red' || tone === 'bad'
+      ? ('destructive' as const)
+      : tone === 'yellow' || tone === 'warn'
+        ? ('warning' as const)
+        : tone === 'blue'
+          ? ('info' as const)
+          : tone === 'accent'
+            ? ('default' as const)
+            : ('secondary' as const)
+
 const statusTone = (s?: string): BadgeTone =>
   s === 'done' ? 'green' : s === 'failed' ? 'red' : s === 'running' ? 'blue' : 'mute'
 
@@ -870,13 +884,13 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="text-[13px] font-semibold text-zinc-100">{s.agentTitle}</span>
-                    <Badge tone="blue">{s.describe || ''}</Badge>
+                    <Badge variant="info">{s.describe || ''}</Badge>
                     <span className="inline-flex items-center gap-1 text-[10px] uppercase text-zinc-600">
                       <EngineLogo engine={s.engine} size={10} />
                       {engineLabel(s.engine)}
                     </span>
                     {s.lastStatus && s.lastStatus !== 'never' && (
-                      <Badge tone={statusTone(s.lastStatus)}>{s.lastStatus}</Badge>
+                      <Badge variant={badgeVariantFor(statusTone(s.lastStatus))}>{s.lastStatus}</Badge>
                     )}
                     {/* Kill-switch chip. For a host-assigned schedule the breaker
                         tripped on the HOST, so name it — and the re-enable writes
@@ -1018,7 +1032,7 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
                       <div className="flex items-center gap-1.5 px-1 text-[10px]">
                         {scriptByAgent[s.agentId] ? (
                           <>
-                            <Badge tone="blue">Bash script</Badge>
+                            <Badge variant="info">Bash script</Badge>
                             <span className="min-w-0 flex-1 truncate font-mono text-zinc-600">
                               {scriptByAgent[s.agentId]!.path}
                             </span>
@@ -1032,7 +1046,7 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
                           </>
                         ) : (
                           <>
-                            <Badge tone="mute">Prompt</Badge>
+                            <Badge variant="secondary">Prompt</Badge>
                             <span className="text-zinc-700">
                               Legacy prompt — runs as a single agent call
                             </span>
@@ -1065,7 +1079,7 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
                               open ? 'bg-white/5' : 'hover:bg-white/5'
                             }`}
                           >
-                            <Badge tone={statusTone(r.status)}>{r.status}</Badge>
+                            <Badge variant={badgeVariantFor(statusTone(r.status))}>{r.status}</Badge>
                             <span className="text-zinc-500">{fmtWhen(r.startedAt)}</span>
                             <span className="text-zinc-700">·</span>
                             <span className="font-mono tabular-nums text-zinc-500">{dur}</span>

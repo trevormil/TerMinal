@@ -18,7 +18,8 @@ import {
   Cpu,
   Database,
 } from 'lucide-react'
-import { Badge, ForceChip } from '../../components/ui'
+import { ForceChip } from '../../components/ui'
+import { Badge } from '../../components/ui/badge'
 import { EngineLogo } from '../../components/EngineLogo'
 import { DetailTabs } from '../../components/DetailTabs'
 import { BashHighlight } from '../../components/BashHighlight'
@@ -53,6 +54,20 @@ import { AGENT_ICON, SOURCE, SectionKicker, Stat } from './agentsShared'
 // by both.
 
 const fmtRelative = relativeTime
+
+// Map a legacy badge tone (from lib/agentsView.ts) to the shadcn badge variant.
+const badgeVariantFor = (tone: string) =>
+  tone === 'green' || tone === 'ok'
+    ? ('success' as const)
+    : tone === 'red' || tone === 'bad'
+      ? ('destructive' as const)
+      : tone === 'yellow' || tone === 'warn'
+        ? ('warning' as const)
+        : tone === 'blue'
+          ? ('info' as const)
+          : tone === 'accent'
+            ? ('default' as const)
+            : ('secondary' as const)
 
 export type AgentDetailState = {
   path: string
@@ -111,7 +126,7 @@ export function QualityPanel({ quality }: { quality: AgentQuality }) {
                       <span className="min-w-0 flex-1 truncate text-[11.5px] font-semibold text-zinc-200">
                         {check.title}
                       </span>
-                      <Badge tone={check.required ? 'red' : 'mute'}>
+                      <Badge variant={badgeVariantFor(check.required ? 'red' : 'mute')}>
                         {check.required ? 'required' : 'optional'}
                       </Badge>
                     </div>
@@ -128,12 +143,12 @@ export function QualityPanel({ quality }: { quality: AgentQuality }) {
               Output judge
             </div>
             <div className="flex flex-wrap items-center gap-1.5">
-              <Badge tone={judge?.enabled ? 'accent' : 'mute'}>
+              <Badge variant={badgeVariantFor(judge?.enabled ? 'accent' : 'mute')}>
                 {judge?.enabled ? 'enabled' : 'off'}
               </Badge>
-              <Badge tone="blue">{judge?.mode || 'deterministic'}</Badge>
+              <Badge variant="info">{judge?.mode || 'deterministic'}</Badge>
               {judge?.passThreshold !== undefined && (
-                <Badge tone="yellow">{judge.passThreshold}% pass</Badge>
+                <Badge variant="warning">{judge.passThreshold}% pass</Badge>
               )}
             </div>
             {judge?.rubric?.length ? (
@@ -155,7 +170,7 @@ export function QualityPanel({ quality }: { quality: AgentQuality }) {
               </div>
               <div className="flex flex-wrap gap-1">
                 {artifacts.map((artifact) => (
-                  <Badge key={artifact} tone="accent">
+                  <Badge key={artifact} variant="default">
                     {artifact}
                   </Badge>
                 ))}
@@ -238,17 +253,17 @@ export function ScorecardPanel({ agentId }: { agentId: string }) {
       {dark.map((d) => (
         <div
           key={d.id}
-          className="mb-2 flex items-center gap-2 rounded-md border border-rose-500/40 bg-rose-500/10 px-3 py-2"
+          className="mb-2 flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2"
         >
-          <AlertOctagon size={13} strokeWidth={2.5} className="shrink-0 text-rose-400" />
+          <AlertOctagon size={13} strokeWidth={2.5} className="shrink-0 text-destructive" />
           <div className="min-w-0 flex-1">
-            <div className="text-[11.5px] font-semibold text-rose-200">Disabled · {d.label}</div>
-            <div className="truncate text-[11px] text-rose-300/70">
+            <div className="text-[11.5px] font-semibold text-destructive">Disabled · {d.label}</div>
+            <div className="truncate text-[11px] text-destructive/70">
               {d.reason || 'no reason recorded'}
             </div>
           </div>
           <button
-            className="shrink-0 rounded border border-rose-400/50 px-2 py-1 text-[10.5px] font-semibold text-rose-200 hover:bg-rose-500/20"
+            className="shrink-0 rounded border border-destructive/50 px-2 py-1 text-[10.5px] font-semibold text-destructive hover:bg-destructive/20"
             onClick={() => void reEnable(d.id)}
           >
             Re-enable
@@ -281,7 +296,7 @@ export function ScorecardPanel({ agentId }: { agentId: string }) {
                 Failing checks
               </span>
               {card.failingChecks.map((c) => (
-                <Badge key={c.id} tone="bad">
+                <Badge key={c.id} variant="destructive">
                   {c.title} ×{c.count}
                 </Badge>
               ))}
@@ -340,7 +355,7 @@ export function DefinitionSummary({ definition }: { definition: AgentDefinition 
                 key={row.label}
                 className="flex min-w-0 items-center gap-1.5 rounded-md border border-[var(--gt-border)]/60 px-2 py-1"
               >
-                <Badge tone={row.tone}>{row.label}</Badge>
+                <Badge variant={badgeVariantFor(row.tone)}>{row.label}</Badge>
                 <span className="min-w-0 truncate font-mono text-[10.5px] text-zinc-400">
                   {row.value}
                 </span>
@@ -391,7 +406,7 @@ export function PersistentDefinitionDetail({
       <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--gt-border)] px-5 py-3">
         <Brain size={18} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
         <h2 className="text-[14px] font-bold text-zinc-100">{definition.title}</h2>
-        <Badge tone="blue">{definition.scope}</Badge>
+        <Badge variant="info">{definition.scope}</Badge>
         <span className="font-mono text-[10px] text-zinc-600">{definition.ref.id}</span>
         <div className="flex-1" />
         <button
@@ -575,9 +590,11 @@ export function ClassicAgentDetail({
               </h2>
               {agent.force && <ForceChip size="md" />}
               {agent.source && (
-                <Badge tone={SOURCE[agent.source].tone}>{SOURCE[agent.source].label}</Badge>
+                <Badge variant={badgeVariantFor(SOURCE[agent.source].tone)}>
+                  {SOURCE[agent.source].label}
+                </Badge>
               )}
-              {agent.hasScript && <Badge tone="blue">Script</Badge>}
+              {agent.hasScript && <Badge variant="info">Script</Badge>}
               <span className="font-mono text-[10px] text-zinc-600">{agent.id}</span>
             </div>
             {agent.description && (
@@ -698,11 +715,11 @@ export function ClassicAgentDetail({
                 meta={
                   <>
                     {script ? (
-                      <Badge tone="blue">Bash script</Badge>
+                      <Badge variant="info">Bash script</Badge>
                     ) : script === null ? (
-                      <Badge tone="mute">Prompt</Badge>
+                      <Badge variant="secondary">Prompt</Badge>
                     ) : (
-                      <Badge tone="mute">Loading...</Badge>
+                      <Badge variant="secondary">Loading...</Badge>
                     )}
                   </>
                 }
@@ -737,7 +754,7 @@ export function ClassicAgentDetail({
                 title="State sidecar"
                 meta={
                   <>
-                    <Badge tone={state?.exists ? 'accent' : 'mute'}>
+                    <Badge variant={badgeVariantFor(state?.exists ? 'accent' : 'mute')}>
                       {state?.exists ? 'active' : 'empty'}
                     </Badge>
                     {state?.exists && (
@@ -779,7 +796,7 @@ export function ClassicAgentDetail({
                 title="Recent runs"
                 meta={
                   <div className="flex items-center gap-1.5">
-                    <Badge tone="mute">{agentRuns.length}</Badge>
+                    <Badge variant="secondary">{agentRuns.length}</Badge>
                     {spendWeek && spendWeek.usd > 0 && (
                       <>
                         <span
@@ -830,7 +847,7 @@ export function ClassicAgentDetail({
                         sel === r.id ? 'bg-white/5' : 'hover:bg-white/5'
                       }`}
                     >
-                      <Badge tone={runStatusTone(r.status)}>{r.status}</Badge>
+                      <Badge variant={badgeVariantFor(runStatusTone(r.status))}>{r.status}</Badge>
                       <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-zinc-500">
                         {r.branch}
                       </span>
@@ -855,7 +872,9 @@ export function ClassicAgentDetail({
                   title="Run output"
                   meta={
                     <div className="flex items-center gap-1.5">
-                      <Badge tone={runStatusTone(selectedRun.status)}>{selectedRun.status}</Badge>
+                      <Badge variant={badgeVariantFor(runStatusTone(selectedRun.status))}>
+                        {selectedRun.status}
+                      </Badge>
                       <span className="max-w-[220px] truncate font-mono text-[10px] text-zinc-600">
                         {selectedRun.branch}
                       </span>

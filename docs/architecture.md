@@ -416,6 +416,21 @@ Plex Sans** (chrome) + **IBM Plex Mono** (numerics/code/editor) via `@fontsource
 + Tailwind `@theme`. Icons are **lucide-react**. The CodeMirror editor uses the
 oneDark *highlight* style over a custom dark surface.
 
+The component layer is **shadcn/ui** (Tailwind v4, CSS-first). shadcn's semantic
+tokens (`bg-primary`, `text-foreground`, `border-input`, …) are **aliases** of
+the `--gt-*` brand tokens, declared in `index.css` and exposed via
+`@theme inline` — so `themes.ts` stays the single place the palette is swapped
+(dark/light, the three themes, accent swatches) and `token-parity.test.ts`
+keeps its one source of truth. Components live in
+`src/renderer/src/components/ui/` (one file per component) with `cn()`
+(`clsx` + `tailwind-merge`) in `lib/utils.ts` and a `@/` path alias
+(`tsconfig.json` `paths` + `electron.vite.config.ts` `resolve.alias`). The
+legacy `components/ui.tsx` still serves unmigrated call sites during the
+migration and must keep exporting its documented set until the last one moves
+(`design-system.test.ts` checks this). The full token map and variant table are
+in [`docs/brand-kit.md`](./brand-kit.md); the migration contract is
+[`docs/runbooks/shadcn-migration.md`](./runbooks/shadcn-migration.md).
+
 ### CodeMirror single-instance constraint
 
 CodeMirror breaks silently if any core package resolves to more than one copy

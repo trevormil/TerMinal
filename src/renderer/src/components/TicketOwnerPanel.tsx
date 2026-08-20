@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Bot, ArrowUpRight, Sparkles } from 'lucide-react'
-import { Badge } from './ui'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { navigateTo } from '../lib/nav'
 import {
   agentDefinitionId,
@@ -152,13 +153,15 @@ export function TicketOwnerPanel({
           <div className="rounded-lg border border-[var(--gt-accent)]/35 bg-[var(--gt-accent)]/[0.06] p-3">
             <div className="flex flex-wrap items-center gap-2">
               <Sparkles size={13} strokeWidth={2.25} className="text-[var(--gt-accent-light)]" />
-              <Badge tone="accent">{suggestionTitle}</Badge>
-              <button
+              <Badge variant="default">{suggestionTitle}</Badge>
+              <Button
+                type="button"
+                variant="default"
+                size="xs"
                 onClick={() => assign(suggestion.agent)}
-                className="ml-auto rounded-md border border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/10 px-2 py-0.5 text-[10.5px] font-semibold uppercase tracking-wide text-[var(--gt-accent-light)] hover:bg-[var(--gt-accent)]/20"
               >
                 Make owner
-              </button>
+              </Button>
             </div>
             {/* The rationale used to live in a `title=` hover, where it was
                 unreadable at any length. It has room here. */}

@@ -19,7 +19,8 @@ import {
   Upload,
   Video,
 } from 'lucide-react'
-import { Button, IconButton, Input, Select } from '../../components/ui'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { CodeEditor } from '../../components/CodeEditor'
 import { langExtensionFor, useLangsReady } from '../../lib/lazyLang'
 import { Markdown } from '../../components/Markdown'
@@ -575,40 +576,36 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
           value={item.title}
           onChange={(e) => updateItem({ title: e.target.value })}
           onBlur={() => updateItem({}, true)}
-          size="md"
           className="text-[13px] font-semibold text-zinc-100"
         />
-        <Select
+        <select
           value={item.kind}
           onChange={(e) => updateItem({ kind: e.target.value as KnowledgeItemKind }, true)}
-          size="md"
-          className="py-0"
+          className="h-7 cursor-pointer rounded-md border border-input bg-[var(--gt-input)] px-2 py-1 text-[12px] text-foreground focus-visible:border-primary/60 focus-visible:outline-none"
         >
           {(Object.keys(kindMeta) as KnowledgeItemKind[]).map((kind) => (
             <option key={kind} value={kind} className="bg-[var(--gt-panel)]">
               {kindMeta[kind].label}
             </option>
           ))}
-        </Select>
-        <Select
+        </select>
+        <select
           value={item.categoryId}
           onChange={(e) => updateItem({ categoryId: e.target.value }, true)}
-          size="md"
-          className="py-0"
+          className="h-7 cursor-pointer rounded-md border border-input bg-[var(--gt-input)] px-2 py-1 text-[12px] text-foreground focus-visible:border-primary/60 focus-visible:outline-none"
         >
           {kb.categories.map((category) => (
             <option key={category.id} value={category.id} className="bg-[var(--gt-panel)]">
               {category.title}
             </option>
           ))}
-        </Select>
+        </select>
       </div>
       <div className="grid shrink-0 gap-2 border-b border-[var(--gt-border)] p-3 lg:grid-cols-[minmax(0,1fr)_240px]">
         <Input
           value={item.description || ''}
           onChange={(e) => updateItem({ description: e.target.value })}
           placeholder="Short description"
-          size="md"
         />
         <div className="flex items-center gap-1 rounded-md border border-[var(--gt-border)] bg-black/25 px-2">
           <Tags size={12} strokeWidth={2} className="text-zinc-600" />
@@ -635,7 +632,6 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
               onChange={(e) => updateRagConfig({ rootDir: e.target.value })}
               onBlur={() => updateItem({}, true)}
               placeholder="Auto workspace path"
-              size="md"
               className="font-mono"
             />
             <Input
@@ -643,21 +639,18 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
               onChange={(e) => updateRagConfig({ category: e.target.value })}
               onBlur={() => updateItem({}, true)}
               placeholder="Category"
-              size="md"
             />
             <Input
               value={String(item.rag?.hybridAlpha ?? 0.3)}
               onChange={(e) => updateRagConfig({ hybridAlpha: Number(e.target.value) })}
               onBlur={() => updateItem({}, true)}
               placeholder="Alpha"
-              size="md"
             />
             <Input
               value={String(item.rag?.maxResults ?? 5)}
               onChange={(e) => updateRagConfig({ maxResults: Number(e.target.value) })}
               onBlur={() => updateItem({}, true)}
               placeholder="Results"
-              size="md"
             />
           </div>
           <details>
@@ -669,7 +662,6 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
                 value={item.rag?.command || 'uvx'}
                 onChange={(e) => updateRagConfig({ command: e.target.value })}
                 onBlur={() => updateItem({}, true)}
-                size="md"
                 className="font-mono"
               />
               <Input
@@ -678,7 +670,6 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
                   updateRagConfig({ args: e.target.value.split(/\s+/).filter(Boolean) })
                 }
                 onBlur={() => updateItem({}, true)}
-                size="md"
                 className="font-mono"
               />
             </div>
@@ -687,8 +678,7 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
             <Button
               onClick={() => refreshRagStatus(item)}
               disabled={ragBusy}
-              variant="subtle"
-              size="md"
+              variant="secondary"
               className="h-8 gap-1.5 px-3 text-[11.5px]"
             >
               <Database size={12} strokeWidth={2} />
@@ -697,8 +687,7 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
             <Button
               onClick={() => reindexRag(item)}
               disabled={ragBusy}
-              variant="subtle"
-              size="md"
+              variant="secondary"
               className="h-8 gap-1.5 px-3 text-[11.5px]"
             >
               <RefreshCw size={12} strokeWidth={2} className={ragBusy ? 'animate-spin' : ''} />
@@ -707,8 +696,7 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
             <Button
               onClick={() => reindexRag(item, true)}
               disabled={ragBusy}
-              variant="subtle"
-              size="md"
+              variant="secondary"
               className="h-8 gap-1.5 px-3 text-[11.5px]"
             >
               Full rebuild
@@ -716,8 +704,7 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
             <Button
               onClick={() => ragStatus?.rootDir && window.gt.openInEditor(ragStatus.rootDir)}
               disabled={!ragStatus?.rootDir}
-              variant="subtle"
-              size="md"
+              variant="secondary"
               className="h-8 gap-1.5 px-3 text-[11.5px]"
             >
               <ExternalLink size={12} strokeWidth={2} />
@@ -732,13 +719,11 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
                 if (e.key === 'Enter') searchRag(item)
               }}
               placeholder="Search this RAG..."
-              size="md"
             />
             <Button
               onClick={() => searchRag(item)}
               disabled={ragBusy || !ragQuery.trim()}
-              variant="subtle"
-              size="md"
+              variant="secondary"
               className="h-[33px] gap-1.5 px-3 text-[11.5px]"
             >
               <Search size={12} strokeWidth={2} />
@@ -750,14 +735,12 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
               value={ragUrl}
               onChange={(e) => setRagUrl(e.target.value)}
               placeholder="https://docs.example.com/page"
-              size="md"
               className="font-mono"
             />
             <Button
               onClick={() => addRagUrl(item)}
               disabled={ragBusy || !ragUrl.trim()}
-              variant="subtle"
-              size="md"
+              variant="secondary"
               className="h-[33px] gap-1.5 px-3 text-[11.5px]"
             >
               <Upload size={12} strokeWidth={2} />
@@ -775,14 +758,12 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
               value={ragDocPath}
               onChange={(e) => setRagDocPath(e.target.value)}
               placeholder="category/file.md"
-              size="md"
               className="h-[33px] font-mono"
             />
             <Button
               onClick={() => addRagDocument(item)}
               disabled={ragBusy || !ragDocContent.trim()}
-              variant="subtle"
-              size="md"
+              variant="secondary"
               className="h-[33px] gap-1.5 px-3 text-[11.5px]"
             >
               <Upload size={12} strokeWidth={2} />
@@ -799,21 +780,18 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
               onChange={(e) => updateItem({ url: e.target.value })}
               onBlur={() => item.url && enrichItem(item)}
               placeholder="https://..."
-              size="md"
               className="font-mono"
             />
             <Input
               value={item.path || ''}
               onChange={(e) => updateItem({ path: e.target.value })}
               placeholder="/local/path.ext"
-              size="md"
               className="font-mono"
             />
             <Button
               onClick={() => enrichItem(item)}
               disabled={!item.url || previewBusy}
-              variant="subtle"
-              size="md"
+              variant="secondary"
               className="h-[33px] gap-1.5 px-3 text-[11.5px]"
             >
               <Sparkles size={12} strokeWidth={2} className={previewBusy ? 'animate-pulse' : ''} />
@@ -825,21 +803,18 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
               value={item.thumbnailUrl || ''}
               onChange={(e) => updateItem({ thumbnailUrl: e.target.value })}
               placeholder="Thumbnail URL"
-              size="md"
               className="font-mono text-[11px]"
             />
             <Input
               value={item.siteName || ''}
               onChange={(e) => updateItem({ siteName: e.target.value })}
               placeholder="Site name"
-              size="md"
               className="text-[11px]"
             />
             <Input
               value={item.faviconUrl || ''}
               onChange={(e) => updateItem({ faviconUrl: e.target.value })}
               placeholder="Favicon URL"
-              size="md"
               className="font-mono text-[11px]"
             />
           </div>
@@ -987,14 +962,15 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
                   placeholder="New category"
                   className="min-w-0 flex-1"
                 />
-                <IconButton
+                <Button
                   onClick={addCategory}
-                  label="Add category"
-                  variant="subtle"
-                  className="h-7 w-7 hover:text-zinc-100"
+                  aria-label="Add category"
+                  variant="secondary"
+                  size="icon"
+                  className="hover:text-zinc-100"
                 >
                   <Plus size={13} strokeWidth={2.5} />
-                </IconButton>
+                </Button>
               </div>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto p-2">
@@ -1048,18 +1024,18 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
                 </div>
               </div>
               <div className="flex gap-1">
-                <Select
+                <select
                   value={newKind}
                   onChange={(e) => setNewKind(e.target.value as KnowledgeItemKind)}
-                  className="min-w-0 flex-1"
+                  className="min-w-0 flex-1 h-7 cursor-pointer rounded-md border border-input bg-[var(--gt-input)] px-2 py-1 text-[12px] text-foreground focus-visible:border-primary/60 focus-visible:outline-none"
                 >
                   {(Object.keys(kindMeta) as KnowledgeItemKind[]).map((kind) => (
                     <option key={kind} value={kind} className="bg-[var(--gt-panel)]">
                       {kindMeta[kind].label}
                     </option>
                   ))}
-                </Select>
-                <Button onClick={addItem} variant="subtle" className="h-7 px-2">
+                </select>
+                <Button onClick={addItem} variant="secondary" className="h-7 px-2">
                   <Plus size={12} strokeWidth={2.5} />
                   Add
                 </Button>
@@ -1135,7 +1111,7 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
                   </span>
                   <Button
                     onClick={() => deleteItem(activeItem.id)}
-                    variant="subtle"
+                    variant="secondary"
                     size="xs"
                     className="h-6 px-1.5 text-zinc-500 hover:border-[var(--gt-red)]/60 hover:text-[var(--gt-red)]"
                   >

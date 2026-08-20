@@ -8,7 +8,8 @@ import {
   Folder,
   FolderOpen,
 } from 'lucide-react'
-import { Badge, Input } from '../../components/ui'
+import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
 import { Markdown } from '../../components/Markdown'
 import { onNavigate } from '../../lib/nav'
 import type { Tab, TabContext, DocsTree, DocEntry, DocCategory } from '../../lib/types'
@@ -288,7 +289,7 @@ function DocsTab({ ctx }: { ctx: TabContext }) {
               <span className="text-zinc-700">›</span>
               <span className="font-mono text-[11px] text-zinc-500">{selected.path}</span>
               {selected.managedBy && (
-                <Badge tone="blue">
+                <Badge variant="info">
                   <Sparkles size={9} strokeWidth={2.5} className="mr-0.5" />
                   managed by {selected.managedBy}
                 </Badge>

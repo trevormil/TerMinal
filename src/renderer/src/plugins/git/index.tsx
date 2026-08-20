@@ -1,5 +1,7 @@
 import { GitBranch } from 'lucide-react'
-import { Card, Row, Badge, Empty } from '../../components/ui'
+import { TitledCard } from '../../components/ui/titled-card'
+import { Row, Empty } from '../../components/ui/display'
+import { Badge } from '../../components/ui/badge'
 import { navigateTo } from '../../lib/nav'
 import type { Plugin, GitStatus } from '../../lib/types'
 
@@ -16,9 +18,9 @@ const plugin: Plugin<GitStatus> = {
   render: (d) => {
     if (!d?.ok)
       return (
-        <Card icon={GitBranch} title="Git">
+        <TitledCard icon={GitBranch} title="Git">
           <Empty>Not a git repo</Empty>
-        </Card>
+        </TitledCard>
       )
     // Clicking the card jumps to the Files tab's Changes view — the fastest path
     // from "there's a diff" to reviewing it.
@@ -34,18 +36,18 @@ const plugin: Plugin<GitStatus> = {
         title="Open Changes in the Files tab"
         className="block w-full text-left focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--gt-accent-2)] rounded-lg"
       >
-        <Card
+        <TitledCard
           icon={GitBranch}
           title="Git"
           right={
             d.dirty > 0 ? (
-              <Badge tone="yellow">{d.dirty} dirty</Badge>
+              <Badge variant="warning">{d.dirty} dirty</Badge>
             ) : (
-              <Badge tone="green">Clean</Badge>
+              <Badge variant="success">Clean</Badge>
             )
           }
         >
-          <div className="mb-1 truncate text-[13px] font-semibold text-zinc-100">{d.branch}</div>
+          <div className="mb-1 truncate text-[13px] font-semibold text-foreground">{d.branch}</div>
           <Row
             label="Vs upstream"
             value={
@@ -55,11 +57,11 @@ const plugin: Plugin<GitStatus> = {
                   <span className="text-[var(--gt-red)]">↓{d.behind}</span>
                 </span>
               ) : (
-                <span className="text-zinc-600">None</span>
+                <span className="text-muted-foreground">None</span>
               )
             }
           />
-        </Card>
+        </TitledCard>
       </button>
     )
   },

@@ -1,5 +1,6 @@
 import { ListChecks, CircleCheck, CircleDot, Circle } from 'lucide-react'
-import { Card, Empty } from '../../components/ui'
+import { TitledCard } from '../../components/ui/titled-card'
+import { Empty } from '../../components/ui/display'
 import type { Plugin, TaskItem } from '../../lib/types'
 
 function Dot({ status }: { status: string }) {
@@ -7,7 +8,7 @@ function Dot({ status }: { status: string }) {
     return <CircleCheck size={12} strokeWidth={2.25} className="text-[var(--gt-green)]" />
   if (status === 'in_progress')
     return <CircleDot size={12} strokeWidth={2.25} className="gt-pulse text-[var(--gt-yellow)]" />
-  return <Circle size={12} strokeWidth={2.25} className="text-zinc-600" />
+  return <Circle size={12} strokeWidth={2.25} className="text-muted-foreground" />
 }
 
 // The agent's live todo list (~/.claude/tasks/<session>/). Active tasks shown;
@@ -27,24 +28,24 @@ const plugin: Plugin<TaskItem[]> = {
     const tasks = d || []
     if (!tasks.length)
       return (
-        <Card icon={ListChecks} title="Todos">
+        <TitledCard icon={ListChecks} title="Todos">
           <Empty>No tasks</Empty>
-        </Card>
+        </TitledCard>
       )
     const done = tasks.filter((t) => t.status === 'completed').length
     const active = tasks.filter((t) => t.status !== 'completed')
     return (
-      <Card
+      <TitledCard
         icon={ListChecks}
         title="Todos"
         right={
-          <span className="text-[9px] tabular-nums text-zinc-600">
+          <span className="text-[9px] tabular-nums text-muted-foreground">
             {done}/{tasks.length}
           </span>
         }
       >
         {active.length === 0 ? (
-          <div className="flex items-center gap-1 text-[11px] italic text-zinc-500">
+          <div className="flex items-center gap-1 text-[11px] italic text-muted-foreground">
             <CircleCheck size={11} strokeWidth={2.25} className="text-[var(--gt-green)]" />
             all {done} done
           </div>
@@ -56,7 +57,7 @@ const plugin: Plugin<TaskItem[]> = {
                   <Dot status={t.status} />
                 </span>
                 <span
-                  className={`min-w-0 flex-1 truncate ${t.status === 'in_progress' ? 'text-zinc-100' : 'text-zinc-400'}`}
+                  className={`min-w-0 flex-1 truncate ${t.status === 'in_progress' ? 'text-foreground' : 'text-muted-foreground'}`}
                   title={t.subject}
                 >
                   {t.subject}
@@ -64,11 +65,11 @@ const plugin: Plugin<TaskItem[]> = {
               </div>
             ))}
             {active.length > 8 && (
-              <div className="text-[10px] text-zinc-600">+{active.length - 8} more</div>
+              <div className="text-[10px] text-muted-foreground">+{active.length - 8} more</div>
             )}
           </div>
         )}
-      </Card>
+      </TitledCard>
     )
   },
 }

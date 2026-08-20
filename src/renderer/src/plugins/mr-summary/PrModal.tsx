@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ArrowUpRight, ExternalLink, GitBranch, TriangleAlert, X } from 'lucide-react'
-import { Badge, Empty } from '../../components/ui'
+import { Button } from '../../components/ui/button'
+import { Badge } from '../../components/ui/badge'
+import { Empty } from '../../components/ui/display'
 import { Markdown } from '../../components/Markdown'
 import { ciTone, sevTone, stateTone, testTone, verdictTone } from '../../lib/badges'
 import { navigateTo } from '../../lib/nav'
+import type { BadgeTone } from '../../components/ui'
 import type { CiInfo, MrDetail, TabContext, Ticket } from '../../lib/types'
 
 // Deep-link into the MRs tab (replay once — the receiver mounts after the tab
@@ -16,6 +19,26 @@ const openInMrsTab = (iid: number) => {
 
 const FINDINGS_SHOWN = 5
 
+// Legacy badge tone → shadcn variant. `lib/badges` still speaks in the legacy
+// tone vocabulary; this maps it onto the semantic variants until that file is
+// migrated too.
+const badgeVariant = (
+  t: BadgeTone,
+): 'default' | 'secondary' | 'destructive' | 'success' | 'warning' | 'info' =>
+  (
+    {
+      ok: 'success',
+      green: 'success',
+      warn: 'warning',
+      yellow: 'warning',
+      bad: 'destructive',
+      red: 'destructive',
+      mute: 'secondary',
+      blue: 'info',
+      accent: 'default',
+    } as Record<BadgeTone, 'default' | 'secondary' | 'destructive' | 'success' | 'warning' | 'info'>
+  )[t]
+
 // Ticket → PR back-reference: a ticket links its PRs by URL in `prs`.
 const prIidFromUrl = (url: string): number | null => {
   const m = url.match(/(?:\/pull\/|\/-\/merge_requests\/)(\d+)/)
@@ -25,7 +48,7 @@ const prIidFromUrl = (url: string): number | null => {
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="mb-1.5 text-[9.5px] font-semibold uppercase tracking-[0.12em] text-zinc-600">
+      <div className="mb-1.5 text-[9.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
         {label}
       </div>
       {children}
@@ -91,44 +114,38 @@ export function PrModal({ iid, onClose }: { iid: number; onClose: () => void }) 
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex shrink-0 items-center justify-between border-b border-[var(--gt-border)] px-4 py-2">
-          <span className="font-mono text-[11px] text-zinc-500">
+          <span className="font-mono text-[11px] text-muted-foreground">
             {sym}
             {iid}
           </span>
           <div className="flex items-center gap-1.5">
-            <button
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={() => {
                 openInMrsTab(iid)
                 onClose()
               }}
-              className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200"
             >
               <ArrowUpRight size={11} strokeWidth={2} />
               Open in {label}s tab
-            </button>
+            </Button>
             {detail?.webUrl && (
-              <button
-                onClick={() => window.gt.openExternal(detail.webUrl)}
-                className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200"
-              >
+              <Button variant="secondary" size="sm" onClick={() => window.gt.openExternal(detail.webUrl)}>
                 <ExternalLink size={11} strokeWidth={2} />
                 Open on forge
-              </button>
+              </Button>
             )}
-            <button
-              onClick={onClose}
-              title="Close (Esc)"
-              className="rounded-md p-1 text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
-            >
+            <Button variant="ghost" size="icon" aria-label="Close (Esc)" title="Close (Esc)" onClick={onClose}>
               <X size={14} strokeWidth={2} />
-            </button>
+            </Button>
           </div>
         </div>
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
           {detail === undefined ? (
-            <div className="text-[12px] text-zinc-600">Loading…</div>
+            <div className="text-[12px] text-muted-foreground">Loading…</div>
           ) : detail === null ? (
-            <div className="text-[12px] text-zinc-600">
+            <div className="text-[12px] text-muted-foreground">
               {label} {sym}
               {iid} not found.
             </div>
@@ -136,13 +153,13 @@ export function PrModal({ iid, onClose }: { iid: number; onClose: () => void }) 
             <>
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="min-w-0 flex-1 text-[14px] font-semibold text-zinc-100">
+                  <span className="min-w-0 flex-1 text-[14px] font-semibold text-foreground">
                     {detail.title}
                   </span>
-                  <Badge tone={stateTone(detail.state)}>{detail.state}</Badge>
-                  {detail.draft && <Badge tone="warn">Draft</Badge>}
+                  <Badge variant={badgeVariant(stateTone(detail.state))}>{detail.state}</Badge>
+                  {detail.draft && <Badge variant="warning">Draft</Badge>}
                 </div>
-                <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] text-zinc-500">
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] text-muted-foreground">
                   <span className="inline-flex items-center gap-1 font-mono">
                     <GitBranch size={11} strokeWidth={2} />
                     {detail.sourceBranch} → {detail.targetBranch}
@@ -153,12 +170,12 @@ export function PrModal({ iid, onClose }: { iid: number; onClose: () => void }) 
 
               <Section label="CI">
                 {ci === undefined ? (
-                  <span className="text-[11px] text-zinc-600">Loading CI…</span>
+                  <span className="text-[11px] text-muted-foreground">Loading CI…</span>
                 ) : ci === null ? (
                   <Empty>no CI for this {label}</Empty>
                 ) : (
-                  <div className="flex items-center gap-2 text-[11px] text-zinc-500">
-                    <Badge tone={ciTone(ci.status)}>{ci.status}</Badge>
+                  <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                    <Badge variant={badgeVariant(ciTone(ci.status))}>{ci.status}</Badge>
                     {ci.jobs.length > 0 && (
                       <span className="tabular-nums">
                         {ci.jobs.length} job{ci.jobs.length === 1 ? '' : 's'}
@@ -170,14 +187,14 @@ export function PrModal({ iid, onClose }: { iid: number; onClose: () => void }) 
 
               <Section label="Review">
                 {r ? (
-                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
-                    <Badge tone={verdictTone(r.verdict)}>{r.verdict}</Badge>
+                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                    <Badge variant={badgeVariant(verdictTone(r.verdict))}>{r.verdict}</Badge>
                     {r.overall != null && (
-                      <span className="tabular-nums text-zinc-300">score {r.overall}</span>
+                      <span className="tabular-nums text-foreground/80">score {r.overall}</span>
                     )}
-                    <Badge tone={testTone(r.testStatus)}>tests {r.testStatus}</Badge>
+                    <Badge variant={badgeVariant(testTone(r.testStatus))}>tests {r.testStatus}</Badge>
                     {r.stale && (
-                      <span className="inline-flex items-center gap-1 text-amber-400">
+                      <span className="inline-flex items-center gap-1 text-[var(--gt-yellow)]">
                         <TriangleAlert size={10} strokeWidth={2.5} />
                         stale{r.commitsBehind ? ` ${r.commitsBehind}↓` : ''}
                       </span>
@@ -193,16 +210,16 @@ export function PrModal({ iid, onClose }: { iid: number; onClose: () => void }) 
                   <div className="space-y-1">
                     {findings.slice(0, FINDINGS_SHOWN).map((f, i) => (
                       <div key={f.id ?? i} className="flex items-start gap-2 text-[11.5px]">
-                        <Badge tone={sevTone(String(f.severity ?? ''))}>
+                        <Badge variant={badgeVariant(sevTone(String(f.severity ?? '')))}>
                           {String(f.severity ?? '—')}
                         </Badge>
-                        <span className="min-w-0 flex-1 truncate text-zinc-400">
+                        <span className="min-w-0 flex-1 truncate text-muted-foreground">
                           {f.title || f.text || f.body || f.id || 'finding'}
                         </span>
                       </div>
                     ))}
                     {findings.length > FINDINGS_SHOWN && (
-                      <div className="text-[10px] text-zinc-600">
+                      <div className="text-[10px] text-muted-foreground">
                         +{findings.length - FINDINGS_SHOWN} more in the {label}s tab
                       </div>
                     )}
@@ -212,8 +229,8 @@ export function PrModal({ iid, onClose }: { iid: number; onClose: () => void }) 
 
               {ticket && (
                 <Section label="Linked ticket">
-                  <div className="truncate text-[11.5px] text-zinc-400">
-                    <span className="font-mono text-zinc-500">
+                  <div className="truncate text-[11.5px] text-muted-foreground">
+                    <span className="font-mono text-muted-foreground">
                       {ticket.externalKey || String(ticket.id).padStart(4, '0')}
                     </span>{' '}
                     {ticket.title}

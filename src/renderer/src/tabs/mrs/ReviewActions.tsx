@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { Check, MessageSquare, Send, XOctagon } from 'lucide-react'
-import { Button } from '../../components/ui'
+import { Check, Loader2, MessageSquare, Send, XOctagon } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
 import type { PrActionResult, PrReviewEvent } from '../../lib/types'
 
 // The write half of the review surface.
@@ -13,7 +14,7 @@ import type { PrActionResult, PrReviewEvent } from '../../lib/types'
 /** Inline error slot. The forge's own words, not a paraphrase. */
 function ActionError({ error }: { error: string }) {
   if (!error) return null
-  return <div className="mt-1.5 whitespace-pre-wrap text-[11px] text-[var(--gt-red)]">{error}</div>
+  return <div className="mt-1.5 whitespace-pre-wrap text-[11px] text-destructive">{error}</div>
 }
 
 function useAction(onDone: () => void) {
@@ -40,9 +41,6 @@ function useAction(onDone: () => void) {
   return { busy, error, runAction }
 }
 
-const textareaClass =
-  'w-full resize-y rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1.5 text-[12px] text-[var(--gt-text)] outline-none placeholder:text-[var(--gt-text-faint)] focus:border-[var(--gt-accent)]/60'
-
 /** Submit a review: approve, request changes, or comment. */
 export function ReviewActions({
   repoRoot,
@@ -65,43 +63,46 @@ export function ReviewActions({
   }
 
   return (
-    <div className="border-t border-[var(--gt-border)] px-3 py-2">
-      <textarea
+    <div className="border-t border-border px-3 py-2">
+      <Textarea
         value={body}
         onChange={(e) => setBody(e.target.value)}
         rows={3}
         placeholder="Leave a review… (markdown)"
-        className={textareaClass}
+        className="min-h-0 resize-y"
       />
       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
         <Button
-          variant="primary"
-          icon={Check}
-          busy={busy === 'approve'}
+          type="button"
+          variant="default"
           disabled={!!busy}
+          aria-busy={busy === 'approve' || undefined}
           onClick={() => submit('approve')}
         >
+          {busy === 'approve' ? <Loader2 className="animate-spin" /> : <Check />}
           Approve
         </Button>
         <Button
-          variant="danger"
-          icon={XOctagon}
-          busy={busy === 'request-changes'}
+          type="button"
+          variant="destructive"
           disabled={!!busy || !body.trim()}
+          aria-busy={busy === 'request-changes' || undefined}
           onClick={() => submit('request-changes')}
         >
+          {busy === 'request-changes' ? <Loader2 className="animate-spin" /> : <XOctagon />}
           Request changes
         </Button>
         <Button
-          variant="subtle"
-          icon={MessageSquare}
-          busy={busy === 'comment'}
+          type="button"
+          variant="secondary"
           disabled={!!busy || !body.trim()}
+          aria-busy={busy === 'comment' || undefined}
           onClick={() => submit('comment')}
         >
+          {busy === 'comment' ? <Loader2 className="animate-spin" /> : <MessageSquare />}
           Comment
         </Button>
-        <span className="ml-auto text-[10.5px] text-[var(--gt-text-faint)]">
+        <span className="ml-auto text-[10.5px] text-muted-foreground">
           Approving needs no body.
         </span>
       </div>
@@ -124,19 +125,19 @@ export function CommentBox({
   const { busy, error, runAction } = useAction(onDone)
   return (
     <div className="px-3 py-2">
-      <textarea
+      <Textarea
         value={body}
         onChange={(e) => setBody(e.target.value)}
         rows={2}
         placeholder="Comment on this pull request…"
-        className={textareaClass}
+        className="min-h-0 resize-y"
       />
       <div className="mt-1.5 flex items-center gap-1.5">
         <Button
-          variant="subtle"
-          icon={Send}
-          busy={!!busy}
+          type="button"
+          variant="secondary"
           disabled={!!busy || !body.trim()}
+          aria-busy={!!busy || undefined}
           onClick={async () => {
             const ok = await runAction('comment', () =>
               window.gt.githubReview.comment(repoRoot, iid, body),
@@ -144,6 +145,7 @@ export function CommentBox({
             if (ok) setBody('')
           }}
         >
+          {busy ? <Loader2 className="animate-spin" /> : <Send />}
           Comment
         </Button>
       </div>
@@ -173,7 +175,7 @@ export function ReplyBox({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="mt-1 text-[11px] text-[var(--gt-text-faint)] hover:text-[var(--gt-text-soft)]"
+        className="mt-1 text-[11px] text-muted-foreground hover:text-foreground"
       >
         Reply
       </button>
@@ -181,20 +183,20 @@ export function ReplyBox({
 
   return (
     <div className="mt-1.5">
-      <textarea
+      <Textarea
         value={body}
         onChange={(e) => setBody(e.target.value)}
         rows={2}
         autoFocus
         placeholder="Reply in this thread…"
-        className={textareaClass}
+        className="min-h-0 resize-y"
       />
       <div className="mt-1.5 flex items-center gap-1.5">
         <Button
-          variant="subtle"
-          icon={Send}
-          busy={!!busy}
+          type="button"
+          variant="secondary"
           disabled={!!busy || !body.trim()}
+          aria-busy={!!busy || undefined}
           onClick={async () => {
             const ok = await runAction('reply', () =>
               window.gt.githubReview.reply(repoRoot, iid, replyToId, body),
@@ -205,9 +207,10 @@ export function ReplyBox({
             }
           }}
         >
+          {busy ? <Loader2 className="animate-spin" /> : <Send />}
           Reply
         </Button>
-        <Button variant="ghost" disabled={!!busy} onClick={() => setOpen(false)}>
+        <Button type="button" variant="ghost" disabled={!!busy} onClick={() => setOpen(false)}>
           Cancel
         </Button>
       </div>

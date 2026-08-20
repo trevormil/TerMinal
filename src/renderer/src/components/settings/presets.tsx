@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Eye } from 'lucide-react'
 import type { PresetKind, PresetPrefs } from '../../lib/types'
+import { Button } from '@/components/ui/button'
 import { Section, type SettingsSectionSpec } from './shared'
 
 function PresetVisibilityPanel() {
@@ -22,16 +23,19 @@ function PresetVisibilityPanel() {
           <span className="text-[12px] font-semibold text-zinc-200">{title}</span>
           <span className="text-[10.5px] tabular-nums text-zinc-600">{hidden.length} hidden</span>
           <div className="flex-1" />
-          <button
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
             onClick={async () => {
               await window.gt.presets.restore(kind)
               await load()
             }}
             disabled={hidden.length === 0}
-            className="rounded-md px-2 py-1 text-[11px] text-zinc-400 hover:bg-white/5 hover:text-zinc-200 disabled:opacity-40"
+            className="text-zinc-400 hover:text-zinc-200"
           >
             Restore all
-          </button>
+          </Button>
         </div>
         {hidden.length === 0 ? (
           <div className="text-[11px] text-zinc-600">All presets are visible.</div>
@@ -48,15 +52,18 @@ function PresetVisibilityPanel() {
                     {preset?.title || id}
                   </span>
                   <span className="font-mono text-[10px] text-zinc-600">{id}</span>
-                  <button
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="xs"
                     onClick={async () => {
                       await window.gt.presets.restore(kind, id)
                       await load()
                     }}
-                    className="rounded-md px-2 py-1 text-[11px] text-[var(--gt-accent-light)] hover:bg-[var(--gt-accent)]/10"
+                    className="text-[var(--gt-accent-light)] hover:bg-[var(--gt-accent)]/10"
                   >
                     Restore
-                  </button>
+                  </Button>
                 </div>
               )
             })}

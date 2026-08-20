@@ -26,7 +26,8 @@ import {
   SquareTerminal,
   Ticket,
 } from 'lucide-react'
-import { Badge, Empty } from '../../components/ui'
+import { Badge } from '../../components/ui/badge'
+import { Empty } from '../../components/ui/display'
 import type { BadgeTone } from '../../components/ui'
 import { Markdown } from '../../components/Markdown'
 import { RepoTrustReview, useRepoTrustPrompt } from '../../components/RepoTrustReview'
@@ -99,6 +100,20 @@ function ticketSlugFromPath(path: string): string {
 // approvals, creds, a failed cron job. NOT per-repo backlog tickets, and NOT
 // review request-changes (those are iterative workflow). Filing one pings Telegram;
 // the tab shows a red count of open items.
+// Map a legacy badge tone to the shadcn badge variant.
+const badgeVariantFor = (tone: string) =>
+  tone === 'green' || tone === 'ok'
+    ? ('success' as const)
+    : tone === 'red' || tone === 'bad'
+      ? ('destructive' as const)
+      : tone === 'yellow' || tone === 'warn'
+        ? ('warning' as const)
+        : tone === 'blue'
+          ? ('info' as const)
+          : tone === 'accent'
+            ? ('default' as const)
+            : ('secondary' as const)
+
 const SOURCE_TONE: Record<string, BadgeTone> = {
   'cron-fail': 'red',
   agent: 'blue',
@@ -525,7 +540,7 @@ export function InboxDrawer({
           </button>
           <div className="flex-1" />
           <SeverityTag sev={severityOf(h)} />
-          <Badge tone={SOURCE_TONE[h.source] || 'mute'}>{h.source}</Badge>
+          <Badge variant={badgeVariantFor(SOURCE_TONE[h.source] || 'mute')}>{h.source}</Badge>
           {onClose && (
             <button
               onClick={onClose}
@@ -914,7 +929,7 @@ export function InboxDrawer({
                           </span>
                           {chip && <CategoryChip name={chip} />}
                           <SeverityTag sev={severityOf(h)} />
-                          <Badge tone={SOURCE_TONE[h.source] || 'mute'}>{h.source}</Badge>
+                          <Badge variant={badgeVariantFor(SOURCE_TONE[h.source] || 'mute')}>{h.source}</Badge>
                           {(h.occurrenceCount || 1) > 1 && h.source !== 'completion-hook' && (
                             <span className="shrink-0 rounded-full border border-[var(--gt-yellow)]/40 bg-[var(--gt-yellow)]/10 px-1.5 text-[9.5px] font-semibold text-[var(--gt-yellow)]">
                               x{h.occurrenceCount}

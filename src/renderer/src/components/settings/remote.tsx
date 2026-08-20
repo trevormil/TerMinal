@@ -1,11 +1,18 @@
 import { useState } from 'react'
 import { Server } from 'lucide-react'
 import type { RemoteHost, RemotePlatform } from '../../lib/types'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   Section,
-  actionButton,
   emptyDaemon,
-  inp,
   type SettingsCtx,
   type SettingsSectionSpec,
 } from './shared'
@@ -129,14 +136,17 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
                     return (
                       <div className="mt-2 space-y-1.5">
                         <div className="flex items-center gap-2">
-                          <button
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
                             onClick={() => void provisionHost(h.id)}
                             disabled={running}
-                            className="rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-300 hover:border-[var(--gt-accent)]/50 hover:text-zinc-100 disabled:opacity-50"
+                            aria-busy={running || undefined}
                             title="Install Bun, enable systemd linger, install the cron runner + terminal-cli, then probe readiness"
                           >
                             {running ? 'Provisioning…' : 'Provision'}
-                          </button>
+                          </Button>
                           {running && (
                             <span className="text-[10.5px] text-zinc-500">
                               installing over SSH — can take a couple of minutes
@@ -209,13 +219,18 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
                     )
                   })()}
                 <div className="mt-2 flex items-center gap-1">
-                  <button
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
                     onClick={() => setProfile(h.id)}
-                    className="rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-100"
                   >
                     Use profile
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
                     onClick={() =>
                       setRemoteDraft({
                         label: h.label,
@@ -224,16 +239,18 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
                         platform: h.platform,
                       })
                     }
-                    className="rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-100"
                   >
                     Edit
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
                     onClick={() => removeRemoteHost(h.id)}
-                    className="ml-auto rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-500 hover:border-[var(--gt-red)]/50 hover:text-[var(--gt-red)]"
+                    className="ml-auto text-zinc-500 hover:text-[var(--gt-red)]"
                   >
                     Remove
-                  </button>
+                  </Button>
                 </div>
               </div>
             ))}
@@ -253,71 +270,71 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
                 Using the same label replaces an existing profile.
               </div>
             </div>
-            <button
+            <Button
+              type="button"
+              variant="default"
+              size="sm"
               onClick={saveRemoteDraft}
               disabled={!remoteDraft.sshTarget.trim()}
-              className={actionButton}
             >
               Save host
-            </button>
+            </Button>
           </div>
           <div className="grid gap-2 md:grid-cols-2">
             <label className="space-y-1">
               <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
                 Label
               </span>
-              <input
+              <Input
                 value={remoteDraft.label}
                 onChange={(e) => setRemoteDraft((d) => ({ ...d, label: e.target.value }))}
                 placeholder="Remote desktop"
-                className={`${inp} font-mono`}
+                className="font-mono"
               />
             </label>
             <label className="space-y-1">
               <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
                 SSH target
               </span>
-              <input
+              <Input
                 value={remoteDraft.sshTarget}
                 onChange={(e) => setRemoteDraft((d) => ({ ...d, sshTarget: e.target.value }))}
                 placeholder="myhost or user@example.com"
                 spellCheck={false}
-                className={`${inp} font-mono`}
+                className="font-mono"
               />
             </label>
             <label className="space-y-1">
               <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
                 Default cwd
               </span>
-              <input
+              <Input
                 value={remoteDraft.defaultCwd}
                 onChange={(e) => setRemoteDraft((d) => ({ ...d, defaultCwd: e.target.value }))}
                 placeholder="~"
                 spellCheck={false}
-                className={`${inp} font-mono`}
+                className="font-mono"
               />
             </label>
             <label className="space-y-1">
               <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
                 Platform
               </span>
-              <select
+              <Select
                 value={remoteDraft.platform}
-                onChange={(e) =>
-                  setRemoteDraft((d) => ({ ...d, platform: e.target.value as RemotePlatform }))
+                onValueChange={(v) =>
+                  setRemoteDraft((d) => ({ ...d, platform: v as RemotePlatform }))
                 }
-                className="h-[33px] w-full rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[12px] text-zinc-200 outline-none"
               >
-                <option value="linux" className="bg-[var(--gt-panel)]">
-                  Linux
-                </option>
-                <option value="macos" className="bg-[var(--gt-panel)]">
-                  macOS
-                </option>
-                <option value="auto" className="bg-[var(--gt-panel)]">
-                  Auto
-                </option>
-              </select>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="linux">Linux</SelectItem>
+                  <SelectItem value="macos">macOS</SelectItem>
+                  <SelectItem value="auto">Auto</SelectItem>
+                </SelectContent>
+              </Select>
             </label>
           </div>
         </div>

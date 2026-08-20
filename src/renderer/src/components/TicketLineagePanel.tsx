@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ArrowUpRight, GitPullRequest, Play } from 'lucide-react'
-import { Badge, type BadgeTone } from './ui'
+import { Badge } from '@/components/ui/badge'
+import type { BadgeTone } from './ui'
 import { navigateTo } from '../lib/nav'
 import { buildTicketLineage, type TicketLineage } from '../lib/ticketLineage'
 import { stateTone, verdictTone, testTone } from '../lib/badges'
@@ -29,6 +30,21 @@ const statusTone = (s: string): BadgeTone =>
 
 const sourceTone = (s: UnifiedRun['source']): BadgeTone =>
   s === 'cron' ? 'accent' : s === 'bg' ? 'yellow' : s === 'session' ? 'green' : 'blue'
+
+const toneVariant = (
+  tone: BadgeTone,
+): 'default' | 'secondary' | 'destructive' | 'success' | 'warning' | 'info' =>
+  tone === 'ok' || tone === 'green'
+    ? 'success'
+    : tone === 'warn' || tone === 'yellow'
+      ? 'warning'
+      : tone === 'bad' || tone === 'red'
+        ? 'destructive'
+        : tone === 'blue'
+          ? 'info'
+          : tone === 'accent'
+            ? 'default'
+            : 'secondary'
 
 const fmtDur = (start: number, end?: number) => {
   if (!end || end < start) return ''
@@ -177,12 +193,16 @@ export function TicketLineagePanel({
                     {forgeLabel}
                     {iid}
                   </span>
-                  {mr && <Badge tone={stateTone(mr.state)}>{mr.state}</Badge>}
-                  {mr?.review && (
-                    <Badge tone={verdictTone(mr.review.verdict)}>{mr.review.verdict}</Badge>
+                  {mr && (
+                    <Badge variant={toneVariant(stateTone(mr.state))}>{mr.state}</Badge>
                   )}
                   {mr?.review && (
-                    <Badge tone={testTone(mr.review.testStatus)}>
+                    <Badge variant={toneVariant(verdictTone(mr.review.verdict))}>
+                      {mr.review.verdict}
+                    </Badge>
+                  )}
+                  {mr?.review && (
+                    <Badge variant={toneVariant(testTone(mr.review.testStatus))}>
                       tests {mr.review.testStatus}
                     </Badge>
                   )}
@@ -207,7 +227,7 @@ export function TicketLineagePanel({
             of the ticket -> run link. */}
         <Kicker
           label="runs"
-          meta={lineage?.running ? <Badge tone="blue">running</Badge> : undefined}
+          meta={lineage?.running ? <Badge variant="info">running</Badge> : undefined}
         />
         {!repoRoot ? (
           // Silent hiding was the old behaviour and it lies: an empty repoRoot
@@ -237,8 +257,8 @@ export function TicketLineagePanel({
                 className="group flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] hover:bg-white/5"
               >
                 <Play size={11} strokeWidth={2} className="shrink-0 text-zinc-700" />
-                <Badge tone={sourceTone(r.source)}>{r.source}</Badge>
-                <Badge tone={statusTone(r.status)}>{r.status}</Badge>
+                <Badge variant={toneVariant(sourceTone(r.source))}>{r.source}</Badge>
+                <Badge variant={toneVariant(statusTone(r.status))}>{r.status}</Badge>
                 <span className="truncate text-zinc-300">{r.agentTitle || r.agentId}</span>
                 {r.id === lineage.linkedRunId && (
                   <span

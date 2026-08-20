@@ -16,7 +16,7 @@ import { onNavigate } from '../../lib/nav'
 // project-template convention: agents tag their docs/ticket/report PRs with
 // this label so they're visually distinguishable from PRs that touch code.
 const AUTO_MERGEABLE_LABEL = 'auto-mergeable'
-import { Badge } from '../../components/ui'
+import { Badge } from '../../components/ui/badge'
 import { MrDetailView } from '../../components/MrDetail'
 import { PrAgentActions } from '../../components/PrAgentActions'
 import { MrMergeButton } from '../../components/MrMergeButton'
@@ -54,6 +54,20 @@ const GROUPS: {
   },
 ]
 const DEFAULT_COLLAPSED: GroupId[] = ['merged', 'closed']
+
+// Map a legacy badge tone (from lib/badges.ts) to the shadcn badge variant.
+const badgeVariantFor = (tone: string) =>
+  tone === 'green' || tone === 'ok'
+    ? ('success' as const)
+    : tone === 'red' || tone === 'bad'
+      ? ('destructive' as const)
+      : tone === 'yellow' || tone === 'warn'
+        ? ('warning' as const)
+        : tone === 'blue'
+          ? ('info' as const)
+          : tone === 'accent'
+            ? ('default' as const)
+            : ('secondary' as const)
 
 const scoreColor = (n: number) =>
   n >= 85 ? 'var(--gt-green)' : n >= 70 ? '#d6a84a' : 'var(--gt-red)'
@@ -366,7 +380,7 @@ function GroupedMrList({
               ) : (
                 <ChevronRight size={12} strokeWidth={2} className="text-zinc-500" />
               )}
-              <Badge tone={stateTone(g.toneKey)}>{g.label}</Badge>
+              <Badge variant={badgeVariantFor(stateTone(g.toneKey))}>{g.label}</Badge>
               <span className="text-[11px] tabular-nums text-zinc-600">{g.items.length}</span>
             </button>
             {isOpen && (

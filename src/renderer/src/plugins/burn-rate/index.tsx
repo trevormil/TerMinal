@@ -1,5 +1,7 @@
 import { Flame } from 'lucide-react'
-import { Card, Big, Gauge } from '../../components/ui'
+import { TitledCard } from '../../components/ui/titled-card'
+import { Big } from '../../components/ui/display'
+import { Gauge } from '../../components/ui/gauge'
 import { fmtTokens } from '../../lib/format'
 import type { Plugin } from '../../lib/types'
 
@@ -29,12 +31,12 @@ const plugin: Plugin<Burn> = {
     const rate = d?.ratePerMin ?? 0
     // scale gauge against 50k tok/min as "hot"
     return (
-      <Card icon={Flame} title="Token Burn Rate">
+      <TitledCard icon={Flame} title="Token Burn Rate">
         <div className="mb-2">
           <Big value={fmtTokens(Math.round(rate))} sub="tok / min" />
         </div>
         <Gauge pct={(rate / 50_000) * 100} color="#ff7b3d" />
-      </Card>
+      </TitledCard>
     )
   },
 }

@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import { BellRing, Loader2, Send } from 'lucide-react'
 import type { AlertChannelId, DeliveryRecord } from '../../lib/types'
+import { Button } from '@/components/ui/button'
 import {
   Section,
   Toggle,
   WebhookList,
-  actionButton,
   type SettingsCtx,
   type SettingsSectionSpec,
 } from './shared'
@@ -36,13 +36,16 @@ function DeliveryLog() {
         <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
           Recent deliveries
         </span>
-        <button
+        <Button
+          type="button"
+          variant="secondary"
+          size="xs"
           onClick={load}
           disabled={busy}
-          className="rounded-md border border-[var(--gt-border)] px-1.5 py-0.5 text-[10.5px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-200 disabled:opacity-40"
+          aria-busy={busy || undefined}
         >
           Refresh
-        </button>
+        </Button>
         <span className="text-[10.5px] text-zinc-600">
           Three consecutive failures on a channel file an Activity event.
         </span>
@@ -107,18 +110,20 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
               label="Desktop notifications"
               hint="Native macOS notification banners"
             />
-            <button
+            <Button
+              type="button"
+              variant="secondary"
               onClick={() => testAlert('desktop')}
               disabled={alertTest.desktop?.busy}
-              className={actionButton}
+              aria-busy={alertTest.desktop?.busy || undefined}
             >
               {alertTest.desktop?.busy ? (
-                <Loader2 size={13} className="animate-spin" />
+                <Loader2 className="animate-spin" />
               ) : (
-                <Send size={13} strokeWidth={2} />
+                <Send strokeWidth={2} />
               )}
               Test
-            </button>
+            </Button>
           </div>
           {alertTest.desktop && !alertTest.desktop.busy && (
             <div
@@ -149,18 +154,20 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
               label="Telegram"
               hint="Bot token, chat id and AFK control live in the Telegram section below"
             />
-            <button
+            <Button
+              type="button"
+              variant="secondary"
               onClick={() => testAlert('telegram')}
               disabled={alertTest.telegram?.busy}
-              className={actionButton}
+              aria-busy={alertTest.telegram?.busy || undefined}
             >
               {alertTest.telegram?.busy ? (
-                <Loader2 size={13} className="animate-spin" />
+                <Loader2 className="animate-spin" />
               ) : (
-                <Send size={13} strokeWidth={2} />
+                <Send strokeWidth={2} />
               )}
               Test
-            </button>
+            </Button>
           </div>
           {alertTest.telegram && !alertTest.telegram.busy && (
             <div

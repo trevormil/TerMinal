@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { LayoutGrid, Plus, Trash2 } from 'lucide-react'
 import type { PinnedPanel } from '../../lib/types'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Section, type SettingsCtx, type SettingsSectionSpec } from './shared'
 
 // Editor for the Panels tab's pinned web dashboards. Local rows while editing;
@@ -26,8 +28,6 @@ function PanelsSection({
       persist(next)
       return next
     })
-  const inputCls =
-    'min-w-0 rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60'
   return (
     <Section
       id="panels"
@@ -43,37 +43,43 @@ function PanelsSection({
         )}
         {rows.map((p, i) => (
           <div key={i} className="flex items-center gap-2">
-            <input
+            <Input
               value={p.label}
               onChange={(e) => update(i, { label: e.target.value })}
               onBlur={() => persist(rows)}
               placeholder="Label"
-              className={`${inputCls} w-40 shrink-0`}
+              className="w-40 shrink-0"
             />
-            <input
+            <Input
               value={p.url}
               onChange={(e) => update(i, { url: e.target.value })}
               onBlur={() => persist(rows)}
               onKeyDown={(e) => e.key === 'Enter' && persist(rows)}
               placeholder="https://…"
-              className={`${inputCls} flex-1 font-mono`}
+              className="flex-1 font-mono"
             />
-            <button
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
               onClick={() => remove(i)}
               title="Remove panel"
-              className="flex shrink-0 items-center rounded p-1.5 text-zinc-500 hover:bg-white/10 hover:text-[var(--gt-red)]"
+              aria-label="Remove panel"
+              className="text-zinc-500 hover:text-[var(--gt-red)]"
             >
-              <Trash2 size={13} strokeWidth={2} />
-            </button>
+              <Trash2 strokeWidth={2} />
+            </Button>
           </div>
         ))}
-        <button
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
           onClick={() => setRows((rs) => [...rs, { label: '', url: '' }])}
-          className="inline-flex w-fit items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-300 hover:border-[var(--gt-accent)]/60"
         >
-          <Plus size={12} strokeWidth={2} />
+          <Plus strokeWidth={2} />
           Add panel
-        </button>
+        </Button>
       </div>
     </Section>
   )

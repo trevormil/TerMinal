@@ -8,6 +8,7 @@ import {
   GitBranch,
   GitCompare,
   History,
+  Loader2,
   ArrowLeft,
   ArrowRight,
   MessageSquarePlus,
@@ -17,7 +18,8 @@ import {
   SlidersHorizontal,
   X,
 } from 'lucide-react'
-import { Button, IconButton, Input } from '../../components/ui'
+import { Button } from '../../components/ui/button'
+import { Input } from '../../components/ui/input'
 import { langForPath, useLangsReady } from '../../lib/lazyLang'
 import { FileTree, type FileTreeActions } from '../../components/FileTree'
 import { FileViewer, hasViewer } from '../../components/FileViewer'
@@ -1169,7 +1171,6 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
                       if (e.key === 'Enter') commitPrompt()
                       if (e.key === 'Escape') setPrompt(null)
                     }}
-                    size="xs"
                     className="min-w-0 flex-1 rounded bg-black/40 font-mono text-[11px]"
                   />
                 </div>
@@ -1179,19 +1180,21 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
                   <span className="min-w-0 flex-1 truncate text-[var(--gt-red)]">
                     Delete {base(confirmDelete)}?
                   </span>
-                  <Button variant="danger" size="xs" onClick={commitDelete}>
+                  <Button variant="destructive" size="xs" onClick={commitDelete}>
                     Delete
                   </Button>
                   {/* Was an unlabelled icon-only <button>: nothing but a mouse
-                      could reach it. IconButton makes the name mandatory. */}
-                  <IconButton
-                    label="Cancel delete"
-                    size="xs"
-                    className="px-1"
+                      could reach it. The ghost icon Button keeps the name
+                      mandatory via aria-label. */}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Cancel delete"
+                    title="Cancel delete"
                     onClick={() => setConfirmDelete(null)}
                   >
                     <X size={12} strokeWidth={2} />
-                  </IconButton>
+                  </Button>
                 </div>
               )}
 
@@ -1288,13 +1291,20 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
                       className="min-w-0 flex-1 text-[12px]"
                     />
                     <Button
-                      variant="primary"
+                      variant="default"
+                      size="sm"
                       onClick={runReplace}
-                      busy={replacing}
                       disabled={
-                        !results || results.length === 0 || results.length === excluded.size
+                        !results ||
+                        results.length === 0 ||
+                        results.length === excluded.size ||
+                        replacing
                       }
+                      aria-busy={replacing || undefined}
                     >
+                      {replacing && (
+                        <Loader2 size={11} strokeWidth={2.25} className="animate-spin" />
+                      )}
                       {replacing
                         ? 'Replacing…'
                         : `Replace${results ? ` ${results.length - excluded.size}` : ''}`}

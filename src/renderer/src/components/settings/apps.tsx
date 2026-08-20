@@ -1,4 +1,11 @@
 import { AppWindow } from 'lucide-react'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Section, Toggle, type SettingsCtx, type SettingsSectionSpec } from './shared'
 
 function Component({ ctx }: { ctx: SettingsCtx }) {
@@ -8,9 +15,9 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
       ...new Set([...(detected?.length ? detected : fallback), ...(current ? [current] : [])]),
     ]
     return list.map((a) => (
-      <option key={a} value={a} className="bg-[var(--gt-panel)]">
+      <SelectItem key={a} value={a}>
         {a}
-      </option>
+      </SelectItem>
     ))
   }
 
@@ -24,23 +31,31 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
       <div className="flex flex-wrap gap-5">
         <label className="flex items-center gap-2 text-[12px] text-zinc-400">
           Editor
-          <select
+          <Select
             value={s.apps.editor || 'Cursor'}
-            onChange={(e) => save({ apps: { editor: e.target.value } })}
-            className="rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[12px] text-zinc-200 outline-none"
+            onValueChange={(v) => save({ apps: { editor: v } })}
           >
-            {appOptions(env?.apps.editors, ['Cursor', 'Visual Studio Code'], s.apps.editor)}
-          </select>
+            <SelectTrigger className="w-auto min-w-0">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {appOptions(env?.apps.editors, ['Cursor', 'Visual Studio Code'], s.apps.editor)}
+            </SelectContent>
+          </Select>
         </label>
         <label className="flex items-center gap-2 text-[12px] text-zinc-400">
           Browser
-          <select
+          <Select
             value={s.apps.browser || 'Brave Browser'}
-            onChange={(e) => save({ apps: { browser: e.target.value } })}
-            className="rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[12px] text-zinc-200 outline-none"
+            onValueChange={(v) => save({ apps: { browser: v } })}
           >
-            {appOptions(env?.apps.browsers, ['Brave Browser'], s.apps.browser)}
-          </select>
+            <SelectTrigger className="w-auto min-w-0">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {appOptions(env?.apps.browsers, ['Brave Browser'], s.apps.browser)}
+            </SelectContent>
+          </Select>
         </label>
       </div>
       <div className="mt-3">

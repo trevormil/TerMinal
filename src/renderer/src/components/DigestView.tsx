@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import parseDiff from 'parse-diff'
-import { Empty } from './ui'
+import { Empty } from '@/components/ui/display'
+import { Button } from '@/components/ui/button'
 import {
   ChevronDown,
   ChevronRight,
@@ -276,10 +277,13 @@ export function DigestView({
         {!digest && !running && <span className="text-zinc-600">No digest yet</span>}
         {error && <span className="truncate text-[var(--gt-red)]">{error}</span>}
       </div>
-      <button
+      <Button
+        type="button"
+        variant="secondary"
+        size="sm"
         onClick={runIt}
         disabled={running}
-        className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--gt-border)] px-2.5 py-1 text-[11px] text-zinc-300 hover:border-[var(--gt-accent)]/60 disabled:opacity-60"
+        aria-busy={running || undefined}
       >
         {running ? (
           <>
@@ -297,7 +301,7 @@ export function DigestView({
             Generate digest
           </>
         )}
-      </button>
+      </Button>
     </div>
   )
 

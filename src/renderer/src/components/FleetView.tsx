@@ -1,5 +1,6 @@
 import { LayoutDashboard, X, Plus, GitBranch } from 'lucide-react'
-import { Gauge } from './ui'
+import { Gauge } from '@/components/ui/gauge'
+import { Button } from '@/components/ui/button'
 import { fmtTokens } from '../lib/format'
 import type { FleetSession } from '../lib/types'
 
@@ -34,19 +35,13 @@ export function FleetView({
           {working > 0 && ` · ${working} working`}
         </span>
         <div className="flex-1" />
-        <button
-          onClick={onNew}
-          className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2.5 py-1 text-[11px] font-medium text-zinc-300 hover:border-[var(--gt-accent)]/60 hover:text-white"
-        >
+        <Button variant="secondary" size="sm" onClick={onNew}>
           <Plus size={13} strokeWidth={2.5} />
           New session
-        </button>
-        <button
-          onClick={onClose}
-          className="flex items-center rounded-md p-1 text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
-        >
+        </Button>
+        <Button variant="ghost" size="icon" aria-label="Close Fleet" title="Close Fleet" onClick={onClose}>
           <X size={15} strokeWidth={2} />
-        </button>
+        </Button>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-3">

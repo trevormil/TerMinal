@@ -1,6 +1,7 @@
 import { useEffect, useReducer } from 'react'
 import { EngineModelPicker } from '../../components/EngineModelPicker'
 import { SkillHint } from '../../components/SkillHint'
+import { Dialog, DialogContent } from '../../components/ui/dialog'
 import { navigateTo } from '../../lib/nav'
 import { engineLabel } from '../../lib/engines'
 import { engineInstanceLabel, openPromptInTerminal, remoteForTabContext } from '../../lib/launch'
@@ -131,13 +132,10 @@ export function PersistentAgentEditor({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6"
-      onClick={onClose}
-    >
-      <div
-        className="w-[640px] max-w-full rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-5 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
+    <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
+      <DialogContent
+        showCloseButton={false}
+        className="w-[640px] rounded-xl bg-[var(--gt-panel)] p-5"
       >
         <div className="mb-3 flex items-center gap-2">
           <h2 className="text-sm font-bold text-zinc-100">New persistent agent</h2>
@@ -247,7 +245,7 @@ export function PersistentAgentEditor({
             </button>
           </div>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

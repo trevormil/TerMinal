@@ -1,5 +1,6 @@
 import { Loader2, Monitor, RotateCcw, Server } from 'lucide-react'
-import { Section, buttonSoft, type SettingsCtx, type SettingsSectionSpec } from './shared'
+import { Button } from '@/components/ui/button'
+import { Section, type SettingsCtx, type SettingsSectionSpec } from './shared'
 
 function Component({ ctx }: { ctx: SettingsCtx }) {
   const { s, profile, setProfile, selectedHost, selectedProbe, refreshRemoteProbe } = ctx
@@ -15,14 +16,19 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
             {selectedHost ? 'SSH' : 'Local'}
           </span>
           {selectedHost && (
-            <button onClick={() => refreshRemoteProbe(selectedHost)} className={buttonSoft}>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => refreshRemoteProbe(selectedHost)}
+            >
               {selectedProbe && 'loading' in selectedProbe ? (
-                <Loader2 size={12} className="animate-spin" />
+                <Loader2 className="animate-spin" />
               ) : (
-                <RotateCcw size={12} />
+                <RotateCcw />
               )}
               Probe
-            </button>
+            </Button>
           )}
         </>
       }

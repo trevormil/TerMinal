@@ -22,7 +22,9 @@ import parseDiff from 'parse-diff'
 import hljs from 'highlight.js/lib/common'
 import { Terminal as Xterm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
-import { Badge, CopyButton, Empty } from './ui'
+import { CopyButton, type BadgeTone } from './ui'
+import { Empty } from '@/components/ui/display'
+import { Badge as UiBadge } from '@/components/ui/badge'
 import { Markdown } from './Markdown'
 import { PrAgentActions } from './PrAgentActions'
 import { MrMergeButton } from './MrMergeButton'
@@ -50,6 +52,29 @@ import type {
   StructuralDiffResult,
   Screenshot,
 } from '../lib/types'
+
+// Legacy badge tones → shadcn variants (runbook map: ok/green→success,
+// warn/yellow→warning, bad/red→destructive, blue→info, accent→default,
+// mute→secondary). Kept local so `lib/badges.ts` can keep returning the legacy
+// `BadgeTone` for the call sites that haven't moved yet.
+const BADGE_VARIANT: Record<
+  BadgeTone,
+  'default' | 'secondary' | 'destructive' | 'success' | 'warning' | 'info'
+> = {
+  ok: 'success',
+  green: 'success',
+  warn: 'warning',
+  yellow: 'warning',
+  bad: 'destructive',
+  red: 'destructive',
+  blue: 'info',
+  accent: 'default',
+  mute: 'secondary',
+}
+
+function Badge({ tone, children }: { tone: BadgeTone; children: ReactNode }) {
+  return <UiBadge variant={BADGE_VARIANT[tone]}>{children}</UiBadge>
+}
 
 const HLJS_LANG: Record<string, string> = {
   ts: 'typescript',

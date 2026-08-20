@@ -10,7 +10,7 @@ import {
   Loader2,
   ListTree,
 } from 'lucide-react'
-import { Badge } from '../../components/ui'
+import { Badge } from '../../components/ui/badge'
 import type { CiRun, CiRunStatus, CiTabJob, TabContext } from '../../lib/types'
 import { StatusIcon, isActive, formatDuration, reltime } from './ciShared'
 import { LogView } from './logView'
@@ -410,9 +410,9 @@ export function RunsView({ ctx }: { ctx: TabContext }) {
                   <span className="min-w-0 flex-1 truncate text-[11px] font-bold uppercase tracking-wider text-zinc-300">
                     {name}
                   </span>
-                  {sum.running > 0 && <Badge tone="blue">{sum.running}</Badge>}
-                  {sum.failed > 0 && <Badge tone="red">{sum.failed}</Badge>}
-                  {sum.success > 0 && <Badge tone="green">{sum.success}</Badge>}
+                  {sum.running > 0 && <Badge variant="info">{sum.running}</Badge>}
+                  {sum.failed > 0 && <Badge variant="destructive">{sum.failed}</Badge>}
+                  {sum.success > 0 && <Badge variant="success">{sum.success}</Badge>}
                 </button>
                 {!isCollapsed &&
                   list.map((run) => (
