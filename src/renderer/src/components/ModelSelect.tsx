@@ -1,5 +1,102 @@
 import type { Engine } from '../lib/types'
 import { ENGINE_MODELS, engineAllowsCustomModel, engineEffortsOf } from '../lib/engines'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+
+// The dropdown pair below is the COMPACT form of the two pickers in this file,
+// for surfaces where model + effort are one field each in a longer form (the
+// entry wizard). Same data source, so a newly registered model shows up in both
+// forms at once. `DEFAULT_VALUE` stands in for `undefined` because Radix Select
+// treats an empty string as "no value" and would render the placeholder for a
+// deliberate "use the engine default" choice.
+const DEFAULT_VALUE = '__default__'
+
+/** Model as a dropdown. For engines that take an arbitrary slug (OpenRouter)
+ *  the free-text field stays — a menu can't enumerate every model. */
+export function ModelDropdown({
+  engine,
+  model,
+  onChange,
+}: {
+  engine: Engine
+  model: string | undefined
+  onChange: (model: string | undefined) => void
+}) {
+  const models = ENGINE_MODELS[engine] ?? []
+  const custom = engineAllowsCustomModel(engine)
+  const knownIds = new Set(models.map((m) => m.id))
+  const customActive = custom && !!model && !knownIds.has(model)
+  return (
+    <div className="space-y-2">
+      <Select
+        value={customActive ? DEFAULT_VALUE : (model ?? DEFAULT_VALUE)}
+        onValueChange={(v) => onChange(v === DEFAULT_VALUE ? undefined : v)}
+      >
+        <SelectTrigger className="h-9 text-[13px]">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={DEFAULT_VALUE}>Default</SelectItem>
+          {models.map((m) => (
+            <SelectItem key={m.id} value={m.id}>
+              {m.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {custom && (
+        <input
+          value={model ?? ''}
+          onChange={(e) => onChange(e.target.value.trim() || undefined)}
+          placeholder="…or any slug from openrouter.ai/models"
+          spellCheck={false}
+          autoComplete="off"
+          className={`w-full rounded-lg border bg-black/30 px-2.5 py-2 font-mono text-[12px] text-zinc-200 outline-none ${
+            customActive ? 'border-[var(--gt-accent)]/70' : 'border-[var(--gt-border)]'
+          } focus:border-[var(--gt-accent)]/60`}
+        />
+      )}
+    </div>
+  )
+}
+
+/** Reasoning effort as a dropdown. Renders nothing for engines without an
+ *  effort control, so callers can always include it. */
+export function EffortDropdown({
+  engine,
+  effort,
+  onChange,
+}: {
+  engine: Engine
+  effort: string | undefined
+  onChange: (effort: string | undefined) => void
+}) {
+  const levels = engineEffortsOf(engine)
+  if (!levels.length) return null
+  return (
+    <Select
+      value={effort ?? DEFAULT_VALUE}
+      onValueChange={(v) => onChange(v === DEFAULT_VALUE ? undefined : v)}
+    >
+      <SelectTrigger className="h-9 text-[13px]">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value={DEFAULT_VALUE}>Default</SelectItem>
+        {levels.map((l) => (
+          <SelectItem key={l} value={l}>
+            {l}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}
 
 // A full model-selection surface (its own step/screen), not a cramped dropdown.
 // Renders a "default" card plus each of the engine's models as selectable cards.

@@ -23,7 +23,7 @@ import { repoRootOf } from '../repo'
 import { resolveWithinAny } from '../path-guard'
 import { isExternallyOpenableUrl } from '../../shared/url-safety'
 import {
-  resolvedBrowserApp,
+  resolvedBrowserApps,
   resolvedEditorApp,
   resolvedProjectsDir,
   resolvedWorktreesDir,
@@ -116,15 +116,28 @@ export function registerSystemIpc(deps: SystemIpcDeps): void {
   })
   // Hand a target to a configured external app via `open -a <App>` (robust, no
   // PATH/CLI dependency), falling back to the OS default if the app isn't there.
-  function openInApp(appName: string, target: string, fallback: () => void) {
+  // Walks a candidate chain, best app first, and only reaches `fallback` once
+  // every candidate has failed. `error` and `exit` can BOTH fire for a single
+  // failed spawn (a failed spawn exits with a null code, which is != 0), so the
+  // settled latch is what stops one failure opening the target twice.
+  function openInApp(candidates: string | string[], target: string, fallback: () => void) {
+    const [appName, ...rest] = typeof candidates === 'string' ? [candidates] : candidates
+    if (!appName) return fallback()
+    let settled = false
+    const advance = () => {
+      if (settled) return
+      settled = true
+      openInApp(rest, target, fallback)
+    }
     try {
       const p = cpSpawn('open', ['-a', appName, target], { stdio: 'ignore' })
-      p.on('error', fallback)
+      p.on('error', advance)
       p.on('exit', (code) => {
-        if (code !== 0) fallback()
+        if (code === 0) settled = true
+        else advance()
       })
     } catch {
-      fallback()
+      advance()
     }
   }
   // "Open in browser" — the configured browser (default Brave) with its extensions/wallet.
@@ -133,7 +146,7 @@ export function registerSystemIpc(deps: SystemIpcDeps): void {
   // simply a second, unguarded way to reach an OS protocol handler.
   handle('open:in-browser', (_e, url: string) => {
     if (!isExternallyOpenableUrl(url)) return openExternalSafe(url)
-    openInApp(resolvedBrowserApp(), url, () => openExternalSafe(url))
+    openInApp(resolvedBrowserApps(), url, () => openExternalSafe(url))
   })
   // "Open in editor" — the configured editor (default Cursor). Opens a path; defaults
   // to the active session's repo root. Renderer-supplied paths are constrained to

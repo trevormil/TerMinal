@@ -72,7 +72,7 @@
   --border: var(--gt-border);
   --input: var(--gt-border);
   --ring: var(--gt-accent);
-  --radius: 0.5rem;
+  --radius: 0.75rem;
 }
 
 @theme inline {
@@ -110,13 +110,29 @@ body,
 #root {
   height: 100%;
   margin: 0;
-  background: var(--gt-bg);
+  background-color: var(--gt-bg);
   color: var(--gt-text);
   font-family: var(--font-sans);
   font-feature-settings: 'ss03', 'cv05';
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   overflow: hidden;
+}
+
+/* Ambient brand tint — a faint violet/teal wash in the top corners, fixed so it
+   never scrolls. Subtle on purpose (depth, not decoration); it shows through
+   only where surfaces are transparent, i.e. the window background and gaps. */
+#root {
+  background-image: radial-gradient(
+      1100px 700px at 12% -8%,
+      color-mix(in srgb, var(--gt-accent) 8%, transparent),
+      transparent 60%
+    ),
+    radial-gradient(
+      900px 600px at 100% 0%,
+      color-mix(in srgb, var(--gt-accent-2) 6%, transparent),
+      transparent 55%
+    );
 }
 
 .tickets-browser {

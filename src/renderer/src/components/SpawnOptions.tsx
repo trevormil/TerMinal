@@ -111,10 +111,7 @@ export function SpawnOptions({
   ]
 
   return (
-    <div
-      data-spawn-options
-      className="mb-5 rounded-2xl border border-[var(--gt-border)] bg-[var(--gt-panel)] px-4 py-2.5"
-    >
+    <div data-spawn-options className="mb-2">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}

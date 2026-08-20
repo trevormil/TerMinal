@@ -388,6 +388,11 @@ export function TerminalPane({
       linkHandler: {
         activate: (_e, uri) => void window.gt.openInBrowser(uri),
       },
+      // xterm defaults this ON for macOS: right-clicking OUTSIDE an existing
+      // selection replaces it with the word under the cursor, and mousedown
+      // beats contextmenu — so the menu that opens has already destroyed what
+      // the user meant to copy. Off, a right-click leaves the selection alone.
+      rightClickSelectsWord: false,
       minimumContrastRatio: 4.5,
       scrollback: 10000,
       theme: xtermThemeFromCss(),
