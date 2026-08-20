@@ -270,6 +270,10 @@ export function TerminalPane({
   // moment the user actually engages it — focuses the terminal or types.
   const onClearAttentionRef = useRef<(() => void) | undefined>(undefined)
   const needsAttentionRef = useRef(false)
+  // Whether this pane is the one on screen, read from the mount-effect
+  // closures — the document-level copy handler must only act for the visible
+  // session (hidden panes can still hold a stale xterm selection).
+  const activeRef = useRef(active)
   // For the drop-to-shell-on-exit behavior: the session's resolved cwd (from
   // startSession) and whether this pane is currently a plain local shell — set
   // once we've converted, so the local shell's own exit ends the pane normally
@@ -328,6 +332,7 @@ export function TerminalPane({
   }, [needsAttention])
 
   useEffect(() => {
+    activeRef.current = active
     if (!active) return
     requestAnimationFrame(() => termRef.current?.focus())
   }, [active])
@@ -391,18 +396,28 @@ export function TerminalPane({
     term.open(el)
     fit.fit()
 
-    // Seamless copy: the hosted TUI (Claude Code / codex) hard-wraps its
-    // transcript with real newlines + a hanging indent, so a native copy
-    // pastes with the wrap baked in. Rewrite the clipboard payload at copy
-    // time — provably-wrapped lines re-join, the common indent goes, code
-    // blocks keep their breaks (see copyReflow.ts).
+    // Seamless copy: rewrite the clipboard payload at copy time — wrapped
+    // lines re-join, the common indent goes, code blocks keep their breaks
+    // (see copyReflow.ts). Listen on document, not the xterm container:
+    // Cmd+C is Electron's Edit-menu copy, which fires the DOM copy event on
+    // whatever holds focus. Tied to `el`, the handler went silent whenever
+    // focus had drifted off xterm's hidden textarea — the copy "succeeded"
+    // but the clipboard kept its stale contents. The terminal owns the copy
+    // only while it is the visible session, it has a selection, and the user
+    // has not selected text anywhere else on the page or in another field.
     const onCopy = (e: ClipboardEvent) => {
-      const text = term.getSelection()
-      if (!text || !e.clipboardData) return
+      if (!activeRef.current || !term.hasSelection() || !e.clipboardData) return
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT') && !el.contains(t)) {
+        const field = t as HTMLTextAreaElement | HTMLInputElement
+        if (field.selectionStart !== field.selectionEnd) return
+      }
+      const dom = window.getSelection()
+      if (dom && !dom.isCollapsed) return
       e.preventDefault()
-      e.clipboardData.setData('text/plain', reflowTerminalCopy(text, term.cols))
+      e.clipboardData.setData('text/plain', reflowTerminalCopy(term.getSelection(), term.cols))
     }
-    el.addEventListener('copy', onCopy)
+    document.addEventListener('copy', onCopy)
 
     const gt = window.gt
     let skillNames = new Set<string>(choice.engine === 'codex' && !isRemote ? ['ticket'] : [])
@@ -689,7 +704,7 @@ export function TerminalPane({
     return () => {
       cancelAnimationFrame(raf)
       if (fitTimer) window.clearTimeout(fitTimer)
-      el.removeEventListener('copy', onCopy)
+      document.removeEventListener('copy', onCopy)
       el.removeEventListener('focusin', onFocusIn)
       el.removeEventListener('contextmenu', onContext)
       el.removeEventListener('dragover', onDragOver)
