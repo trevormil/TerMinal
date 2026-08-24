@@ -36,7 +36,10 @@ export function MrMergeButton({
 
   if (err)
     return (
-      <span className="inline-flex items-center gap-1 text-[11px] text-[var(--gt-yellow)]" title={err}>
+      <span
+        className="inline-flex items-center gap-1 text-[11px] text-[var(--gt-yellow)]"
+        title={err}
+      >
         <X size={12} strokeWidth={2.5} />
         Merge failed
         <button

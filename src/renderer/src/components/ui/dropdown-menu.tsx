@@ -55,8 +55,9 @@ function DropdownMenuItem({
       data-inset={inset}
       data-variant={variant}
       className={cn(
-        "relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1 text-[12px] outline-none transition-colors focus:bg-muted focus:text-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-40 data-[inset]:pl-7 [&_svg]:pointer-events-none [&_svg]:size-3.5 [&_svg]:shrink-0",
-        variant === 'destructive' && 'text-destructive focus:bg-destructive/10 focus:text-destructive',
+        'relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1 text-[12px] outline-none transition-colors focus:bg-muted focus:text-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-40 data-[inset]:pl-7 [&_svg]:pointer-events-none [&_svg]:size-3.5 [&_svg]:shrink-0',
+        variant === 'destructive' &&
+          'text-destructive focus:bg-destructive/10 focus:text-destructive',
         className,
       )}
       {...props}
@@ -129,7 +130,10 @@ function DropdownMenuLabel({
     <DropdownMenuPrimitive.Label
       data-slot="dropdown-menu-label"
       data-inset={inset}
-      className={cn('px-2 py-1 text-[10.5px] font-semibold uppercase tracking-wide text-muted-foreground data-[inset]:pl-7', className)}
+      className={cn(
+        'px-2 py-1 text-[10.5px] font-semibold uppercase tracking-wide text-muted-foreground data-[inset]:pl-7',
+        className,
+      )}
       {...props}
     />
   )

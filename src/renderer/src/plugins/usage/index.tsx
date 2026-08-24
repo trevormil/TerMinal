@@ -24,7 +24,9 @@ function WindowRow({ label, w }: { label: string; w: UsageWindow }) {
         <span className="tabular-nums text-foreground/90">
           {w.pct.toFixed(0)}%
           {w.resetsAt && (
-            <span className="ml-1.5 text-[10.5px] text-muted-foreground">↻ {resetIn(w.resetsAt)}</span>
+            <span className="ml-1.5 text-[10.5px] text-muted-foreground">
+              ↻ {resetIn(w.resetsAt)}
+            </span>
           )}
         </span>
       </div>

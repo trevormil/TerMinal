@@ -2,13 +2,7 @@ import { useEffect, useState } from 'react'
 import { BellRing, Loader2, Send } from 'lucide-react'
 import type { AlertChannelId, DeliveryRecord } from '../../lib/types'
 import { Button } from '@/components/ui/button'
-import {
-  Section,
-  Toggle,
-  WebhookList,
-  type SettingsCtx,
-  type SettingsSectionSpec,
-} from './shared'
+import { Section, Toggle, WebhookList, type SettingsCtx, type SettingsSectionSpec } from './shared'
 
 // Last-N alert deliveries with failure reasons. dispatchAlert isolates channel
 // failures so one dead webhook can't block the others — which also meant a

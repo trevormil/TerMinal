@@ -41,7 +41,10 @@ export function StackMergeButton({
 
   if (err)
     return (
-      <span className="inline-flex items-center gap-1 text-[11px] text-[var(--gt-yellow)]" title={err}>
+      <span
+        className="inline-flex items-center gap-1 text-[11px] text-[var(--gt-yellow)]"
+        title={err}
+      >
         <X size={12} strokeWidth={2.5} />
         Stack merge failed
         <button onClick={() => setErr(null)} className="ml-1 underline hover:text-amber-300">

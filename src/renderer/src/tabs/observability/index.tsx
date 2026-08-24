@@ -270,7 +270,9 @@ function SummaryView({
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <EnginePill engine={session.engine} />
-        <Badge variant={badgeVariantFor(session.telemetry === 'ready' ? 'green' : 'yellow')}>{session.telemetry}</Badge>
+        <Badge variant={badgeVariantFor(session.telemetry === 'ready' ? 'green' : 'yellow')}>
+          {session.telemetry}
+        </Badge>
         {session.model && <Badge variant="secondary">{session.model}</Badge>}
         <span className="text-[11px] text-zinc-600">{session.cwd || 'Unknown cwd'}</span>
       </div>
@@ -717,7 +719,9 @@ function ToolsView({
                       }`}
                     >
                       <div className="flex min-w-0 items-center gap-2">
-                        <Badge variant={badgeVariantFor(statusTone(tool.status))}>{tool.status}</Badge>
+                        <Badge variant={badgeVariantFor(statusTone(tool.status))}>
+                          {tool.status}
+                        </Badge>
                         <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-zinc-200">
                           {tool.toolName}
                         </span>

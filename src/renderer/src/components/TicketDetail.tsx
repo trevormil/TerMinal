@@ -153,12 +153,7 @@ function AcceptanceSection({
           >
             <Check size={12} strokeWidth={2.5} /> Save
           </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={() => setEditing(false)}
-          >
+          <Button type="button" variant="secondary" size="sm" onClick={() => setEditing(false)}>
             <X size={12} strokeWidth={2.5} /> Cancel
           </Button>
         </div>
@@ -504,7 +499,9 @@ export function TicketDetail({
                 }}
               />
               {selected.horizon !== 'now' && (
-                <Badge variant={toneVariant(horizonTone(selected.horizon))}>{selected.horizon}</Badge>
+                <Badge variant={toneVariant(horizonTone(selected.horizon))}>
+                  {selected.horizon}
+                </Badge>
               )}
             </>
           )}

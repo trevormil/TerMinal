@@ -200,7 +200,7 @@ function TicketProviderPanel() {
         {providerOpt(
           'linear',
           'Linear',
-          'Uses Linear MCP. Pick a team and file issues directly in Linear.',
+          'Org source of truth — read and write your team’s Linear issues via MCP.',
         )}
         {providerOpt(
           'webview',
@@ -218,6 +218,10 @@ function TicketProviderPanel() {
 
       {provider === 'linear' && (
         <div className="space-y-2 rounded-lg border border-[var(--gt-border)] bg-black/20 p-3">
+          <div className="text-[10.5px] leading-snug text-zinc-500">
+            Keep your existing Linear workflow: issues stay in Linear, and TerMinal works with the
+            same team backlog instead of creating a separate local process.
+          </div>
           <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
             <label className="space-y-1">
               <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
@@ -259,7 +263,11 @@ function TicketProviderPanel() {
               disabled={busy === 'teams'}
               aria-busy={busy === 'teams' || undefined}
             >
-              {busy === 'teams' ? <Loader2 className="animate-spin" /> : <RotateCcw strokeWidth={2} />}
+              {busy === 'teams' ? (
+                <Loader2 className="animate-spin" />
+              ) : (
+                <RotateCcw strokeWidth={2} />
+              )}
               Teams
             </Button>
           </div>

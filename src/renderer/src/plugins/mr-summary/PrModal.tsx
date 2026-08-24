@@ -26,7 +26,7 @@ const badgeVariant = (
   t: BadgeTone,
 ): 'default' | 'secondary' | 'destructive' | 'success' | 'warning' | 'info' =>
   (
-    {
+    ({
       ok: 'success',
       green: 'success',
       warn: 'warning',
@@ -36,7 +36,10 @@ const badgeVariant = (
       mute: 'secondary',
       blue: 'info',
       accent: 'default',
-    } as Record<BadgeTone, 'default' | 'secondary' | 'destructive' | 'success' | 'warning' | 'info'>
+    }) as Record<
+      BadgeTone,
+      'default' | 'secondary' | 'destructive' | 'success' | 'warning' | 'info'
+    >
   )[t]
 
 // Ticket → PR back-reference: a ticket links its PRs by URL in `prs`.
@@ -131,12 +134,22 @@ export function PrModal({ iid, onClose }: { iid: number; onClose: () => void }) 
               Open in {label}s tab
             </Button>
             {detail?.webUrl && (
-              <Button variant="secondary" size="sm" onClick={() => window.gt.openExternal(detail.webUrl)}>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => window.gt.openExternal(detail.webUrl)}
+              >
                 <ExternalLink size={11} strokeWidth={2} />
                 Open on forge
               </Button>
             )}
-            <Button variant="ghost" size="icon" aria-label="Close (Esc)" title="Close (Esc)" onClick={onClose}>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Close (Esc)"
+              title="Close (Esc)"
+              onClick={onClose}
+            >
               <X size={14} strokeWidth={2} />
             </Button>
           </div>
@@ -192,7 +205,9 @@ export function PrModal({ iid, onClose }: { iid: number; onClose: () => void }) 
                     {r.overall != null && (
                       <span className="tabular-nums text-foreground/80">score {r.overall}</span>
                     )}
-                    <Badge variant={badgeVariant(testTone(r.testStatus))}>tests {r.testStatus}</Badge>
+                    <Badge variant={badgeVariant(testTone(r.testStatus))}>
+                      tests {r.testStatus}
+                    </Badge>
                     {r.stale && (
                       <span className="inline-flex items-center gap-1 text-[var(--gt-yellow)]">
                         <TriangleAlert size={10} strokeWidth={2.5} />
