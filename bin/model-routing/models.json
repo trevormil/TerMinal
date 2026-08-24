@@ -17,6 +17,27 @@
       "agentic": true,
       "note": "cheapest; good raw default"
     },
+    "google/gemini-3.7-flash": {
+      "inPerM": 0.375,
+      "outPerM": 1.875,
+      "ctx": 1048576,
+      "agentic": true,
+      "note": "current fast coding model"
+    },
+    "google/gemini-3.5-flash-lite": {
+      "inPerM": 0.3,
+      "outPerM": 2.5,
+      "ctx": 1048576,
+      "agentic": true,
+      "note": "newer low-cost flash-lite"
+    },
+    "google/gemini-3.5-flash": {
+      "inPerM": 1.5,
+      "outPerM": 9.0,
+      "ctx": 1048576,
+      "agentic": true,
+      "note": "current Gemini 3.5 Flash"
+    },
     "deepseek/deepseek-chat": {
       "inPerM": 0.2,
       "outPerM": 0.8,
@@ -31,6 +52,13 @@
       "agentic": true,
       "note": "cheap output, strong"
     },
+    "deepseek/deepseek-v4-pro": {
+      "inPerM": 0.522,
+      "outPerM": 1.044,
+      "ctx": 1048576,
+      "agentic": true,
+      "note": "long-context agentic model"
+    },
     "qwen/qwen3-coder-next": {
       "inPerM": 0.11,
       "outPerM": 0.8,
@@ -38,12 +66,26 @@
       "agentic": true,
       "note": "coding-tuned, huge ctx"
     },
+    "qwen/qwen3.8-27b": {
+      "inPerM": 0.4,
+      "outPerM": 3.0,
+      "ctx": 1000000,
+      "agentic": true,
+      "note": "newer low-cost Qwen 3.8"
+    },
     "z-ai/glm-4.7-flash": {
       "inPerM": 0.06,
       "outPerM": 0.4,
       "ctx": 202752,
       "agentic": true,
       "note": "very cheap"
+    },
+    "z-ai/glm-5.2": {
+      "inPerM": 0.966,
+      "outPerM": 3.036,
+      "ctx": 1048576,
+      "agentic": true,
+      "note": "long-horizon coding and tool use"
     },
     "minimax/minimax-m2.5": {
       "inPerM": 0.12,
@@ -58,6 +100,20 @@
       "ctx": 262144,
       "agentic": true,
       "note": "strong generalist"
+    },
+    "moonshotai/kimi-k2.6": {
+      "inPerM": 0.95,
+      "outPerM": 4.0,
+      "ctx": 262144,
+      "agentic": true,
+      "note": "newer Kimi agent model"
+    },
+    "moonshotai/kimi-k2.7-code": {
+      "inPerM": 0.67,
+      "outPerM": 3.4,
+      "ctx": 262144,
+      "agentic": true,
+      "note": "coding-focused long-horizon agent"
     },
     "mistralai/codestral-2508": {
       "inPerM": 0.3,

@@ -1,5 +1,65 @@
 import { describe, expect, test } from 'bun:test'
-import { ENGINES, effortArgs, engineEffortsOf, engineSupportsEffort, coerceEffort } from './engines'
+import {
+  ENGINES,
+  effortArgs,
+  engineAllowsCustomModelOf,
+  engineEffortsOf,
+  engineSupportsEffort,
+  coerceEffort,
+} from './engines'
+
+const modelIds = (engine: keyof typeof ENGINES): string[] =>
+  ENGINES[engine].models.map(({ id }) => id)
+
+describe('engine model catalogs', () => {
+  test('snapshots the verified static model menus', () => {
+    expect(modelIds('claude')).toEqual([
+      'haiku',
+      'sonnet',
+      'opus',
+      'claude-opus-5',
+      'fable',
+      'claude-fable-5',
+      'claude-opus-4-8',
+      'claude-opus-4-7',
+      'claude-sonnet-5',
+      'claude-sonnet-4-6',
+    ])
+    expect(modelIds('codex')).toEqual([
+      'gpt-5.6-sol',
+      'gpt-5.6-terra',
+      'gpt-5.6-luna',
+      'gpt-5.5',
+      'gpt-5-codex',
+      'gpt-5',
+    ])
+    expect(modelIds('cursor')).toEqual([
+      'sonnet-4',
+      'gpt-5',
+      'auto',
+      'composer-2.5',
+      'cursor-grok-4.5-high',
+      'claude-fable-5',
+      'claude-opus-5',
+      'claude-sonnet-5',
+      'claude-opus-4-8-thinking-high',
+      'gpt-5.6-sol',
+      'gpt-5.6-terra',
+      'gpt-5.6-luna',
+      'gpt-5.3-codex',
+      'gpt-5.3-codex-low',
+      'gemini-3.7-flash',
+    ])
+  })
+
+  test('keeps custom-model entry behavior unchanged', () => {
+    expect(engineAllowsCustomModelOf('claude')).toBe(false)
+    expect(engineAllowsCustomModelOf('cursor')).toBe(false)
+    for (const engine of ['codex', 'opencode', 'pi', 'hermes', 'openrouter', 'openai-compat']) {
+      expect(engineAllowsCustomModelOf(engine)).toBe(true)
+    }
+  })
+})
 
 // Reasoning-effort support (verified against each installed CLI's --help):
 //   claude   --effort <low|medium|high|xhigh|max>
