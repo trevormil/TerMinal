@@ -21,6 +21,23 @@ test('the wizard opens on the workspace question, not on an action', async ({ ux
   await expect(ux.page.getByText('What do you want to do here?')).toHaveCount(0)
 })
 
+test('the side arrows sit outside the card instead of consuming its width', async ({ ux }) => {
+  await openWorkspaceWizard(ux.page)
+
+  const frameBox = await ux.page.getByTestId('wizard-step-frame').boundingBox()
+  const cardBox = await ux.page.getByTestId('wizard-step-card').boundingBox()
+  const backBox = await ux.page.getByRole('button', { name: 'Back' }).boundingBox()
+  const nextBox = await ux.page.getByRole('button', { name: 'Next' }).boundingBox()
+
+  expect(frameBox).not.toBeNull()
+  expect(cardBox).not.toBeNull()
+  expect(backBox).not.toBeNull()
+  expect(nextBox).not.toBeNull()
+  expect(cardBox!.width).toBeCloseTo(frameBox!.width, 0)
+  expect(backBox!.x + backBox!.width).toBeLessThanOrEqual(cardBox!.x)
+  expect(nextBox!.x).toBeGreaterThanOrEqual(cardBox!.x + cardBox!.width)
+})
+
 test('selecting a target does not advance the step on its own', async ({ ux }) => {
   await openWorkspaceWizard(ux.page)
   await ux.page.getByRole('button', { name: /^Scratch/ }).click()
