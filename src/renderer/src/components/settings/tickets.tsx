@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   Activity,
+  CircleAlert,
   CircleCheck,
   Loader2,
   Plus,
@@ -52,6 +53,11 @@ function normalizeTicketConfig(
   return { provider: 'local', ...views }
 }
 
+type LinearReadiness = {
+  state: 'checking' | 'connected' | 'missing'
+  message: string
+}
+
 function TicketProviderPanel() {
   const [ctx, setCtx] = useState<TabContext | null>(null)
   const [draft, setDraft] = useState<RepoTicketsConfig>({ provider: 'local' })
@@ -59,7 +65,32 @@ function TicketProviderPanel() {
   const [teams, setTeams] = useState<{ id: string; name: string; key?: string }[]>([])
   const [busy, setBusy] = useState<'load' | 'save' | 'test' | 'smoke' | 'teams' | null>('load')
   const [result, setResult] = useState<TicketProviderTestResult | null>(null)
+  const [linearReadiness, setLinearReadiness] = useState<LinearReadiness | null>(null)
   const [error, setError] = useState('')
+
+  const inspectLinearTeams = async (cfg: RepoTicketsConfig) => {
+    setLinearReadiness({ state: 'checking', message: 'Checking Linear MCP…' })
+    try {
+      const list = await window.gt.tickets.linearTeams(cfg)
+      setTeams(list)
+      const team = cfg.linear?.team
+      const teamKey = cfg.linear?.teamKey
+      const teamLabel = team && teamKey ? `${team} (${teamKey})` : team || teamKey
+      setLinearReadiness({
+        state: 'connected',
+        message: teamLabel
+          ? `MCP connected · bound to ${teamLabel}.`
+          : list.length
+            ? 'MCP connected · choose the team this repo should use.'
+            : 'MCP connected, but no Linear teams were returned.',
+      })
+      return list
+    } catch (e) {
+      setTeams([])
+      setLinearReadiness({ state: 'missing', message: 'Linear MCP is not connected.' })
+      throw e
+    }
+  }
 
   const load = async () => {
     setBusy('load')
@@ -74,8 +105,9 @@ function TicketProviderPanel() {
       setDraft(normalized)
       setSaved(normalized)
       if (normalized.provider === 'linear') {
-        const list = await window.gt.tickets.linearTeams(normalized).catch(() => [])
-        setTeams(list)
+        await inspectLinearTeams(normalized).catch(() => {})
+      } else {
+        setLinearReadiness(null)
       }
     } catch (e) {
       setError((e as Error).message || 'Could not load ticket provider.')
@@ -91,6 +123,7 @@ function TicketProviderPanel() {
   const provider = draft.provider || 'local'
   const setProvider = (next: TicketProviderKind) => {
     setResult(null)
+    setLinearReadiness(null)
     if (next === 'linear')
       setDraft({
         provider: next,
@@ -104,8 +137,7 @@ function TicketProviderPanel() {
     setBusy('teams')
     setError('')
     try {
-      const list = await window.gt.tickets.linearTeams(draft)
-      setTeams(list)
+      const list = await inspectLinearTeams(draft)
       setResult({
         ok: list.length > 0,
         provider: 'linear',
@@ -147,7 +179,14 @@ function TicketProviderPanel() {
     setBusy(smoke ? 'smoke' : 'test')
     setError('')
     try {
-      setResult(await window.gt.tickets.providerTest(draft, smoke))
+      const next = await window.gt.tickets.providerTest(draft, smoke)
+      setResult(next)
+      if (provider === 'linear') {
+        setLinearReadiness({
+          state: next.ok ? 'connected' : 'missing',
+          message: next.message,
+        })
+      }
     } catch (e) {
       setError((e as Error).message || 'Ticket provider test failed.')
     } finally {
@@ -222,6 +261,33 @@ function TicketProviderPanel() {
             Keep your existing Linear workflow: issues stay in Linear, and TerMinal works with the
             same team backlog instead of creating a separate local process.
           </div>
+          <div
+            className={`rounded-md border px-2.5 py-2 text-[10.5px] leading-snug ${
+              linearReadiness?.state === 'connected'
+                ? 'border-[var(--gt-green)]/40 bg-[var(--gt-green)]/10 text-[var(--gt-green)]'
+                : linearReadiness?.state === 'checking'
+                  ? 'border-[var(--gt-border)] bg-black/20 text-zinc-400'
+                  : 'border-amber-500/40 bg-amber-500/10 text-amber-300'
+            }`}
+          >
+            <div className="flex items-center gap-1.5 font-semibold">
+              {linearReadiness?.state === 'checking' ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : linearReadiness?.state === 'connected' ? (
+                <CircleCheck size={12} />
+              ) : (
+                <CircleAlert size={12} />
+              )}
+              {linearReadiness?.message || 'Linear MCP readiness has not been checked.'}
+            </div>
+            {(!linearReadiness || linearReadiness.state === 'missing') && (
+              <div className="mt-1 text-zinc-500">
+                Verify Advanced MCP command targets{' '}
+                <span className="font-mono text-zinc-400">https://mcp.linear.app/mcp</span>, then
+                click Teams and complete Linear sign-in if prompted.
+              </div>
+            )}
+          </div>
           <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
             <label className="space-y-1">
               <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
@@ -229,16 +295,20 @@ function TicketProviderPanel() {
               </span>
               <select
                 value={draft.linear?.team || draft.linear?.teamKey || ''}
-                onChange={(e) =>
+                onChange={(e) => {
+                  const selected = teams.find(
+                    (team) => (team.name || team.key || team.id) === e.target.value,
+                  )
                   setDraft({
                     provider: 'linear',
                     linear: {
                       ...defaultLinearConfig(),
                       ...(draft.linear || {}),
-                      team: e.target.value,
+                      team: selected?.name || e.target.value,
+                      teamKey: selected?.key,
                     },
                   })
-                }
+                }}
                 className="h-[33px] w-full rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[12px] text-zinc-200 outline-none"
               >
                 <option value="" className="bg-[var(--gt-panel)]">

@@ -41,12 +41,19 @@ describe('repoTicketProvider', () => {
     expect(repoTicketProvider(repo)).toMatchObject({ kind: 'local', label: 'Local backlog' })
   })
 
-  test('supports one configured external provider per repo', () => {
-    const github = repoWithTicketConfig({ provider: 'github' })
-    const linear = repoWithTicketConfig({ provider: 'linear' })
+  test('preserves all four valid provider kinds', () => {
+    const cases = [
+      ['local', 'Local backlog'],
+      ['github', 'GitHub Issues'],
+      ['linear', 'Linear'],
+      ['webview', 'Webview'],
+    ] as const
 
-    expect(repoTicketProvider(github)).toMatchObject({ kind: 'github', label: 'GitHub Issues' })
-    expect(repoTicketProvider(linear)).toMatchObject({ kind: 'linear', label: 'Linear' })
+    for (const [kind, label] of cases) {
+      const repo = repoWithTicketConfig({ provider: kind })
+      expect(repoTicketProvider(repo)).toMatchObject({ kind, label })
+      expect(readRepoTicketConfig(repo).provider).toBe(kind)
+    }
   })
 
   test('falls back to local for unknown provider values', () => {
@@ -152,6 +159,35 @@ describe('linearIssueToTicket', () => {
       body: 'Smoke body',
       url: 'https://linear.app/acme/issue/TRE-5/terminal-smoke-test',
     })
+  })
+
+  test('uses the Linear identifier for browser and agent references, not its UUID', () => {
+    const ticket = linearIssueToTicket({
+      id: 'f5cb7a03-5ab6-4ced-a5d6-2d797719f177',
+      identifier: 'TER-11',
+      title: 'Use Linear IDs',
+    })
+
+    expect(ticket).toMatchObject({
+      slug: 'linear-TER-11',
+      id: 11,
+      externalId: 'f5cb7a03-5ab6-4ced-a5d6-2d797719f177',
+      externalKey: 'TER-11',
+    })
+  })
+})
+
+describe('ticketProviderInstructions', () => {
+  test('binds Linear agents to the configured team and Linear identifiers', () => {
+    const repo = repoWithTicketConfig({
+      provider: 'linear',
+      linear: { team: 'TerMinal', teamKey: 'TER' },
+    })
+    const instructions = ticketProviderInstructions(repoTicketProvider(repo))
+
+    expect(instructions).toContain('TerMinal (TER)')
+    expect(instructions).toContain('TER-11')
+    expect(instructions).toContain('Do not use TerMinal local ticket tools')
   })
 })
 

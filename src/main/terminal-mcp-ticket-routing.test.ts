@@ -135,6 +135,22 @@ describe('terminal-mcp-server ticket tools — provider routing', () => {
     expect(sidecarBacklogFiles(home)).toEqual([ticket.path])
     expect(toolJson(listed).map((t: { slug: string }) => t.slug)).toEqual(['0001-local-fallback'])
   })
+
+  test('a Linear repo refuses file_ticket instead of creating local markdown', () => {
+    const { home, repo, repoName } = setup()
+    writeTicketsConfig(repo, {
+      provider: 'linear',
+      linear: { team: 'TerMinal', teamKey: 'TER' },
+    })
+
+    const [filed] = callTools(home, [
+      { name: 'file_ticket', arguments: { repo: repoName, title: 'Must be TER-11' } },
+    ])
+
+    expect(JSON.stringify(filed)).toMatch(/Linear.*TerMinal \(TER\).*TER-11/i)
+    expect(sidecarBacklogFiles(home)).toEqual([])
+    expect(repoBacklogFiles(repo)).toEqual([])
+  })
 })
 
 describe('terminal-mcp-server ticket tools — model tier write path', () => {
