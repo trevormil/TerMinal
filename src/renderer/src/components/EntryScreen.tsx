@@ -896,20 +896,20 @@ export function EntryScreen({
           />
         </div>
 
-        {/* Step nav flanks the card as full-height strips so the arrows stay
-            put while the card's content changes size between steps. */}
-        <div className="flex items-stretch gap-2">
+        {/* Step nav sits outside the card's width while staying full-height, so
+            the arrows stay put without narrowing the content between them. */}
+        <div data-testid="wizard-step-frame" className="relative">
           <Button
             variant="ghost"
             onClick={back}
             disabled={stepIndex === 0}
             aria-label="Back"
             title="Back"
-            className="h-auto w-9 shrink-0 self-stretch px-0"
+            className="absolute inset-y-0 right-full mr-2 h-auto w-9 px-0"
           >
             <ArrowLeft className="size-4" />
           </Button>
-          <Card className="min-w-0 flex-1">
+          <Card data-testid="wizard-step-card" className="min-w-0 w-full">
             <CardHeader className="py-3">
               <CardTitle className="text-[13px]">{stepTitle}</CardTitle>
               <p className="text-[11px] text-muted-foreground">{stepHint}</p>
@@ -1592,7 +1592,7 @@ export function EntryScreen({
             disabled={nextBlocked || stepIndex >= steps.length - 1}
             aria-label="Next"
             title="Next"
-            className="h-auto w-9 shrink-0 self-stretch px-0"
+            className="absolute inset-y-0 left-full ml-2 h-auto w-9 px-0"
           >
             <ArrowRight className="size-4" />
           </Button>
