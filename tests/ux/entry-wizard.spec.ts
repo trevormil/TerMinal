@@ -36,6 +36,19 @@ test('a scratch target never offers to resume a session it cannot have', async (
   await expect(ux.page.getByText('Resume a session')).toHaveCount(0)
 })
 
+test('the model step preselects Claude, so clicking through lands on it', async ({ ux }) => {
+  await openWorkspaceWizard(ux.page)
+  await ux.page.getByRole('button', { name: /^Scratch/ }).click()
+  await next(ux.page)
+  await expect(ux.page.getByText('Which model?')).toBeVisible()
+  await expect(ux.page.getByRole('button', { name: /^Claude/, pressed: true })).toBeVisible()
+  await expect(ux.page.getByRole('button', { name: /^Local/, pressed: true })).toHaveCount(0)
+  // Claude leads the engine grid; the bare shell trails it.
+  const engines = ux.page.locator('button[aria-pressed]')
+  await expect(engines.first()).toHaveText(/^Claude/)
+  await expect(engines.last()).toHaveText(/^Local/)
+})
+
 test('an existing repo asks what to do only after the workspace is set', async ({ ux }) => {
   await openWorkspaceWizard(ux.page)
   await ux.page.getByRole('button', { name: /^Existing repo/ }).click()
@@ -47,7 +60,10 @@ test('an existing repo asks what to do only after the workspace is set', async (
 test('a repo that is already known skips the workspace question', async ({ ux }) => {
   // Adding a session inside an open workspace: the repo is settled, so the
   // wizard opens on the action rather than re-asking where.
-  await ux.page.getByRole('button', { name: /New session/ }).first().click()
+  await ux.page
+    .getByRole('button', { name: /New session/ })
+    .first()
+    .click()
   await expect(ux.page.getByText('What do you want to do here?')).toBeVisible()
   await expect(ux.page.getByText('Which workspace?')).toHaveCount(0)
 })
