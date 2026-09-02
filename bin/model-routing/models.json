@@ -24,6 +24,13 @@
       "agentic": true,
       "note": "current fast coding model"
     },
+    "google/gemini-3.6-flash": {
+      "inPerM": 0.75,
+      "outPerM": 3.75,
+      "ctx": 1048576,
+      "agentic": true,
+      "note": "long-context multimodal reasoning"
+    },
     "google/gemini-3.5-flash-lite": {
       "inPerM": 0.3,
       "outPerM": 2.5,
@@ -59,6 +66,20 @@
       "agentic": true,
       "note": "long-context agentic model"
     },
+    "deepseek/deepseek-v4-pro-0813": {
+      "inPerM": 0.66,
+      "outPerM": 1.98,
+      "ctx": 1048576,
+      "agentic": true,
+      "note": "dated long-context agentic model"
+    },
+    "deepseek/deepseek-v4-flash-0731": {
+      "inPerM": 0.065,
+      "outPerM": 0.18,
+      "ctx": 1310720,
+      "agentic": true,
+      "note": "very cheap long-context agentic model"
+    },
     "qwen/qwen3-coder-next": {
       "inPerM": 0.11,
       "outPerM": 0.8,
@@ -72,6 +93,13 @@
       "ctx": 1000000,
       "agentic": true,
       "note": "newer low-cost Qwen 3.8"
+    },
+    "qwen/qwen3.8-flash": {
+      "inPerM": 0.15,
+      "outPerM": 0.47,
+      "ctx": 1000000,
+      "agentic": true,
+      "note": "low-cost multimodal coding and agent work"
     },
     "z-ai/glm-4.7-flash": {
       "inPerM": 0.06,
@@ -87,12 +115,26 @@
       "agentic": true,
       "note": "long-horizon coding and tool use"
     },
+    "z-ai/glm-5.3-flash": {
+      "inPerM": 0.075,
+      "outPerM": 0.25,
+      "ctx": 1310720,
+      "agentic": true,
+      "note": "very cheap multimodal coding and long-horizon agent work"
+    },
     "minimax/minimax-m2.5": {
       "inPerM": 0.12,
       "outPerM": 0.48,
       "ctx": 204800,
       "agentic": true,
       "note": "agentic-tuned"
+    },
+    "minimax/minimax-m3": {
+      "inPerM": 0.3,
+      "outPerM": 1.2,
+      "ctx": 1048576,
+      "agentic": true,
+      "note": "long-context agentic model"
     },
     "moonshotai/kimi-k2.5": {
       "inPerM": 0.38,
@@ -135,6 +177,13 @@
       "ctx": 400000,
       "agentic": true,
       "note": "OpenAI codex-mini"
+    },
+    "x-ai/grok-build-0.1": {
+      "inPerM": 1.0,
+      "outPerM": 2.0,
+      "ctx": 256000,
+      "agentic": true,
+      "note": "coding agent model from xAI"
     }
   }
 }

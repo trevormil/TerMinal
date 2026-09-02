@@ -38,6 +38,7 @@ describe('engine model catalogs', () => {
       'gpt-5',
       'auto',
       'composer-2.5',
+      'cursor-grok-4.6-high',
       'cursor-grok-4.5-high',
       'claude-fable-5',
       'claude-opus-5',
@@ -49,6 +50,12 @@ describe('engine model catalogs', () => {
       'gpt-5.3-codex',
       'gpt-5.3-codex-low',
       'gemini-3.7-flash',
+    ])
+    expect(modelIds('pi')).toEqual([
+      'anthropic/claude-fable-5',
+      'anthropic/claude-opus-5',
+      'anthropic/claude-sonnet-5',
+      'anthropic/claude-haiku-4-5',
     ])
   })
 

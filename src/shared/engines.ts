@@ -143,6 +143,7 @@ export const ENGINES = {
       { id: 'gpt-5', label: 'gpt-5' },
       { id: 'auto', label: 'auto · Router' },
       { id: 'composer-2.5', label: 'Composer 2.5' },
+      { id: 'cursor-grok-4.6-high', label: 'Cursor Grok 4.6 (high)' },
       { id: 'cursor-grok-4.5-high', label: 'Cursor Grok 4.5 (high)' },
       { id: 'claude-fable-5', label: 'Claude Fable 5' },
       { id: 'claude-opus-5', label: 'Claude Opus 5' },
@@ -204,6 +205,7 @@ export const ENGINES = {
     // (`pi --list-models`), so pinning a list here would go stale by design.
     // These are the anchors; anything else goes in the free-text field.
     models: [
+      { id: 'anthropic/claude-fable-5', label: 'claude-fable-5' },
       { id: 'anthropic/claude-opus-5', label: 'claude-opus-5' },
       { id: 'anthropic/claude-sonnet-5', label: 'claude-sonnet-5' },
       { id: 'anthropic/claude-haiku-4-5', label: 'claude-haiku-4-5' },
