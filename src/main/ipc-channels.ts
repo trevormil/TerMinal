@@ -78,6 +78,7 @@ export type ChannelMap = {
   'files:delete': Of<GtApi['files']['del']>
   'files:format': Of<GtApi['files']['format']>
   'files:list': Of<GtApi['files']['list']>
+  'files:listTracked': Of<GtApi['files']['listTracked']>
   'files:read': Of<GtApi['files']['read']>
   'files:readBinary': Of<GtApi['files']['readBinary']>
   'files:rename': Of<GtApi['files']['rename']>

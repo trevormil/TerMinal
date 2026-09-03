@@ -31,6 +31,17 @@ const IGNORE = new Set([
 
 export type Entry = { name: string; path: string; dir: boolean; ignored?: boolean }
 
+export function listTrackedFiles(root: string): Promise<string[]> {
+  return new Promise((res) => {
+    execFile(
+      'git',
+      ['-C', root, 'ls-files', '-z'],
+      { timeout: 8_000, maxBuffer: 16 * 1024 * 1024, encoding: 'utf8' },
+      (err, stdout) => res(err ? [] : stdout.split('\0').filter(Boolean)),
+    )
+  })
+}
+
 function safe(root: string, rel: string): string | null {
   const r = resolve(root)
   const p = resolve(root, rel || '.')

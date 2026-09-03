@@ -579,6 +579,17 @@ function search(root, q, opts) {
     })
     .filter(Boolean)
 }
+function listTracked(root) {
+  const r = runObj('git', ['-C', root, 'ls-files', '-z'], {
+    cwd: root,
+    maxBuffer: 16 * 1024 * 1024,
+  })
+  return r.error
+    ? []
+    : String(r.stdout || '')
+        .split('\0')
+        .filter(Boolean)
+}
 function docs(root) {
   const cats = ['changelog', 'decisions', 'maintainer', 'developer', 'personal', 'reports', 'other']
   const labels = {
@@ -1876,6 +1887,7 @@ try {
     )
     out(r.error ? { ok: false, error: r.error } : { ok: true })
   } else if (op === 'files.list') out(listDir(root, input.rel || ''))
+  else if (op === 'files.listTracked') out(listTracked(root))
   else if (op === 'files.read') out(readFile(root, input.rel || ''))
   else if (op === 'files.write') out(writeFile(root, input.rel || '', input.content || ''))
   else if (op === 'files.search') out(search(root, input.q || '', input.opts))

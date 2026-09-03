@@ -50,6 +50,7 @@ export function CommandPalette({
   const [sel, setSel] = useState(0)
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [mrs, setMrs] = useState<Mr[]>([])
+  const [trackedFiles, setTrackedFiles] = useState<string[]>([])
   const [hits, setHits] = useState<{ file: string; line: number; text: string }[]>([])
   const [checkpoints, setCheckpoints] = useState<{ sha: string; at: number; label: string }[]>([])
   const [symbols, setSymbols] = useState<{ name: string; kind: string; line: number }[]>([])
@@ -69,6 +70,10 @@ export function CommandPalette({
       .list()
       .then(setCheckpoints)
       .catch(() => {})
+    window.gt.files
+      .listTracked()
+      .then(setTrackedFiles)
+      .catch(() => setTrackedFiles([]))
   }, [])
 
   // One input, five modes (VS Code convention): `>` commands, `@` symbols,
@@ -89,7 +94,7 @@ export function CommandPalette({
 
   // Debounced content search — only when the query is substantial.
   useEffect(() => {
-    const term = parsed.mode === 'search' ? parsed.term : parsed.mode === 'files' ? parsed.term : ''
+    const term = parsed.mode === 'search' ? parsed.term : ''
     if (term.length < 2) {
       setHits([])
       return
@@ -248,7 +253,18 @@ export function CommandPalette({
         run: close(() => navigateTo('mrs', { iid: m.iid })),
       })
 
-    // Static items are RANKED by the shared fuzzy scorer, not merely filtered —
+    if (parsed.mode === 'files') {
+      for (const path of trackedFiles)
+        out.push({
+          id: `file:${path}`,
+          group: 'File',
+          label: path.split('/').pop() || path,
+          hint: path,
+          run: close(() => navigateTo('files', { path })),
+        })
+    }
+
+    // Palette items are RANKED by the shared fuzzy scorer, not merely filtered —
     // ordering is what makes a palette usable, and the old boolean subsequence
     // test left the right answer buried among dozens of incidental matches.
     // Search hits are already query-derived, so they pass through verbatim.
@@ -272,6 +288,7 @@ export function CommandPalette({
     mrSym,
     tickets,
     mrs,
+    trackedFiles,
     hits,
     checkpoints,
     q,

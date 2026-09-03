@@ -3,7 +3,28 @@ import { mkdtempSync, mkdirSync, writeFileSync, existsSync, realpathSync, rmSync
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { execFileSync } from 'node:child_process'
-import { writeFile, createEntry, renameEntry, removeEntry } from './files'
+import { writeFile, createEntry, renameEntry, removeEntry, listTrackedFiles } from './files'
+
+describe('listTrackedFiles', () => {
+  test('returns tracked paths and omits untracked files', async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'terminal-tracked-files-')))
+    execFileSync('git', ['init', '--quiet'], { cwd: root })
+    mkdirSync(join(root, 'src'))
+    writeFileSync(join(root, 'src', 'main.ts'), '')
+    writeFileSync(join(root, 'file with spaces.md'), '')
+    writeFileSync(join(root, 'untracked.txt'), '')
+    execFileSync('git', ['add', '--', 'src/main.ts', 'file with spaces.md'], { cwd: root })
+
+    expect(await listTrackedFiles(root)).toEqual(['file with spaces.md', 'src/main.ts'])
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  test('returns an empty list outside a git repository', async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'terminal-tracked-files-')))
+    expect(await listTrackedFiles(root)).toEqual([])
+    rmSync(root, { recursive: true, force: true })
+  })
+})
 
 // The safe(root, rel) guard is the sole thing keeping the Files tab's
 // write/create/rename/delete inside the attached repo root. These exercise it

@@ -584,6 +584,7 @@ const gt: GtApi = {
   },
   files: {
     list: (rel: string) => ipcRenderer.invoke('files:list', rel),
+    listTracked: () => ipcRenderer.invoke('files:listTracked'),
     read: (rel: string) => ipcRenderer.invoke('files:read', rel),
     readBinary: (rel: string) => ipcRenderer.invoke('files:readBinary', rel),
     reveal: (rel: string) => ipcRenderer.invoke('files:reveal', rel),

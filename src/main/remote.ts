@@ -192,6 +192,8 @@ export const remoteMrs = {
 export const remoteFiles = {
   list: (remote: RemoteSessionRef, rel: string) =>
     remoteJson<Entry[]>(remote, { op: 'files.list', rel }),
+  listTracked: (remote: RemoteSessionRef) =>
+    remoteJson<string[]>(remote, { op: 'files.listTracked' }),
   read: (remote: RemoteSessionRef, rel: string) =>
     remoteJson<ReadResult>(remote, { op: 'files.read', rel }),
   write: (remote: RemoteSessionRef, rel: string, content: string) =>

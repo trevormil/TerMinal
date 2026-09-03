@@ -14,6 +14,9 @@ export function registerFilesIpc(deps: { activeDaemon(): WorkspaceDaemon }): voi
   handle('files:list', (_e, rel: string) => {
     return deps.activeDaemon().filesList(rel || '')
   })
+  handle('files:listTracked', () => {
+    return deps.activeDaemon().filesListTracked()
+  })
   handle('files:read', (_e, rel: string) => {
     return deps.activeDaemon().filesRead(rel)
   })
