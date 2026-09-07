@@ -61,6 +61,7 @@ export type ChannelMap = {
   'data:harness-tdd': Of<GtApi['harnessTdd']>
   'data:meta': Of<GtApi['meta']>
   'data:session-tasks': Of<GtApi['sessionTasks']>
+  'data:timeline': Of<GtApi['sessionTimeline']>
   'data:transcript': Of<GtApi['transcript']>
   'data:usage': Of<GtApi['usage']>
   'dialog:pickDir': Of<GtApi['pickDir']>

@@ -522,14 +522,6 @@ function StructuralFileDiff({
   )
 }
 
-type DiffViewMode = 'unified' | 'split' | 'structural'
-const DIFF_VIEW_MODE_KEY = 'gt.diffViewMode'
-
-function savedDiffViewMode(): DiffViewMode {
-  const saved = localStorage.getItem(DIFF_VIEW_MODE_KEY)
-  return saved === 'split' || saved === 'structural' ? saved : 'unified'
-}
-
 export function DiffView({
   diff,
   scope,
@@ -561,7 +553,7 @@ export function DiffView({
     edge: 'right',
   })
   const [selected, setSelected] = useState<string>('')
-  const [mode, setMode] = useState<DiffViewMode>(savedDiffViewMode)
+  const [mode, setMode] = usePref('diffViewMode')
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
   const [viewed, setViewed, setAll] = useViewed(scope)
   // Probe difft once so the Structural toggle can disable itself (with an
@@ -580,9 +572,6 @@ export function DiffView({
   useEffect(() => {
     setExpanded(new Set(collectDirPaths(tree)))
   }, [tree])
-  useEffect(() => {
-    localStorage.setItem(DIFF_VIEW_MODE_KEY, mode)
-  }, [mode])
 
   if (!diff) return <div className="p-6 text-[12px] text-zinc-600">Loading diff…</div>
   if (files.length === 0)

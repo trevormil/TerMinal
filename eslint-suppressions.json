@@ -156,7 +156,7 @@
   },
   "src/renderer/src/tabs/files/index.tsx": {
     "@typescript-eslint/no-floating-promises": {
-      "count": 12
+      "count": 11
     }
   },
   "src/renderer/src/tabs/help/index.tsx": {

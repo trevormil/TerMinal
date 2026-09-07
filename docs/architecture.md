@@ -130,6 +130,25 @@ Both are "just a folder" discovered with Vite `import.meta.glob`:
 
 ## Data sources (main)
 
+`session-timeline.ts` streams the attached local Claude/Codex transcript through
+`data:timeline`. The optional Session Timeline widget is off by default and can
+be enabled in the cockpit's Plugins drawer. Its turn selector and slider show
+prompt/assistant context without writing to the PTY or changing engine resume.
+Reads retain the latest 500 turns, clip prompt/response previews to 6,000
+characters, and reject transcripts above 32 MB. A single snapshot cache avoids
+rescanning unchanged files on the ten-second poll; remote sessions report that
+local transcript data is unavailable.
+
+Context and Plan Usage expose separate optional soft-cap controls in the widget.
+The renderer preference registry persists warning percentages across sessions;
+unset or cleared caps are disabled. Warnings never gate session execution.
+
+Files format-on-save remains off by default in Settings → Apps. Explicit ⌘S
+uses repo-local Prettier first, falling back to the shipped Prettier dependency
+and repo config (or Prettier defaults without config). Ignore rules and path
+confinement still apply. Debounced autosave remains raw to avoid formatting
+while typing.
+
 - `data.ts` — parses the session transcript
   `~/.claude/projects/<cwd-hash>/<session-id>.jsonl` (context, tokens, model,
   branch, last action, ai-title, permission mode, tool counts) and

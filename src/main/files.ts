@@ -273,12 +273,7 @@ const execP = (
     }
   })
 
-/**
- * Format `content` through the PROJECT'S OWN prettier (never a global one):
- * no node_modules/.bin/prettier means the project didn't opt into formatting,
- * so we refuse rather than impose defaults. Also refuses files prettier
- * doesn't own — ignored by .prettierignore, or no parser for the extension.
- */
+// Prefer the repo's formatter; the bundled fallback lets opt-in work without an install.
 export async function formatFile(
   root: string,
   rel: string,
@@ -287,7 +282,21 @@ export async function formatFile(
   const abs = safe(root, rel)
   if (!abs) return { ok: false, reason: 'bad path' }
   const bin = join(root, 'node_modules', '.bin', 'prettier')
-  if (!existsSync(bin)) return { ok: false, reason: 'this project has no prettier install' }
+  if (!existsSync(bin)) {
+    try {
+      const prettier = await import('prettier')
+      const config = await prettier.resolveConfig(abs, { editorconfig: true, useCache: false })
+      const info = await prettier.getFileInfo(abs, {
+        ignorePath: [join(root, '.gitignore'), join(root, '.prettierignore')],
+        resolveConfig: false,
+      })
+      if (info.ignored || !info.inferredParser)
+        return { ok: false, reason: 'prettier does not own this file' }
+      return { ok: true, content: await prettier.format(content, { ...config, filepath: abs }) }
+    } catch (error) {
+      return { ok: false, reason: error instanceof Error ? error.message : 'prettier failed' }
+    }
+  }
   const info = await execP(bin, ['--file-info', rel], { cwd: root })
   try {
     const parsed = JSON.parse(info.stdout) as { ignored?: boolean; inferredParser?: string | null }

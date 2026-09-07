@@ -31,6 +31,22 @@ const noDrag = { WebkitAppRegion: 'no-drag' } as CSSProperties
 
 const base = (cwd: string) => cwd.split('/').filter(Boolean).pop() || cwd
 
+export function trackedFilenameItems(
+  mode: ReturnType<typeof parseQuickOpen>['mode'],
+  paths: string[],
+  open: (path: string) => void,
+): Item[] {
+  return mode === 'files'
+    ? paths.map((path) => ({
+        id: `file:${path}`,
+        group: 'File',
+        label: path.split('/').pop() || path,
+        hint: path,
+        run: () => open(path),
+      }))
+    : []
+}
+
 export function CommandPalette({
   tabs,
   sessions,
@@ -253,16 +269,12 @@ export function CommandPalette({
         run: close(() => navigateTo('mrs', { iid: m.iid })),
       })
 
-    if (parsed.mode === 'files') {
-      for (const path of trackedFiles)
-        out.push({
-          id: `file:${path}`,
-          group: 'File',
-          label: path.split('/').pop() || path,
-          hint: path,
-          run: close(() => navigateTo('files', { path })),
-        })
-    }
+    out.push(
+      ...trackedFilenameItems(parsed.mode, trackedFiles, (path) => {
+        navigateTo('files', { path })
+        onClose()
+      }),
+    )
 
     // Palette items are RANKED by the shared fuzzy scorer, not merely filtered —
     // ordering is what makes a palette usable, and the old boolean subsequence

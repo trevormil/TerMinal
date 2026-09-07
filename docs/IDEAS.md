@@ -29,7 +29,8 @@ ideas. Vibe-coded; this is the "what's next / what we punted" list.
 - **In-editor file actions**: new file / new folder / rename / delete from the tree.
 - **Diagnostics**: surface tsc/eslint inline (LSP is a big lift; start with a
   "run check" command widget).
-- **Format on save** (prettier) for known extensions.
+- **Format on save — DONE (TER-16).** Settings → Apps enables Prettier on ⌘S
+  (default off). Uses repo Prettier/config or the bundled fallback; autosave stays raw.
 - **Go-to-definition / symbol search** (CM has basic; full LSP later).
 - **Replace across project** (search has find; add project-wide replace).
 - **Git gutter** (changed-line markers in the editor via `git diff`).
@@ -39,16 +40,17 @@ ideas. Vibe-coded; this is the "what's next / what we punted" list.
 - **Inline ticket status edit** (change status/priority from the detail pane,
   write back to the file) + **create MR from a ticket**.
 - **Comment on MR threads** from the Findings view (glab supports notes).
-- **Diff: side-by-side mode** toggle (currently unified) + syntax highlighting in
-  the diff (currently plain red/green).
+- **Diff layouts — DONE (TER-14/15).** Unified, split and structural choices
+  persist under `gt.diffViewMode`, with invalid/unavailable storage falling back safely.
 - **"Mark all viewed" / viewed progress bar** in the diff file tree.
 
 ## Cockpit / plugins
 
 - **More widgets**: git ahead/behind, failing-test count, CI status (glab
   pipelines), open-MR count for the repo, disk/AICost-per-day.
-- **Per-widget settings** (e.g. usage soft-cap, burn-rate window) via a small
-  config UI instead of localStorage edits.
+- **Usage/context soft-cap — DONE (TER-17).** Each widget exposes an optional
+  warning percentage and Clear; disabled by default, never blocks work.
+- **Other per-widget settings** (e.g. burn-rate window) remain an idea.
 - **Widget reordering** (drag to reorder the cockpit).
 
 ## Notes
@@ -64,10 +66,12 @@ ideas. Vibe-coded; this is the "what's next / what we punted" list.
   current session's tabs, other open sessions, tickets, MRs/PRs, and content
   search hits. Each row dispatches the existing `navigateTo()`/`activate()`.
   Receiving tabs honor a nav payload to pre-select (tickets→slug, mrs→iid,
-  files→path/line). *Possible next:* filename fuzzy-find (needs a `git ls-files`
-  IPC — today files are content-search only).
-- **Session timeline**: a scrubber of the attached session's turns (from the
-  transcript) with jump-to-context.
+  files→path/line). **Tracked-filename fuzzy-find is done (TER-13):** default
+  mode uses `git ls-files`; `#` keeps content search separate.
+- **Session timeline — MVP DONE (TER-18).** Optional Session Timeline cockpit
+  widget (default off) reads local Claude/Codex transcripts. Pick or scrub a
+  turn to show its prompt/response context; Follow latest returns to live turns.
+  Latest 500 turns, 6,000-character previews, 32 MB transcript limit; no resume changes.
 - **Multi-session split view** (two cockpits side by side).
 - **Publish the tab/plugin standard**: docs + a `create-gt-plugin` scaffold so
   others can contribute widgets/tabs.

@@ -283,7 +283,7 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
   const [pv, setPv] = useState('')
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [editorName, setEditorName] = useState('Cursor')
-  const [formatOnSave, setFormatOnSave] = useState(false)
+  const formatOnSave = useRef(false)
   // Live EditorViews by path, so a formatter result can be dispatched as one
   // minimal change (cursor + scroll survive) instead of a full re-render.
   const views = useRef<Record<string, EditorView>>({})
@@ -402,10 +402,22 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
     }
   }, [ctx.repoRoot])
   useEffect(() => {
-    window.gt.settings.get().then((s) => {
+    let live = true
+    const apply = (s: Awaited<ReturnType<typeof window.gt.settings.get>>) => {
+      if (!live) return
       setEditorName(s.apps?.editor || 'Cursor')
-      setFormatOnSave(!!s.apps?.formatOnSave)
-    })
+      formatOnSave.current = !!s.apps?.formatOnSave
+    }
+    const changed = (e: Event) => apply((e as CustomEvent).detail)
+    window.gt.settings
+      .get()
+      .then(apply)
+      .catch(() => {})
+    window.addEventListener('gt.settings.changed', changed)
+    return () => {
+      live = false
+      window.removeEventListener('gt.settings.changed', changed)
+    }
   }, [])
 
   // Leaving a file closes its diff, compare, and review, so none stick across
@@ -521,7 +533,7 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
         if (ev.payload?.sidebar === 'changes') setSidebar('changes')
         const path = ev.payload?.path as string | undefined
         if (path) openFileRef.current(path, ev.payload?.line as number | undefined)
-      }),
+      }, 'files'),
     [],
   )
 
@@ -541,9 +553,9 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
     clearTimeout(saveTimers.current[activeFile.path])
     // Format on save (opt-in, ⌘S only — the debounced auto-save stays raw so
     // the formatter never fights mid-typing). Skipped silently when the
-    // project has no prettier or prettier doesn't own the file.
+    // formatter doesn't own the file.
     let formatted: string | null = null
-    if (formatOnSave) {
+    if (formatOnSave.current) {
       const r = await window.gt.files.format(activeFile.path, captured)
       if (r.ok && r.content !== undefined && r.content !== captured) {
         formatted = r.content

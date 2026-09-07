@@ -1,3 +1,4 @@
+import type { SessionTimeline } from '../../../shared/types/session-timeline'
 import type { ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -699,6 +700,7 @@ export type GtApi = {
     onData: (cb: (key: string, data: string) => void) => () => void
     onExit: (cb: (key: string, code: number) => void) => () => void
   }
+  sessionTimeline: () => Promise<SessionTimeline>
   transcript: () => Promise<TranscriptStats>
   firstPrompt: (sessionId: string) => Promise<string>
   harnessTdd: () => Promise<TddInfo>

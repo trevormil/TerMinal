@@ -329,6 +329,7 @@ const gt: GtApi = {
 
   // data sources for plugins (all keyed to the attached session)
   transcript: () => ipcRenderer.invoke('data:transcript'),
+  sessionTimeline: () => ipcRenderer.invoke('data:timeline'),
   firstPrompt: (sessionId: string) => ipcRenderer.invoke('data:first-prompt', sessionId),
   harnessTdd: () => ipcRenderer.invoke('data:harness-tdd'),
   usage: () => ipcRenderer.invoke('data:usage'),
