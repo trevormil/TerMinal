@@ -91,7 +91,8 @@ export const ENGINES = {
       { id: 'sonnet', label: 'sonnet (Sonnet 5)' },
       { id: 'opus', label: 'opus (Opus 5)' },
       { id: 'claude-opus-5', label: 'claude-opus-5 (pinned)' },
-      { id: 'fable', label: 'fable (Fable 5)' },
+      { id: 'fable', label: 'fable (Fable 5.1)' },
+      { id: 'claude-fable-5.1', label: 'claude-fable-5.1' },
       { id: 'claude-fable-5', label: 'claude-fable-5' },
       { id: 'claude-opus-4-8', label: 'claude-opus-4-8' },
       { id: 'claude-opus-4-7', label: 'claude-opus-4-7' },
@@ -115,6 +116,7 @@ export const ENGINES = {
     // GPT-5.6 family (Sol = frontier reasoning/coding, Terra = balanced,
     // Luna = cost-sensitive); `gpt-5.6` is Sol's alias.
     models: [
+      { id: 'gpt-6-astra', label: 'GPT-6 Astra' },
       { id: 'gpt-5.6-sol', label: 'gpt-5.6 Sol' },
       { id: 'gpt-5.6-terra', label: 'gpt-5.6 Terra' },
       { id: 'gpt-5.6-luna', label: 'gpt-5.6 Luna' },
@@ -145,15 +147,18 @@ export const ENGINES = {
       { id: 'composer-2.5', label: 'Composer 2.5' },
       { id: 'cursor-grok-4.6-high', label: 'Cursor Grok 4.6 (high)' },
       { id: 'cursor-grok-4.5-high', label: 'Cursor Grok 4.5 (high)' },
+      { id: 'claude-fable-5.1', label: 'Claude Fable 5.1' },
       { id: 'claude-fable-5', label: 'Claude Fable 5' },
       { id: 'claude-opus-5', label: 'Claude Opus 5' },
       { id: 'claude-sonnet-5', label: 'Claude Sonnet 5' },
       { id: 'claude-opus-4-8-thinking-high', label: 'Claude Opus 4.8 (thinking high)' },
+      { id: 'gpt-6-astra', label: 'GPT-6 Astra' },
       { id: 'gpt-5.6-sol', label: 'GPT-5.6 Sol' },
       { id: 'gpt-5.6-terra', label: 'GPT-5.6 Terra' },
       { id: 'gpt-5.6-luna', label: 'GPT-5.6 Luna' },
       { id: 'gpt-5.3-codex', label: 'GPT-5.3 Codex' },
       { id: 'gpt-5.3-codex-low', label: 'GPT-5.3 Codex (low)' },
+      { id: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash' },
       { id: 'gemini-3.7-flash', label: 'Gemini 3.7 Flash' },
     ],
     allowsCustomModel: false,
@@ -205,6 +210,7 @@ export const ENGINES = {
     // (`pi --list-models`), so pinning a list here would go stale by design.
     // These are the anchors; anything else goes in the free-text field.
     models: [
+      { id: 'anthropic/claude-fable-5.1', label: 'claude-fable-5.1' },
       { id: 'anthropic/claude-fable-5', label: 'claude-fable-5' },
       { id: 'anthropic/claude-opus-5', label: 'claude-opus-5' },
       { id: 'anthropic/claude-sonnet-5', label: 'claude-sonnet-5' },

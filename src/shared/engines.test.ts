@@ -12,13 +12,14 @@ const modelIds = (engine: keyof typeof ENGINES): string[] =>
   ENGINES[engine].models.map(({ id }) => id)
 
 describe('engine model catalogs', () => {
-  test('snapshots the verified static model menus', () => {
+  test('snapshots the static model menus', () => {
     expect(modelIds('claude')).toEqual([
       'haiku',
       'sonnet',
       'opus',
       'claude-opus-5',
       'fable',
+      'claude-fable-5.1',
       'claude-fable-5',
       'claude-opus-4-8',
       'claude-opus-4-7',
@@ -26,6 +27,7 @@ describe('engine model catalogs', () => {
       'claude-sonnet-4-6',
     ])
     expect(modelIds('codex')).toEqual([
+      'gpt-6-astra',
       'gpt-5.6-sol',
       'gpt-5.6-terra',
       'gpt-5.6-luna',
@@ -40,23 +42,32 @@ describe('engine model catalogs', () => {
       'composer-2.5',
       'cursor-grok-4.6-high',
       'cursor-grok-4.5-high',
+      'claude-fable-5.1',
       'claude-fable-5',
       'claude-opus-5',
       'claude-sonnet-5',
       'claude-opus-4-8-thinking-high',
+      'gpt-6-astra',
       'gpt-5.6-sol',
       'gpt-5.6-terra',
       'gpt-5.6-luna',
       'gpt-5.3-codex',
       'gpt-5.3-codex-low',
+      'gemini-3.8-flash',
       'gemini-3.7-flash',
     ])
     expect(modelIds('pi')).toEqual([
+      'anthropic/claude-fable-5.1',
       'anthropic/claude-fable-5',
       'anthropic/claude-opus-5',
       'anthropic/claude-sonnet-5',
       'anthropic/claude-haiku-4-5',
     ])
+  })
+
+  test('fable alias tracks Fable 5.1 while the previous version stays selectable', () => {
+    expect(ENGINES.claude.models.find(({ id }) => id === 'fable')?.label).toBe('fable (Fable 5.1)')
+    expect(modelIds('claude')).toContain('claude-fable-5')
   })
 
   test('keeps custom-model entry behavior unchanged', () => {
