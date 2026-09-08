@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { viewedProgress } from '../../../shared/viewed-progress'
 import {
   FileText,
   ScanSearch,
@@ -676,6 +677,24 @@ export function DiffView({
             </button>
           )}
         </div>
+        {showViewed && (
+          <div className="px-3 pb-2 pt-1">
+            <div
+              role="progressbar"
+              aria-label="Files viewed"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={viewedProgress(viewedCount, paths.length)}
+              aria-valuetext={`${viewedCount} of ${paths.length} files viewed`}
+              className="h-1 overflow-hidden rounded-full bg-[var(--gt-border)]"
+            >
+              <div
+                className="h-full bg-[var(--gt-accent)]"
+                style={{ width: `${viewedProgress(viewedCount, paths.length)}%` }}
+              />
+            </div>
+          </div>
+        )}
         {renderTree(tree.children)}
       </div>
       <ResizeHandle onMouseDown={fileList.onResizeStart} />
