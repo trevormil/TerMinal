@@ -18,22 +18,24 @@ ideas. Vibe-coded; this is the "what's next / what we punted" list.
   `context_window.context_window_size` also overrides the model-table guess in
   the Context widget (fixes 200k-vs-1M). See `src/main/statusline.ts`. The shim
   delegates to the user's own statusline so their in-terminal display is kept.
-- **Bundle size (~7.2 MB).** `@uiw/codemirror-extensions-langs` eagerly bundles
-  every language grammar. Switch to lazy per-extension language loading
-  (`loadLanguage` / dynamic import) or curated individual `@codemirror/lang-*`
-  packages to shrink the renderer bundle + speed startup.
+- **CodeMirror lazy language loading — DONE.** `src/renderer/src/lib/lazyLang.ts`
+  defers the language bundle until an editor tab needs it.
 
 ## Files tab — toward "never open Cursor again"
 
-- **Multi-file editor tabs** (open several files, Cmd+W to close, tab bar).
+- **Multi-file editor tabs — DONE.** Open several files; Cmd+W closes the active tab.
 - **In-editor file actions**: new file / new folder / rename / delete from the tree.
 - **Diagnostics**: surface tsc/eslint inline (LSP is a big lift; start with a
   "run check" command widget).
 - **Format on save — DONE (TER-16).** Settings → Apps enables Prettier on ⌘S
   (default off). Uses repo Prettier/config or the bundled fallback; autosave stays raw.
 - **Go-to-definition / symbol search** (CM has basic; full LSP later).
-- **Replace across project** (search has find; add project-wide replace).
-- **Git gutter** (changed-line markers in the editor via `git diff`).
+- **Replace across project — DONE.** Files search supports replacement previews,
+  exclusions, and project-wide apply.
+- **Git gutter — DONE (TER-20).** Files breadcrumb toggle, default on, persisted
+  locally. Local saved text files up to 500 KB show additions/replacements/deletions
+  vs HEAD; 350 ms debounce and five-second focused-window refresh, active editor only.
+  Hidden while unsaved or when disk content differs from the buffer; no remote calls.
 
 ## MR / tickets
 
@@ -42,16 +44,20 @@ ideas. Vibe-coded; this is the "what's next / what we punted" list.
 - **Comment on MR threads** from the Findings view (glab supports notes).
 - **Diff layouts — DONE (TER-14/15).** Unified, split and structural choices
   persist under `gt.diffViewMode`, with invalid/unavailable storage falling back safely.
-- **"Mark all viewed" / viewed progress bar** in the diff file tree.
+- **Mark all viewed + viewed count — DONE.** Per-file checkboxes and Mark all / Clear
+  remain available. **Visual progress bar — DONE (TER-22)** in the file-tree header.
 
 ## Cockpit / plugins
 
-- **More widgets**: git ahead/behind, failing-test count, CI status (glab
-  pipelines), open-MR count for the repo, disk/AICost-per-day.
+- **Git ahead/behind widget — DONE.** Includes upstream and dirty-file status.
+- **Open PR/MR count widget — MVP DONE (TER-21).** Optional cockpit plugin,
+  default off; existing forge API, one-minute refresh, click opens the MRs tab.
+  Counts the latest 100 items; a full page explicitly shows an "at least" count.
+- **More widgets**: failing-test count, CI status (glab pipelines), disk/AICost-per-day.
 - **Usage/context soft-cap — DONE (TER-17).** Each widget exposes an optional
   warning percentage and Clear; disabled by default, never blocks work.
 - **Other per-widget settings** (e.g. burn-rate window) remain an idea.
-- **Widget reordering** (drag to reorder the cockpit).
+- **Widget reordering — DONE.** Cockpit ordering is user-configurable.
 
 ## Notes
 
