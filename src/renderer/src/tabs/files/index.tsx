@@ -41,6 +41,7 @@ import { contentToWrite, minimalChange } from '../../../../shared/text-change'
 import type { Extension } from '@codemirror/state'
 import type { EditorView } from '@codemirror/view'
 import { CodeEditor } from '../../components/CodeEditor'
+import { gitGutter } from '../../lib/gitGutter'
 import { ReviewEditsView } from '../../components/ReviewEditsView'
 import { fileIcon } from '../../lib/fileIcons'
 import { WorkingDiffView } from '../../components/WorkingDiffView'
@@ -297,6 +298,74 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
   const ckptRef = useRef<string | null>(null)
 
   const activeFile = open.find((f) => f.path === activePath) || null
+  const [showGitGutter, setShowGitGutter] = useState(() => {
+    try {
+      return localStorage.getItem('gt.filesGitGutter') !== '0'
+    } catch {
+      return true
+    }
+  })
+  const [gutterPatch, setGutterPatch] = useState<{
+    path: string
+    content: string
+    patch: string
+  } | null>(null)
+  const gutterActive =
+    showGitGutter &&
+    !!ctx.repoRoot &&
+    !ctx.remote &&
+    !!activeFile &&
+    !activeFile.dirty &&
+    !activeFile.err &&
+    activeFile.content.length <= 500_000 &&
+    !needsBinaryRead(viewerKindFor(activeFile.path)) &&
+    !fileDiff &&
+    !compare &&
+    !review &&
+    (sidebar === 'files' || sidebar === 'search') &&
+    (!hasViewer(activeFile.path) || viewerSource)
+  useEffect(() => {
+    setGutterPatch(null)
+    if (!gutterActive || !activePath) return
+    let alive = true
+    let inFlight = false
+    const path = activePath
+    const content = activeFile?.content || ''
+    const load = async () => {
+      if (inFlight || !filesTabPollsActive()) return
+      inFlight = true
+      try {
+        const result = await window.gt.gitWorkingFilePatch(path)
+        const disk = await window.gt.files.read(path)
+        if (alive)
+          setGutterPatch(
+            result.ok && disk.ok && disk.content === content && result.patch.length <= 1_000_000
+              ? { path, content, patch: result.patch }
+              : null,
+          )
+      } catch {
+        if (alive) setGutterPatch(null)
+      } finally {
+        inFlight = false
+      }
+    }
+    const debounce = setTimeout(load, 350)
+    const interval = setInterval(load, FILES_GIT_STATUS_POLL_MS)
+    return () => {
+      alive = false
+      clearTimeout(debounce)
+      clearInterval(interval)
+    }
+  }, [gutterActive, activePath, activeFile?.content, ctx.repoRoot, version])
+  const gitExt = useMemo<Extension[]>(
+    () =>
+      gutterActive &&
+      gutterPatch?.path === activePath &&
+      gutterPatch?.content === activeFile?.content
+        ? [gitGutter(gutterPatch.patch)]
+        : [],
+    [gutterActive, gutterPatch, activePath, activeFile?.content],
+  )
   const bump = () => setVersion((v) => v + 1)
 
   // Opening a file always lands in the EDITOR when the content is text — a
@@ -875,6 +944,23 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
             </button>
           )}
           <span className="tabular-nums">{describeIndent(detectIndent(activeFile.content))}</span>
+          <button
+            type="button"
+            aria-pressed={showGitGutter}
+            title="Git gutter: saved changes vs HEAD. On by default; local text files up to 500 KB."
+            className="shrink-0 rounded px-1.5 py-0.5 hover:bg-white/5 hover:text-zinc-300"
+            onClick={() => {
+              const next = !showGitGutter
+              setShowGitGutter(next)
+              try {
+                localStorage.setItem('gt.filesGitGutter', next ? '1' : '0')
+              } catch {
+                /* storage disabled */
+              }
+            }}
+          >
+            Git gutter {showGitGutter ? 'on' : 'off'}
+          </button>
         </div>
       )}
 
@@ -983,7 +1069,7 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
                     patch(activeFile.path, { content: v, dirty: true })
                     scheduleSave(activeFile.path, v)
                   }}
-                  extensions={[...langForPath(activeFile.path), ...attrExt]}
+                  extensions={[...langForPath(activeFile.path), ...attrExt, ...gitExt]}
                   scrollToLine={activeFile.scrollLine}
                   onView={(v) => (views.current[activeFile.path] = v)}
                 />
