@@ -24,7 +24,8 @@ ideas. Vibe-coded; this is the "what's next / what we punted" list.
 ## Files tab — toward "never open Cursor again"
 
 - **Multi-file editor tabs — DONE.** Open several files; Cmd+W closes the active tab.
-- **In-editor file actions**: new file / new folder / rename / delete from the tree.
+- **In-editor file actions — DONE (TER-24).** New file / folder, rename and confirmed
+  recursive delete from the tree; open descendants follow folder operations.
 - **Diagnostics**: surface tsc/eslint inline (LSP is a big lift; start with a
   "run check" command widget).
 - **Format on save — DONE (TER-16).** Settings → Apps enables Prettier on ⌘S
@@ -39,8 +40,9 @@ ideas. Vibe-coded; this is the "what's next / what we punted" list.
 
 ## MR / tickets
 
-- **Inline ticket status edit** (change status/priority from the detail pane,
-  write back to the file) + **create MR from a ticket**.
+- **Inline ticket status edit — MVP DONE (TER-26).** Provider-backed status changes
+  for local markdown and Linear, with saving/error feedback; local priority remains editable.
+- **Create MR from a ticket**.
 - **Comment on MR threads** from the Findings view (glab supports notes).
 - **Diff layouts — DONE (TER-14/15).** Unified, split and structural choices
   persist under `gt.diffViewMode`, with invalid/unavailable storage falling back safely.
@@ -53,7 +55,9 @@ ideas. Vibe-coded; this is the "what's next / what we punted" list.
 - **Open PR/MR count widget — MVP DONE (TER-21).** Optional cockpit plugin,
   default off; existing forge API, one-minute refresh, click opens the MRs tab.
   Counts the latest 100 items; a full page explicitly shows an "at least" count.
-- **More widgets**: failing-test count, CI status (glab pipelines), disk/AICost-per-day.
+- **CI status widget — MVP DONE (TER-25).** Optional, default off; latest GitHub Actions
+  or GitLab pipeline run via existing CI API, one-minute refresh, deep-link to the run.
+- **More widgets**: failing-test count, disk/AICost-per-day.
 - **Usage/context soft-cap — DONE (TER-17).** Each widget exposes an optional
   warning percentage and Clear; disabled by default, never blocks work.
 - **Other per-widget settings** (e.g. burn-rate window) remain an idea.
