@@ -41,4 +41,3 @@ test('tree creates, renames and deletes a folder containing an open edited file'
   expect(existsSync(join(ux.sandbox.repo, 'eng-tree'))).toBe(false)
   expect(existsSync(join(ux.sandbox.repo, 'eng-renamed'))).toBe(false)
 })
-
