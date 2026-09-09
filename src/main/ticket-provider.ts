@@ -777,6 +777,7 @@ async function callMcpTool(
       .map((c: any) => (typeof c?.text === 'string' ? c.text : ''))
       .join('\n')
       .trim()
+    if (result?.isError) throw new Error(text || 'Linear MCP tool failed')
     if (text) {
       try {
         return JSON.parse(text)

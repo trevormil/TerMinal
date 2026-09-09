@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
-import { mkdirSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, writeFileSync, mkdtempSync, rmSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -646,4 +646,76 @@ describe('webview provider', () => {
       'no queryable ticket store',
     )
   })
+})
+
+describe('provider status write-back', () => {
+  test('local default updates the existing markdown ticket', async () => {
+    const repo = repoWithTicketConfig()
+    try {
+      const ticket = await createRepoTicket(repo, {
+        title: 'Status edit',
+        type: 'feature',
+        priority: 'low',
+        status: 'open',
+        body: 'Keep this body',
+      })
+      expect(await updateRepoTicket(repo, ticket.slug, { status: 'in-progress' })).toBe(true)
+      expect(await getRepoTicket(repo, ticket.slug)).toMatchObject({
+        status: 'in-progress',
+        body: 'Keep this body',
+      })
+    } finally {
+      rmSync(repo, { recursive: true, force: true })
+    }
+  })
+  for (const fail of [false, true])
+    test(`Linear native update with tool error=${fail}`, async () => {
+      const repo = repoWithTicketConfig()
+      const script = join(repo, 'mcp.cjs')
+      const log = join(repo, 'request.json')
+      writeFileSync(
+        script,
+        `
+      const fs = require('node:fs');
+      require('node:readline').createInterface({ input: process.stdin }).on('line', line => {
+        const msg = JSON.parse(line);
+        if (!msg.id) return;
+        let result = {};
+        if (msg.method === 'tools/call') {
+          fs.writeFileSync(${JSON.stringify(log)}, JSON.stringify(msg.params));
+          result = { isError: ${fail}, content: [{ type: 'text', text: ${JSON.stringify(fail ? 'Unknown workflow state' : '{"success":true}')} }] };
+        }
+        process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result }) + '\\n');
+      });
+    `,
+      )
+      writeFileSync(
+        join(repo, '.TerMinal', 'tickets.json'),
+        JSON.stringify({
+          provider: 'linear',
+          linear: {
+            mcp: { command: process.execPath, args: [script] },
+            tools: { update: 'save_issue' },
+          },
+        }),
+      )
+      try {
+        if (fail)
+          await expect(
+            updateRepoTicket(repo, 'linear-ENG-26', { status: 'closed' }),
+          ).rejects.toThrow('Unknown workflow state')
+        else expect(await updateRepoTicket(repo, 'linear-ENG-26', { status: 'closed' })).toBe(true)
+        expect(JSON.parse(readFileSync(log, 'utf8'))).toEqual({
+          name: 'save_issue',
+          arguments: { id: 'ENG-26', state: 'Done' },
+        })
+        writeFileSync(
+          join(repo, '.TerMinal', 'tickets.json'),
+          JSON.stringify({ provider: 'local' }),
+        )
+        expect(await listRepoTickets(repo)).toEqual([])
+      } finally {
+        rmSync(repo, { recursive: true, force: true })
+      }
+    })
 })
