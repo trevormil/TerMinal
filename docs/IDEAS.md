@@ -8,6 +8,9 @@
 Running notes for TerMinal — deferred prompts, known gaps, and creative
 ideas. Vibe-coded; this is the "what's next / what we punted" list.
 
+TER-27 hygiene sweep: shipped markers verified through TER-26; TER-28–30 MVPs
+are recorded below.
+
 ## Deferred / partially-done prompts
 
 - **`/usage` rate-limit — DONE.** Sessions we launch now get a `statusLine` shim
@@ -26,8 +29,10 @@ ideas. Vibe-coded; this is the "what's next / what we punted" list.
 - **Multi-file editor tabs — DONE.** Open several files; Cmd+W closes the active tab.
 - **In-editor file actions — DONE (TER-24).** New file / folder, rename and confirmed
   recursive delete from the tree; open descendants follow folder operations.
-- **Diagnostics**: surface tsc/eslint inline (LSP is a big lift; start with a
-  "run check" command widget).
+- **Diagnostics — MVP DONE (TER-28).** Files → Run check offers local package
+  check/typecheck/lint scripts or installed tsc/eslint. Review the command and run
+  manually against saved files; bounded output and explicit pass/fail panel.
+  Inline diagnostics / LSP remain deferred.
 - **Format on save — DONE (TER-16).** Settings → Apps enables Prettier on ⌘S
   (default off). Uses repo Prettier/config or the bundled fallback; autosave stays raw.
 - **Go-to-definition / symbol search** (CM has basic; full LSP later).
@@ -57,7 +62,10 @@ ideas. Vibe-coded; this is the "what's next / what we punted" list.
   Counts the latest 100 items; a full page explicitly shows an "at least" count.
 - **CI status widget — MVP DONE (TER-25).** Optional, default off; latest GitHub Actions
   or GitLab pipeline run via existing CI API, one-minute refresh, deep-link to the run.
-- **More widgets**: failing-test count, disk/AICost-per-day.
+- **AI cost per day — MVP DONE (TER-30).** Optional cockpit widget, default off;
+  today and seven calendar days of estimates from the local AI ledger, across
+  repos. Explicit empty/remote states and a latest-2,000-record coverage notice.
+- **More widgets**: failing-test count, disk usage.
 - **Usage/context soft-cap — DONE (TER-17).** Each widget exposes an optional
   warning percentage and Clear; disabled by default, never blocks work.
 - **Other per-widget settings** (e.g. burn-rate window) remain an idea.
@@ -65,8 +73,10 @@ ideas. Vibe-coded; this is the "what's next / what we punted" list.
 
 ## Notes
 
-- **Per-folder notes within a repo** (notes attached to the open file/dir, not
-  just the repo root).
+- **Per-folder/file notes — MVP DONE (TER-29).** Notes → Path notes, plus Files
+  File notes / Folder notes actions. Exact repo-relative paths use separate local
+  sidecar knowledge storage; explicit Save, additive to Repo and Global notes.
+  Notes remain at their original path after file renames.
 - **Slash-commands / templates** in notes (e.g. insert a checklist).
 - **Backlink** notes ↔ tickets (mention #id → link to the ticket tab).
 

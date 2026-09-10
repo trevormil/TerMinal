@@ -709,6 +709,17 @@ describe('provider status write-back', () => {
           name: 'save_issue',
           arguments: { id: 'ENG-26', state: 'Done' },
         })
+        if (!fail) {
+          for (const [status, state] of [
+            ['open', 'Todo'],
+            ['in-progress', 'In Progress'],
+            ['stuck', 'Blocked'],
+            ['icebox', 'Backlog'],
+          ]) {
+            expect(await updateRepoTicket(repo, 'linear-ENG-26', { status })).toBe(true)
+            expect(JSON.parse(readFileSync(log, 'utf8')).arguments).toEqual({ id: 'ENG-26', state })
+          }
+        }
         writeFileSync(
           join(repo, '.TerMinal', 'tickets.json'),
           JSON.stringify({ provider: 'local' }),

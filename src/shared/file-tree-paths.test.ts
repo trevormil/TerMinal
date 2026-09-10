@@ -13,3 +13,9 @@ test('entry names cannot traverse or rename into another directory', () => {
     expect(validEntryName(name)).toBe(false)
   expect(validEntryName('hello world.ts')).toBe(true)
 })
+
+test('rename preserves punctuation and file extensions and does not remap similar file names', () => {
+  expect(remapTreePath('src/file.ts', 'src/file.ts', 'src/new name.ts')).toBe('src/new name.ts')
+  expect(remapTreePath('src/file.tsx', 'src/file.ts', 'src/new.ts')).toBe('src/file.tsx')
+  for (const name of ['a\nb', 'a\rb', 'a\tb']) expect(validEntryName(name)).toBe(false)
+})
