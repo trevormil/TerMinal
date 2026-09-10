@@ -1,7 +1,36 @@
 import { describe, expect, test } from 'bun:test'
-import { migrateKnowledge, parseKnowledgePreviewHtml } from './knowledge'
+import {
+  migrateKnowledge,
+  parseKnowledgePreviewHtml,
+  readKnowledge,
+  writeKnowledge,
+} from './knowledge'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 describe('knowledge base schema', () => {
+  test('path notes round-trip separately from repo notes and neighboring paths', () => {
+    const repo = mkdtempSync(join(tmpdir(), 'terminal-path-notes-'))
+    try {
+      const base = migrateKnowledge({ items: [{ id: 'root', title: 'Repo note' }] })
+      const note = migrateKnowledge({
+        items: [{ id: 'path-note', title: 'Path note', content: 'Keep this' }],
+      })
+      expect(writeKnowledge('repo', repo, base)).toBe(true)
+      expect(writeKnowledge({ path: './src//lib/', repoRoot: repo }, repo, note)).toBe(true)
+      expect(readKnowledge({ path: 'src/lib', repoRoot: repo }, repo).items[0].content).toBe(
+        'Keep this',
+      )
+      expect(readKnowledge({ path: 'src/lib-other', repoRoot: repo }, repo).items).toEqual([])
+      expect(readKnowledge('repo', repo).items[0].title).toBe('Repo note')
+      expect(writeKnowledge({ path: '../escape', repoRoot: repo }, repo, note)).toBe(false)
+      expect(writeKnowledge({ path: 'src', repoRoot: '/another-repo' }, repo, note)).toBe(false)
+      expect(writeKnowledge({ path: 'src', repoRoot: '' }, '', note)).toBe(false)
+    } finally {
+      rmSync(repo, { recursive: true, force: true })
+    }
+  })
   test('empty input gets a default category', () => {
     const kb = migrateKnowledge(null)
     expect(kb.version).toBe(1)

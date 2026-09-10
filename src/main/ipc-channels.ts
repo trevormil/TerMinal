@@ -75,6 +75,7 @@ export type ChannelMap = {
   'env:install-gt-notify': Of<GtApi['installGtNotify']>
   'favicons:cache': Of<GtApi['favicons']['cache']>
   'favicons:read': Of<GtApi['favicons']['read']>
+  'files:checks': Of<GtApi['files']['checks']>
   'files:create': Of<GtApi['files']['create']>
   'files:delete': Of<GtApi['files']['del']>
   'files:format': Of<GtApi['files']['format']>
@@ -85,6 +86,7 @@ export type ChannelMap = {
   'files:rename': Of<GtApi['files']['rename']>
   'files:replace': Of<GtApi['files']['replace']>
   'files:reveal': Of<GtApi['files']['reveal']>
+  'files:runCheck': Of<GtApi['files']['runCheck']>
   'files:search': Of<GtApi['files']['search']>
   'files:write': Of<GtApi['files']['write']>
   'fleet:list': Of<GtApi['fleet']>

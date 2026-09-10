@@ -1,3 +1,4 @@
+import { RunCheck } from './RunCheck'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   FolderTree,
@@ -210,6 +211,7 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
   const [open, setOpen] = useState<OpenFile[]>([])
   const [activePath, setActivePath] = useState<string | null>(null)
   const [selectedDir, setSelectedDir] = useState('')
+  const [showCheck, setShowCheck] = useState(false)
   const [sidebar, setSidebar] = useState<'files' | 'search' | 'changes' | 'history' | 'branches'>(
     'files',
   )
@@ -1311,6 +1313,36 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
                 </button>
               </div>
 
+              <div className="flex shrink-0 gap-2 border-b border-[var(--gt-border)] px-2 py-1 text-xs">
+                <button
+                  aria-expanded={showCheck}
+                  onClick={() => setShowCheck((v) => !v)}
+                  className="rounded px-1.5 py-1 hover:bg-white/10"
+                >
+                  Run check
+                </button>
+                {!ctx.remote && ctx.repoRoot && (
+                  <>
+                    {activePath && (
+                      <button
+                        onClick={() => navigateTo('notes', { path: activePath })}
+                        className="rounded px-1.5 py-1 hover:bg-white/10"
+                      >
+                        File notes
+                      </button>
+                    )}
+                    {selectedDir && (
+                      <button
+                        onClick={() => navigateTo('notes', { path: selectedDir })}
+                        className="rounded px-1.5 py-1 hover:bg-white/10"
+                      >
+                        Folder notes
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+              {showCheck && <RunCheck key={ctx.repoRoot || ctx.cwd} />}
               {fileOpError && (
                 <div role="alert" className="px-2 py-1 text-xs text-destructive">
                   {fileOpError}

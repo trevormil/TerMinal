@@ -1,4 +1,4 @@
-export type KnowledgeScope = 'repo' | 'global'
+export type KnowledgeScope = 'repo' | 'global' | { path: string; repoRoot: string }
 
 export type KnowledgeItemKind = 'markdown' | 'link' | 'image' | 'video' | 'file' | 'rag'
 

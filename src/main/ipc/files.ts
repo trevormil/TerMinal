@@ -4,12 +4,19 @@
 // session state, injected via deps.
 
 import { shell } from 'electron'
+import { discoverChecks, runLocalCheck } from '../local-checks'
 import { handle } from '../typed-ipc'
 import { resolveWithin } from '../path-guard'
 import { type WorkspaceDaemon } from '../workspace-daemon'
 import { type WorkspaceSearchKind } from '../workspace-search'
 
 export function registerFilesIpc(deps: { activeDaemon(): WorkspaceDaemon }): void {
+  const localRoot = () => {
+    const daemon = deps.activeDaemon()
+    return daemon.remote ? '' : daemon.repoRoot()
+  }
+  handle('files:checks', () => discoverChecks(localRoot()))
+  handle('files:runCheck', (_e, plan, id) => runLocalCheck(localRoot(), plan, id))
   // ---- files (Cursor-like editor; scoped to repo root / cwd) ----
   handle('files:list', (_e, rel: string) => {
     return deps.activeDaemon().filesList(rel || '')
