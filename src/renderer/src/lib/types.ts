@@ -704,6 +704,7 @@ export type GtApi = {
   sessionTimeline: () => Promise<SessionTimeline>
   transcript: () => Promise<TranscriptStats>
   firstPrompt: (sessionId: string) => Promise<string>
+  repoDiskUsage: () => Promise<{ bytes?: number; error?: string }>
   harnessTdd: () => Promise<TddInfo>
   usage: () => Promise<Usage>
   gitStatus: () => Promise<GitStatus>

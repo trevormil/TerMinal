@@ -60,6 +60,7 @@ export type ChannelMap = {
   'data:git-status': Of<GtApi['gitStatus']>
   'data:harness-tdd': Of<GtApi['harnessTdd']>
   'data:meta': Of<GtApi['meta']>
+  'data:repo-disk': Of<GtApi['repoDiskUsage']>
   'data:session-tasks': Of<GtApi['sessionTasks']>
   'data:timeline': Of<GtApi['sessionTimeline']>
   'data:transcript': Of<GtApi['transcript']>

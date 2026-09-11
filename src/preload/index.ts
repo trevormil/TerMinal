@@ -331,6 +331,7 @@ const gt: GtApi = {
   transcript: () => ipcRenderer.invoke('data:transcript'),
   sessionTimeline: () => ipcRenderer.invoke('data:timeline'),
   firstPrompt: (sessionId: string) => ipcRenderer.invoke('data:first-prompt', sessionId),
+  repoDiskUsage: () => ipcRenderer.invoke('data:repo-disk'),
   harnessTdd: () => ipcRenderer.invoke('data:harness-tdd'),
   usage: () => ipcRenderer.invoke('data:usage'),
   gitStatus: () => ipcRenderer.invoke('data:git-status'),

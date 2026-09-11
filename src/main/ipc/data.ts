@@ -5,6 +5,8 @@ import { findSessionFile } from '../data'
 // Every read is keyed to the attached session, so the focused session and the
 // active workspace daemon are the whole dependency surface.
 
+import { readRepoDisk } from '../repo-disk'
+import { repoRootOf } from '../repo'
 import { handle } from '../typed-ipc'
 import { readTranscriptStats, readHarnessTdd, readSessionTasks } from '../data'
 import { readUsage } from '../usage'
@@ -34,6 +36,12 @@ export function registerDataIpc(deps: DataIpcDeps): void {
   })
   handle('data:transcript', () => readTranscriptStats(deps.cur().sessionId))
   handle('data:harness-tdd', () => readHarnessTdd(deps.cur().cwd))
+  handle('data:repo-disk', () => {
+    const session = deps.cur()
+    return session.remote
+      ? { error: 'Disk usage is unavailable for remote sessions.' }
+      : readRepoDisk(repoRootOf(session.cwd))
+  })
   handle('data:usage', () => readUsage(deps.cur().sessionId))
   handle('data:git-status', () => {
     return deps.activeDaemon().gitStatus()
