@@ -60,9 +60,7 @@ export function RunEvaluationPanel({
   return (
     <div className="rounded-lg border border-[var(--gt-border)] bg-black/20 p-3">
       <div className="mb-2 flex items-center gap-2">
-        <Badge variant={badgeVariantFor(statusTone(evaluation.status))}>
-          {evaluation.status}
-        </Badge>
+        <Badge variant={badgeVariantFor(statusTone(evaluation.status))}>{evaluation.status}</Badge>
         <span className="text-[11.5px] text-zinc-300">{evaluation.summary}</span>
         <span className="ml-auto text-[10.5px] text-zinc-600">
           evaluated {fmtWhen(evaluation.evaluatedAt)}

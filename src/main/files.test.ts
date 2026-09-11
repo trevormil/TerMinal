@@ -3,7 +3,28 @@ import { mkdtempSync, mkdirSync, writeFileSync, existsSync, realpathSync, rmSync
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { execFileSync } from 'node:child_process'
-import { writeFile, createEntry, renameEntry, removeEntry } from './files'
+import { writeFile, createEntry, renameEntry, removeEntry, listTrackedFiles } from './files'
+
+describe('listTrackedFiles', () => {
+  test('returns tracked paths and omits untracked files', async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'terminal-tracked-files-')))
+    execFileSync('git', ['init', '--quiet'], { cwd: root })
+    mkdirSync(join(root, 'src'))
+    writeFileSync(join(root, 'src', 'main.ts'), '')
+    writeFileSync(join(root, 'file with spaces.md'), '')
+    writeFileSync(join(root, 'untracked.txt'), '')
+    execFileSync('git', ['add', '--', 'src/main.ts', 'file with spaces.md'], { cwd: root })
+
+    expect(await listTrackedFiles(root)).toEqual(['file with spaces.md', 'src/main.ts'])
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  test('returns an empty list outside a git repository', async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'terminal-tracked-files-')))
+    expect(await listTrackedFiles(root)).toEqual([])
+    rmSync(root, { recursive: true, force: true })
+  })
+})
 
 // The safe(root, rel) guard is the sole thing keeping the Files tab's
 // write/create/rename/delete inside the attached repo root. These exercise it
@@ -156,12 +177,31 @@ describe('formatFile', () => {
     expect(r.ok).toBe(false)
   })
 
-  test('skips entirely when the project has no prettier install', async () => {
+  test('uses bundled Prettier defaults when the project has no install', async () => {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'terminal-fmt-')))
     const { formatFile } = await import('./files')
     const r = await formatFile(root, 'x.ts', 'const a=1')
-    expect(r.ok).toBe(false)
+    expect(r).toEqual({ ok: true, content: 'const a = 1;\n' })
     rmSync(root, { recursive: true, force: true })
+  })
+
+  test('bundled fallback honors config, ignore rules and path confinement', async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'terminal-fmt-')))
+    try {
+      const { formatFile } = await import('./files')
+      writeFileSync(join(root, '.prettierrc'), JSON.stringify({ semi: false, singleQuote: true }))
+      writeFileSync(join(root, '.prettierignore'), 'ignored.ts\n')
+      expect(await formatFile(root, 'x.ts', 'const a="hi";')).toEqual({
+        ok: true,
+        content: "const a = 'hi'\n",
+      })
+      expect((await formatFile(root, 'ignored.ts', 'const a=1')).ok).toBe(false)
+      expect((await formatFile(root, 'x.unknown-extension', 'text')).ok).toBe(false)
+      expect((await formatFile(root, '../escape.ts', 'const a=1')).ok).toBe(false)
+      expect((await formatFile(root, 'broken.ts', 'const const const')).ok).toBe(false)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 
   test('reports a syntax error instead of mangling the file', async () => {

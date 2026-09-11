@@ -13,14 +13,6 @@ import {
   PanelLeftOpen,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-} from '@/components/ui/dialog'
 import { EnginePicker } from './EnginePicker'
 import { EngineLogo } from './EngineLogo'
 import { EngineModelPicker } from './EngineModelPicker'
@@ -83,7 +75,7 @@ const TONE_TEXT: Record<BadgeTone, string> = {
 // variants, not tones; this is the one map so chips keep their meaning.
 const toneVariant = (tone: BadgeTone) =>
   (
-    {
+    ({
       ok: 'success',
       green: 'success',
       warn: 'warning',
@@ -93,7 +85,7 @@ const toneVariant = (tone: BadgeTone) =>
       blue: 'info',
       accent: 'default',
       mute: 'secondary',
-    } as const
+    }) as const
   )[tone]
 
 const runSourceTone = (source: TicketRunLink['source']): BadgeTone =>
@@ -769,7 +761,9 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                                 </Badge>
                               )}
                               {t.modelTier !== 'auto' && (
-                                <Badge variant={toneVariant(modelTierTone(t.modelTier))}>{t.modelTier}</Badge>
+                                <Badge variant={toneVariant(modelTierTone(t.modelTier))}>
+                                  {t.modelTier}
+                                </Badge>
                               )}
                               <Badge variant={toneVariant(priorityTone(t.priority))}>
                                 {labelFrom(PRIORITY_LABELS, t.priority)}
@@ -866,7 +860,9 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                         : 'Last recorded ticket implementation run'
                     }
                   >
-                    <Badge variant={toneVariant(runSourceTone(selected.run.source))}>{selected.run.source}</Badge>
+                    <Badge variant={toneVariant(runSourceTone(selected.run.source))}>
+                      {selected.run.source}
+                    </Badge>
                     <span className="font-mono text-zinc-500">{selected.run.id.slice(0, 8)}</span>
                     {selected.run.status && (
                       <span className="uppercase">{selected.run.status}</span>

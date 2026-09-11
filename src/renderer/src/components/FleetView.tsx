@@ -39,7 +39,13 @@ export function FleetView({
           <Plus size={13} strokeWidth={2.5} />
           New session
         </Button>
-        <Button variant="ghost" size="icon" aria-label="Close Fleet" title="Close Fleet" onClick={onClose}>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Close Fleet"
+          title="Close Fleet"
+          onClick={onClose}
+        >
           <X size={15} strokeWidth={2} />
         </Button>
       </div>

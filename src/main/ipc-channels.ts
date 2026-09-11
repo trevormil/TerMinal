@@ -60,7 +60,9 @@ export type ChannelMap = {
   'data:git-status': Of<GtApi['gitStatus']>
   'data:harness-tdd': Of<GtApi['harnessTdd']>
   'data:meta': Of<GtApi['meta']>
+  'data:repo-disk': Of<GtApi['repoDiskUsage']>
   'data:session-tasks': Of<GtApi['sessionTasks']>
+  'data:timeline': Of<GtApi['sessionTimeline']>
   'data:transcript': Of<GtApi['transcript']>
   'data:usage': Of<GtApi['usage']>
   'dialog:pickDir': Of<GtApi['pickDir']>
@@ -74,15 +76,18 @@ export type ChannelMap = {
   'env:install-gt-notify': Of<GtApi['installGtNotify']>
   'favicons:cache': Of<GtApi['favicons']['cache']>
   'favicons:read': Of<GtApi['favicons']['read']>
+  'files:checks': Of<GtApi['files']['checks']>
   'files:create': Of<GtApi['files']['create']>
   'files:delete': Of<GtApi['files']['del']>
   'files:format': Of<GtApi['files']['format']>
   'files:list': Of<GtApi['files']['list']>
+  'files:listTracked': Of<GtApi['files']['listTracked']>
   'files:read': Of<GtApi['files']['read']>
   'files:readBinary': Of<GtApi['files']['readBinary']>
   'files:rename': Of<GtApi['files']['rename']>
   'files:replace': Of<GtApi['files']['replace']>
   'files:reveal': Of<GtApi['files']['reveal']>
+  'files:runCheck': Of<GtApi['files']['runCheck']>
   'files:search': Of<GtApi['files']['search']>
   'files:write': Of<GtApi['files']['write']>
   'fleet:list': Of<GtApi['fleet']>

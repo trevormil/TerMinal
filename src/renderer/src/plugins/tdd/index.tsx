@@ -13,7 +13,11 @@ const openPr = (iid: number) => {
 }
 
 const verdictTone = (v: string): 'success' | 'destructive' | 'secondary' =>
-  v === 'approve' ? 'success' : v === 'request-changes' || v === 'blocked' ? 'destructive' : 'secondary'
+  v === 'approve'
+    ? 'success'
+    : v === 'request-changes' || v === 'blocked'
+      ? 'destructive'
+      : 'secondary'
 const testTone = (s: string): 'success' | 'destructive' | 'secondary' =>
   s === 'pass' ? 'success' : s === 'fail' ? 'destructive' : 'secondary'
 

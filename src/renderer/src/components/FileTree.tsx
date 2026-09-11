@@ -6,6 +6,8 @@ import {
   ExternalLink,
   GitCompare,
   Pencil,
+  FilePlus,
+  FolderPlus,
   Trash2,
 } from 'lucide-react'
 import { statusBadge, statusColor, type StatusMap } from '../../../shared/git-status'
@@ -23,6 +25,8 @@ export type FileTreeActions = {
   onSelectDir?: (p: string) => void
   onRename?: (p: string) => void
   onDelete?: (p: string) => void
+  onNewFile?: (p: string) => void
+  onNewFolder?: (p: string) => void
   /** Drop `from` into directory `toDir` ('' = root). Enables tree-internal DnD. */
   onMove?: (from: string, toDir: string) => void
   /** Diff this file against the active open file. */
@@ -143,7 +147,30 @@ export function TreeNode({
             {statusBadge(statuses[entry.path])}
           </span>
         )}
-        <span className="hidden shrink-0 items-center gap-0.5 group-hover:flex">
+        <span className="hidden shrink-0 items-center gap-0.5 group-hover:flex group-focus-within:flex">
+          {entry.dir &&
+            (
+              [
+                ['New file', act.onNewFile, FilePlus],
+                ['New folder', act.onNewFolder, FolderPlus],
+              ] as const
+            ).map(
+              ([label, action, Icon]) =>
+                action && (
+                  <button
+                    key={label}
+                    title={label}
+                    aria-label={label}
+                    className={rowButton}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      action(entry.path)
+                    }}
+                  >
+                    <Icon size={11} strokeWidth={2} />
+                  </button>
+                ),
+            )}
           {!entry.dir && act.onCompare && (
             <button
               onClick={(e) => {

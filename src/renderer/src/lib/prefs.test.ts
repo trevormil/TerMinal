@@ -30,6 +30,33 @@ afterEach(() => {
 })
 
 describe('prefs registry', () => {
+  test('diff modes preserve the legacy key and reject invalid stored modes', () => {
+    expect(getPref('diffViewMode')).toBe('unified')
+    for (const mode of ['unified', 'split', 'structural'] as const) {
+      setPref('diffViewMode', mode)
+      expect(store.map.get('gt.diffViewMode')).toBe(mode)
+      expect(getPref('diffViewMode')).toBe(mode)
+    }
+    store.map.set('gt.diffViewMode', 'broken')
+    expect(getPref('diffViewMode')).toBe('unified')
+    g.localStorage = undefined
+    expect(getPref('diffViewMode')).toBe('unified')
+  })
+
+  test('soft caps persist separately and can be cleared', () => {
+    expect(getPref('contextSoftCap')).toBe(0)
+    expect(getPref('usageSoftCap')).toBe(0)
+    setPref('contextSoftCap', 75)
+    setPref('usageSoftCap', 90)
+    expect(getPref('contextSoftCap')).toBe(75)
+    expect(getPref('usageSoftCap')).toBe(90)
+    setPref('contextSoftCap', 0)
+    expect(getPref('contextSoftCap')).toBe(0)
+    expect(getPref('usageSoftCap')).toBe(90)
+    store.map.set('gt.usage.softCap', '101')
+    expect(getPref('usageSoftCap')).toBe(0)
+  })
+
   test('every registered pref uses a distinct storage key', () => {
     const keys = Object.values(PREFS).map((d) => d.key)
     expect(new Set(keys).size).toBe(keys.length)

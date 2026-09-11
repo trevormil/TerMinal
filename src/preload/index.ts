@@ -329,7 +329,9 @@ const gt: GtApi = {
 
   // data sources for plugins (all keyed to the attached session)
   transcript: () => ipcRenderer.invoke('data:transcript'),
+  sessionTimeline: () => ipcRenderer.invoke('data:timeline'),
   firstPrompt: (sessionId: string) => ipcRenderer.invoke('data:first-prompt', sessionId),
+  repoDiskUsage: () => ipcRenderer.invoke('data:repo-disk'),
   harnessTdd: () => ipcRenderer.invoke('data:harness-tdd'),
   usage: () => ipcRenderer.invoke('data:usage'),
   gitStatus: () => ipcRenderer.invoke('data:git-status'),
@@ -562,9 +564,8 @@ const gt: GtApi = {
       ipcRenderer.invoke('notes:write', scope, content),
   },
   knowledge: {
-    read: (scope: 'repo' | 'global') => ipcRenderer.invoke('knowledge:read', scope),
-    write: (scope: 'repo' | 'global', kb: unknown) =>
-      ipcRenderer.invoke('knowledge:write', scope, kb),
+    read: (scope) => ipcRenderer.invoke('knowledge:read', scope),
+    write: (scope, kb) => ipcRenderer.invoke('knowledge:write', scope, kb),
     preview: (url: string) => ipcRenderer.invoke('knowledge:preview', url),
     ragStatus: (scope: 'repo' | 'global', item: unknown) =>
       ipcRenderer.invoke('knowledge:rag-status', scope, item),
@@ -583,7 +584,10 @@ const gt: GtApi = {
     read: (name: string) => ipcRenderer.invoke('favicons:read', name),
   },
   files: {
+    checks: () => ipcRenderer.invoke('files:checks'),
+    runCheck: (plan, id) => ipcRenderer.invoke('files:runCheck', plan, id),
     list: (rel: string) => ipcRenderer.invoke('files:list', rel),
+    listTracked: () => ipcRenderer.invoke('files:listTracked'),
     read: (rel: string) => ipcRenderer.invoke('files:read', rel),
     readBinary: (rel: string) => ipcRenderer.invoke('files:readBinary', rel),
     reveal: (rel: string) => ipcRenderer.invoke('files:reveal', rel),

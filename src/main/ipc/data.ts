@@ -1,7 +1,12 @@
+import { readSessionTimeline } from '../session-timeline'
+import { findCodexSessionFile } from '../transcripts/codex'
+import { findSessionFile } from '../data'
 // Session-data IPC (ticket 0122 index.ts decomposition) — the plugin pollers.
 // Every read is keyed to the attached session, so the focused session and the
 // active workspace daemon are the whole dependency surface.
 
+import { readRepoDisk } from '../repo-disk'
+import { repoRootOf } from '../repo'
 import { handle } from '../typed-ipc'
 import { readTranscriptStats, readHarnessTdd, readSessionTasks } from '../data'
 import { readUsage } from '../usage'
@@ -16,8 +21,27 @@ export type DataIpcDeps = {
 
 export function registerDataIpc(deps: DataIpcDeps): void {
   // ---- data IPC (plugin pollers; all keyed to the attached session) ----
+  handle('data:timeline', () => {
+    const session = deps.cur()
+    return readSessionTimeline(
+      session.sessionId,
+      session.remote
+        ? null
+        : session.engine === 'codex'
+          ? findCodexSessionFile(session.sessionId)
+          : session.engine === 'claude'
+            ? findSessionFile(session.sessionId)
+            : null,
+    )
+  })
   handle('data:transcript', () => readTranscriptStats(deps.cur().sessionId))
   handle('data:harness-tdd', () => readHarnessTdd(deps.cur().cwd))
+  handle('data:repo-disk', () => {
+    const session = deps.cur()
+    return session.remote
+      ? { error: 'Disk usage is unavailable for remote sessions.' }
+      : readRepoDisk(repoRootOf(session.cwd))
+  })
   handle('data:usage', () => readUsage(deps.cur().sessionId))
   handle('data:git-status', () => {
     return deps.activeDaemon().gitStatus()

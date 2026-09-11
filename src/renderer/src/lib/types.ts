@@ -1,3 +1,5 @@
+import type { LocalCheckPlan, LocalCheckResult } from '../../../shared/types/local-checks'
+import type { SessionTimeline } from '../../../shared/types/session-timeline'
 import type { ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -699,8 +701,10 @@ export type GtApi = {
     onData: (cb: (key: string, data: string) => void) => () => void
     onExit: (cb: (key: string, code: number) => void) => () => void
   }
+  sessionTimeline: () => Promise<SessionTimeline>
   transcript: () => Promise<TranscriptStats>
   firstPrompt: (sessionId: string) => Promise<string>
+  repoDiskUsage: () => Promise<{ bytes?: number; error?: string }>
   harnessTdd: () => Promise<TddInfo>
   usage: () => Promise<Usage>
   gitStatus: () => Promise<GitStatus>
@@ -981,26 +985,26 @@ export type GtApi = {
     read: (scope: KnowledgeScope) => Promise<KnowledgeBase>
     write: (scope: KnowledgeScope, kb: KnowledgeBase) => Promise<boolean>
     preview: (url: string) => Promise<KnowledgePreview>
-    ragStatus: (scope: KnowledgeScope, item: KnowledgeItem) => Promise<KnowledgeRagStatus>
+    ragStatus: (scope: 'repo' | 'global', item: KnowledgeItem) => Promise<KnowledgeRagStatus>
     ragReindex: (
-      scope: KnowledgeScope,
+      scope: 'repo' | 'global',
       item: KnowledgeItem,
       fullRebuild?: boolean,
     ) => Promise<KnowledgeRagStatus>
     ragAddDocument: (
-      scope: KnowledgeScope,
+      scope: 'repo' | 'global',
       item: KnowledgeItem,
       content: string,
       filepath?: string,
     ) => Promise<KnowledgeRagStatus>
     ragAddUrl: (
-      scope: KnowledgeScope,
+      scope: 'repo' | 'global',
       item: KnowledgeItem,
       url: string,
       title?: string,
     ) => Promise<KnowledgeRagStatus>
     ragSearch: (
-      scope: KnowledgeScope,
+      scope: 'repo' | 'global',
       item: KnowledgeItem,
       query: string,
     ) => Promise<KnowledgeRagSearchResult>
@@ -1013,7 +1017,11 @@ export type GtApi = {
     read: (name: string) => Promise<string>
   }
   files: {
+    checks: () => Promise<LocalCheckPlan>
+    runCheck: (plan: LocalCheckPlan, id: string) => Promise<LocalCheckResult>
     list: (rel: string) => Promise<FileEntry[]>
+    /** Paths known to git, for filename quick-open (distinct from content search). */
+    listTracked: () => Promise<string[]>
     read: (rel: string) => Promise<{ ok: boolean; content: string; reason?: string }>
     /** Raw bytes as base64 — images, PDFs, and the hex dump (read() refuses
      *  anything containing a NUL byte). */
