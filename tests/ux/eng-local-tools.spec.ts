@@ -76,3 +76,29 @@ test('Files links an open file to its notes and gives an actionable no-checker s
     'note-target.txt',
   )
 })
+
+test('note templates append and persist in Global, Repo, and Path notes', async ({ ux }) => {
+  await ux.openTab('notes')
+  const pane = ux.page.locator('[data-tab-pane="notes"]')
+  await pane.getByRole('button', { name: 'Scratch', exact: true }).click()
+  for (const scope of ['Global', 'Repo']) {
+    await pane.getByRole('button', { name: scope, exact: true }).click()
+    await pane.getByLabel('Append note template').selectOption('checklist')
+    await expect(pane.locator('.cm-content')).toContainText('First task')
+    await expect(pane.getByText('saved', { exact: true })).toBeVisible()
+  }
+  await pane.getByRole('button', { name: 'Path notes', exact: true }).click()
+  await pane.getByLabel('Note path', { exact: true }).fill('src/template.ts')
+  await pane.getByRole('button', { name: 'Open path' }).click()
+  await pane.getByLabel('Path note content').fill('Existing note')
+  await pane.getByLabel('Append note template').selectOption('meeting')
+  await expect(pane.getByLabel('Path note content')).toHaveValue(/Existing note\n\n## Meeting/)
+  await pane.getByRole('button', { name: 'Save note', exact: true }).click()
+  await expect(pane.getByRole('status')).toContainText('Saved locally')
+  await pane.getByLabel('Note path', { exact: true }).fill('src/other.ts')
+  await pane.getByRole('button', { name: 'Open path' }).click()
+  await expect(pane.getByLabel('Path note content')).toHaveValue('')
+  await pane.getByLabel('Note path', { exact: true }).fill('src/template.ts')
+  await pane.getByRole('button', { name: 'Open path' }).click()
+  await expect(pane.getByLabel('Path note content')).toHaveValue(/Existing note\n\n## Meeting/)
+})

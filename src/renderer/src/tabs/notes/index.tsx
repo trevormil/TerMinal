@@ -1,3 +1,4 @@
+import { TemplateInsert } from './TemplateInsert'
 import { PathNotes } from './PathNotes'
 import { onNavigate } from '../../lib/nav'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -934,6 +935,16 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
             Path notes
           </button>
         </div>
+        {view !== 'path' &&
+          previewMode !== 'preview' &&
+          (view === 'scratch' || activeItem?.kind === 'markdown') && (
+            <TemplateInsert
+              value={view === 'scratch' ? scratch : activeItem?.content || ''}
+              onChange={(value) =>
+                view === 'scratch' ? saveScratch(value) : updateItem({ content: value })
+              }
+            />
+          )}
         {view !== 'path' && (
           <>
             <div className="flex rounded-lg border border-[var(--gt-border)] p-0.5">

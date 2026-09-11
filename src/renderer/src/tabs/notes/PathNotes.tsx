@@ -1,3 +1,4 @@
+import { TemplateInsert } from './TemplateInsert'
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '../../components/ui/button'
 import { normalizeKnowledgePath } from '../../../../shared/knowledge-path'
@@ -118,6 +119,15 @@ export function PathNotes({
       )}
       {kb ? (
         <>
+          <TemplateInsert
+            value={content}
+            disabled={busy}
+            onChange={(value) => {
+              setContent(value)
+              setDirty(true)
+              setMessage('Unsaved changes')
+            }}
+          />
           <textarea
             aria-label="Path note content"
             value={content}
