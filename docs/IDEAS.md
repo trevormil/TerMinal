@@ -8,8 +8,8 @@
 Running notes for TerMinal — deferred prompts, known gaps, and creative
 ideas. Vibe-coded; this is the "what's next / what we punted" list.
 
-TER-27 hygiene sweep: shipped markers verified through TER-26; TER-28–30 MVPs
-are recorded below.
+TER-31 hygiene sweep: shipped markers verified through TER-30; TER-32–34 MVPs
+are recorded below. Mermaid remains pinned to the patched 11.16.1 release.
 
 ## Deferred / partially-done prompts
 
@@ -65,7 +65,10 @@ are recorded below.
 - **AI cost per day — MVP DONE (TER-30).** Optional cockpit widget, default off;
   today and seven calendar days of estimates from the local AI ledger, across
   repos. Explicit empty/remote states and a latest-2,000-record coverage notice.
-- **More widgets**: failing-test count, disk usage.
+- **Failing-test count — MVP DONE (TER-32).** Optional, default off; recorded counts
+  from the latest local review artifact, with unknown and historical labels and a PR link.
+- **Repo disk usage — MVP DONE (TER-33).** Optional, default off; allocated local
+  disk space including dependencies/hidden files, one-minute refresh and bounded reads.
 - **Usage/context soft-cap — DONE (TER-17).** Each widget exposes an optional
   warning percentage and Clear; disabled by default, never blocks work.
 - **Other per-widget settings** (e.g. burn-rate window) remain an idea.
@@ -77,7 +80,9 @@ are recorded below.
   File notes / Folder notes actions. Exact repo-relative paths use separate local
   sidecar knowledge storage; explicit Save, additive to Repo and Global notes.
   Notes remain at their original path after file renames.
-- **Slash-commands / templates** in notes (e.g. insert a checklist).
+- **Templates — MVP DONE (TER-34).** Append template control for checklist, meeting,
+  and decision markdown in Repo/Global items and scratch notes, plus Path notes.
+  Existing text is preserved; slash matching and custom templates remain deferred.
 - **Backlink** notes ↔ tickets (mention #id → link to the ticket tab).
 
 ## Bigger swings
