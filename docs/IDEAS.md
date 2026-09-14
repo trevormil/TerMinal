@@ -8,8 +8,12 @@
 Running notes for TerMinal — deferred prompts, known gaps, and creative
 ideas. Vibe-coded; this is the "what's next / what we punted" list.
 
-TER-31 hygiene sweep: shipped markers verified through TER-30; TER-32–34 MVPs
-are recorded below. Mermaid remains pinned to the patched 11.16.1 release.
+TER-35 hygiene sweep (2026-09-14): shipped markers verified through TER-34;
+TER-36–38 MVPs are recorded below. `bun audit` reports zero vulnerabilities.
+Mermaid remains pinned to 11.16.1: GitHub Dependabot alerts #1–5 are still open,
+but each identifies 11.16.1 as the first patched version. The default branch
+still pins 11.16.0; merging this PR remains a human action. The registry now
+offers 12.0.0, but these alerts require no major upgrade or lockfile churn.
 
 ## Deferred / partially-done prompts
 
@@ -47,7 +51,12 @@ are recorded below. Mermaid remains pinned to the patched 11.16.1 release.
 
 - **Inline ticket status edit — MVP DONE (TER-26).** Provider-backed status changes
   for local markdown and Linear, with saving/error feedback; local priority remains editable.
-- **Create MR from a ticket**.
+- **Create PR/MR from a ticket — MVP DONE (TER-37).** Tickets detail opens a
+  real GitHub/GitLab create dialog for an already-pushed branch. Current branch
+  and ticket-derived names are optional starting points; source, target, title,
+  and description remain editable. Local tickets receive the returned URL;
+  other providers can copy it manually. Missing/unsupported remotes and SSH
+  workspaces explain availability. No automatic branch creation, push, or merge.
 - **Comment on MR threads** from the Findings view (glab supports notes).
 - **Diff layouts — DONE (TER-14/15).** Unified, split and structural choices
   persist under `gt.diffViewMode`, with invalid/unavailable storage falling back safely.
@@ -82,8 +91,16 @@ are recorded below. Mermaid remains pinned to the patched 11.16.1 release.
   Notes remain at their original path after file renames.
 - **Templates — MVP DONE (TER-34).** Append template control for checklist, meeting,
   and decision markdown in Repo/Global items and scratch notes, plus Path notes.
-  Existing text is preserved; slash matching and custom templates remain deferred.
-- **Backlink** notes ↔ tickets (mention #id → link to the ticket tab).
+  Existing text is preserved.
+- **Custom templates — MVP DONE (TER-36).** Notes → Custom templates saves and
+  deletes named markdown snippets in local settings, shared across repos.
+  They append alongside built-ins in scratch, markdown items, and path notes.
+  Slash matching remains deferred.
+- **Ticket mentions — MVP DONE (TER-38).** Notes lists resolved mentions of
+  ticket identifiers (including #TER-37 / TER-37) and exact local ticket slugs
+  with optional .md suffix. Buttons navigate to the matching ticket or its
+  Linear view. Markdown stays unchanged; reverse ticket-to-note indexing and
+  a full graph remain deferred.
 
 ## Bigger swings
 
