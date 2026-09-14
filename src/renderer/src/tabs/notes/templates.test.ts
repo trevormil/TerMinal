@@ -8,3 +8,12 @@ test('templates append without changing existing markdown', () => {
   expect(appendTemplate('keep', 'unknown')).toBe('keep')
   expect(NOTE_TEMPLATES.map((t) => t.id)).toEqual(['checklist', 'meeting', 'decision'])
 })
+
+test('custom templates append verbatim and cannot shadow built-ins', () => {
+  const custom = [{ id: 'custom:one', title: 'One', body: '- [ ] Local\n' }]
+  expect(appendTemplate('Keep this  ', 'custom:one', custom)).toBe('Keep this  \n\n- [ ] Local\n')
+  expect(appendTemplate('Keep', 'missing', custom)).toBe('Keep')
+  expect(
+    appendTemplate('', 'checklist', [{ id: 'checklist', title: 'Bad', body: 'bad' }]),
+  ).toContain('## Checklist')
+})
