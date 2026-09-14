@@ -1,3 +1,8 @@
+import type {
+  ForgeCreateContext,
+  ForgeCreateInput,
+  ForgeCreateResult,
+} from '../../../shared/forge-create'
 import type { LocalCheckPlan, LocalCheckResult } from '../../../shared/types/local-checks'
 import type { SessionTimeline } from '../../../shared/types/session-timeline'
 import type { ReactNode } from 'react'
@@ -771,6 +776,12 @@ export type GtApi = {
   projectSessions: () => Promise<ProjectSession[]>
   getProjectSession: (slug: string) => Promise<ProjectSession | null>
   listSkills: () => Promise<SkillInfo[]>
+  forgeCreateContext: () => Promise<ForgeCreateContext>
+  createForgeRequest: (
+    repoRoot: string,
+    ticketSlug: string,
+    input: ForgeCreateInput,
+  ) => Promise<ForgeCreateResult>
   listMrs: () => Promise<MrListResult>
   getMr: (iid: number) => Promise<MrDetail | null>
   getMrDiff: (iid: number) => Promise<string>

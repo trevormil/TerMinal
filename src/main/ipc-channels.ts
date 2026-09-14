@@ -157,6 +157,8 @@ export type ChannelMap = {
   'monitors:run': Of<GtApi['monitors']['run']>
   'monitors:save': Of<GtApi['monitors']['save']>
   'mrs:ci': Of<GtApi['getMrCi']>
+  'mrs:create': Of<GtApi['createForgeRequest']>
+  'mrs:create-context': Of<GtApi['forgeCreateContext']>
   'mrs:diff': Of<GtApi['getMrDiff']>
   'mrs:get': Of<GtApi['getMr']>
   'mrs:list': Of<GtApi['listMrs']>

@@ -1,3 +1,4 @@
+import { TicketMentions } from './TicketMentions'
 import { TemplateInsert } from './TemplateInsert'
 import { PathNotes } from './PathNotes'
 import { onNavigate } from '../../lib/nav'
@@ -990,6 +991,18 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
           request={noteRequest}
         />
       </div>
+      {view !== 'path' && (
+        <TicketMentions
+          repoRoot={ctx.repoRoot}
+          content={
+            view === 'scratch'
+              ? scratch
+              : activeItem?.kind === 'markdown'
+                ? activeItem.content || ''
+                : ''
+          }
+        />
+      )}
       {view === 'path' ? null : view === 'scratch' ? (
         <div className="min-h-0 flex-1">{scratchBody}</div>
       ) : (

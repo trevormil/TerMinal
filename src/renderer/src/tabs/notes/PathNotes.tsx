@@ -1,3 +1,4 @@
+import { TicketMentions } from './TicketMentions'
 import { TemplateInsert } from './TemplateInsert'
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '../../components/ui/button'
@@ -128,6 +129,7 @@ export function PathNotes({
               setMessage('Unsaved changes')
             }}
           />
+          <TicketMentions repoRoot={repoRoot} content={content} />
           <textarea
             aria-label="Path note content"
             value={content}

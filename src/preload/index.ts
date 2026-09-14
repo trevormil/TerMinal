@@ -1,3 +1,4 @@
+import type { ForgeCreateInput } from '../shared/forge-create'
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 // `gt` is annotated `GtApi`, so the bridge is now checked against the surface
 // the renderer declares — a preload key that drifts from its declaration (a
@@ -391,6 +392,9 @@ const gt: GtApi = {
   projectSessions: () => ipcRenderer.invoke('sessions:project-list'),
   getProjectSession: (slug: string) => ipcRenderer.invoke('sessions:project-get', slug),
   listSkills: () => ipcRenderer.invoke('skills:list'),
+  forgeCreateContext: () => ipcRenderer.invoke('mrs:create-context'),
+  createForgeRequest: (repoRoot: string, ticketSlug: string, input: ForgeCreateInput) =>
+    ipcRenderer.invoke('mrs:create', repoRoot, ticketSlug, input),
   listMrs: () => ipcRenderer.invoke('mrs:list'),
   getMr: (iid: number) => ipcRenderer.invoke('mrs:get', iid),
   getMrDiff: (iid: number) => ipcRenderer.invoke('mrs:diff', iid),

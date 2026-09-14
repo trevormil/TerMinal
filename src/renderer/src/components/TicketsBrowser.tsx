@@ -1,3 +1,4 @@
+import { TicketForgeCreate } from './TicketForgeCreate'
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import {
   Plus,
@@ -317,11 +318,22 @@ function NewTicketModal({ ctx, onClose }: { ctx: TabContext; onClose: () => void
  * by the Tickets tab and the HITL tab. `hitlOnly` locks the view to tickets
  * flagged `hitl: true` and trims the chrome (no type/horizon filters, no create).
  */
-export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hitlOnly?: boolean }) {
+export function TicketsBrowser({
+  ctx,
+  hitlOnly = false,
+  mention,
+}: {
+  ctx: TabContext
+  hitlOnly?: boolean
+  mention?: { slug: string }
+}) {
   const listW = useResizableWidth('gt.ticketsListWidth', 460, { min: 280, max: 760, edge: 'right' })
   const [tickets, setTickets] = useState<Ticket[] | null>(null)
   const [ticketError, setTicketError] = useState('')
   const [sel, setSel] = useState<string | null>(null)
+  useEffect(() => {
+    if (mention) setSel(mention.slug)
+  }, [mention])
   const [creating, setCreating] = useState(false)
   // One spec drives filtering, grouping and sorting so toolbar and rail state
   // can't drift apart.
@@ -837,6 +849,7 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
               onSelectTicket={setSel}
               onViewMr={setViewMrIid}
             >
+              <TicketForgeCreate key={selected.slug} ticket={selected} onChanged={loadTickets} />
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <button
                   onClick={() => setPickImpl(true)}
