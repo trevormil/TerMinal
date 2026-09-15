@@ -8,8 +8,8 @@
 Running notes for TerMinal — deferred prompts, known gaps, and creative
 ideas. Vibe-coded; this is the "what's next / what we punted" list.
 
-TER-35 hygiene sweep (2026-09-14): shipped markers verified through TER-34;
-TER-36–38 MVPs are recorded below. `bun audit` reports zero vulnerabilities.
+TER-39 hygiene sweep (2026-09-15): shipped markers verified through TER-38;
+TER-40–42 MVPs are recorded below. `bun audit` reports zero vulnerabilities.
 Mermaid remains pinned to 11.16.1: GitHub Dependabot alerts #1–5 are still open,
 but each identifies 11.16.1 as the first patched version. The default branch
 still pins 11.16.0; merging this PR remains a human action. The registry now
@@ -57,7 +57,11 @@ offers 12.0.0, but these alerts require no major upgrade or lockfile churn.
   and description remain editable. Local tickets receive the returned URL;
   other providers can copy it manually. Missing/unsupported remotes and SSH
   workspaces explain availability. No automatic branch creation, push, or merge.
-- **Comment on MR threads** from the Findings view (glab supports notes).
+- **Comment on PR/MR discussions — MVP DONE (TER-40).** Findings has an explicit
+  general-comment box for GitHub and GitLab, using the existing forge CLI/API.
+  Open review threads leads to existing GitHub thread replies. GitLab thread
+  browsing/replies and resolve/unresolve remain deferred. Errors preserve the draft;
+  posting never merges or submits an approval.
 - **Diff layouts — DONE (TER-14/15).** Unified, split and structural choices
   persist under `gt.diffViewMode`, with invalid/unavailable storage falling back safely.
 - **Mark all viewed + viewed count — DONE.** Per-file checkboxes and Mark all / Clear
@@ -80,7 +84,11 @@ offers 12.0.0, but these alerts require no major upgrade or lockfile churn.
   disk space including dependencies/hidden files, one-minute refresh and bounded reads.
 - **Usage/context soft-cap — DONE (TER-17).** Each widget exposes an optional
   warning percentage and Clear; disabled by default, never blocks work.
-- **Other per-widget settings** (e.g. burn-rate window) remain an idea.
+- **Usage/context burn-rate window — MVP DONE (TER-41).** Optional per-widget
+  5/15/30-minute or 1/4-hour lookback, default off and clearable. Choice persists
+  locally; observed percentage-point/hour samples live only while the widget is
+  mounted. Usage tracks the five-hour quota; drops reset the baseline (quota
+  resets/context compaction), and context session/model changes start fresh.
 - **Widget reordering — DONE.** Cockpit ordering is user-configurable.
 
 ## Notes
@@ -95,7 +103,11 @@ offers 12.0.0, but these alerts require no major upgrade or lockfile churn.
 - **Custom templates — MVP DONE (TER-36).** Notes → Custom templates saves and
   deletes named markdown snippets in local settings, shared across repos.
   They append alongside built-ins in scratch, markdown items, and path notes.
-  Slash matching remains deferred.
+- **Slash templates — MVP DONE (TER-42).** Type / in scratch, markdown items,
+  or path notes to fuzzy-match built-in and custom template names locally.
+  Empty query shows all; Enter selects the first match or click a choice.
+  Escape/click-away dismisses. Selection removes the slash query and appends
+  the body without replacing other note text; the append control remains.
 - **Ticket mentions — MVP DONE (TER-38).** Notes lists resolved mentions of
   ticket identifiers (including #TER-37 / TER-37) and exact local ticket slugs
   with optional .md suffix. Buttons navigate to the matching ticket or its
