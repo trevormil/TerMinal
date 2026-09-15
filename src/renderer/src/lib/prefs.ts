@@ -1,3 +1,4 @@
+import { normalizeLookback } from './usageLookback'
 import { normalizeSoftCap } from './usageSoftCap'
 import { useEffect, useState } from 'react'
 import { ALL as ALL_INBOX_CATEGORIES } from '../../../shared/inbox-categories'
@@ -55,6 +56,8 @@ const strArray = (key: string, fallback: string[]): PrefDef<string[]> => ({
  * in every existing install, so they must never be "tidied".
  */
 export const PREFS = {
+  contextLookback: { ...num('gt.context.lookback', 0), read: normalizeLookback },
+  usageLookback: { ...num('gt.usage.lookback', 0), read: normalizeLookback },
   contextSoftCap: { ...num('gt.context.softCap', 0), read: normalizeSoftCap },
   usageSoftCap: { ...num('gt.usage.softCap', 0), read: normalizeSoftCap },
   diffViewMode: {

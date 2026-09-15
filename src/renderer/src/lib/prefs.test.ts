@@ -149,3 +149,17 @@ describe('prefs registry', () => {
     expect(seen).toEqual(['FromOtherWindow'])
   })
 })
+
+test('lookback windows default off, restore independently, and clear', () => {
+  expect(getPref('contextLookback')).toBe(0)
+  expect(getPref('usageLookback')).toBe(0)
+  setPref('contextLookback', 5)
+  setPref('usageLookback', 60)
+  expect(getPref('contextLookback')).toBe(5)
+  expect(getPref('usageLookback')).toBe(60)
+  setPref('contextLookback', 0)
+  expect(getPref('contextLookback')).toBe(0)
+  expect(getPref('usageLookback')).toBe(60)
+  store.map.set('gt.usage.lookback', '-2')
+  expect(getPref('usageLookback')).toBe(0)
+})

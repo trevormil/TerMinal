@@ -1,3 +1,4 @@
+import { UsageLookback } from '../../components/UsageLookback'
 import { UsageSoftCap } from '../../components/UsageSoftCap'
 import { Gauge as GaugeIcon } from 'lucide-react'
 import { TitledCard } from '../../components/ui/titled-card'
@@ -64,6 +65,7 @@ const plugin: Plugin<Usage> = {
       >
         <WindowRow label="5-hour" w={d.fiveHour} />
         <WindowRow label="Weekly" w={d.sevenDay} />
+        <UsageLookback kind="usage" pct={d.fiveHour?.pct} />
         <UsageSoftCap
           kind="usage"
           pct={Math.max(d.fiveHour?.pct ?? 0, d.sevenDay?.pct ?? 0, d.overagePct ?? 0)}
