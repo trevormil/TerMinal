@@ -25,7 +25,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { CodeEditor } from '../../components/CodeEditor'
+import { NoteEditor } from './NoteEditor'
 import { langExtensionFor, useLangsReady } from '../../lib/lazyLang'
 import { Markdown } from '../../components/Markdown'
 import type {
@@ -840,7 +840,7 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
       <div className="min-h-0 flex-1">
         {item.kind === 'markdown' ? (
           previewMode === 'edit' ? (
-            <CodeEditor
+            <NoteEditor
               value={item.content || ''}
               onChange={(value) => updateItem({ content: value })}
               extensions={langExtensionFor('markdown')}
@@ -851,7 +851,7 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
           ) : (
             <div className="flex h-full min-h-0">
               <div className="min-h-0 w-1/2 border-r border-[var(--gt-border)]">
-                <CodeEditor
+                <NoteEditor
                   value={item.content || ''}
                   onChange={(value) => updateItem({ content: value })}
                   extensions={langExtensionFor('markdown')}
@@ -872,7 +872,7 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
 
   const scratchBody =
     previewMode === 'edit' ? (
-      <CodeEditor
+      <NoteEditor
         value={scratch}
         onChange={saveScratch}
         extensions={langExtensionFor('markdown')}
@@ -885,7 +885,7 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
     ) : (
       <div className="flex h-full min-h-0">
         <div className="min-h-0 w-1/2 border-r border-[var(--gt-border)]">
-          <CodeEditor
+          <NoteEditor
             value={scratch}
             onChange={saveScratch}
             extensions={langExtensionFor('markdown')}

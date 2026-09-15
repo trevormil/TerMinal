@@ -1,3 +1,4 @@
+import { NoteEditor } from './NoteEditor'
 import { TicketMentions } from './TicketMentions'
 import { TemplateInsert } from './TemplateInsert'
 import { useEffect, useRef, useState } from 'react'
@@ -130,17 +131,18 @@ export function PathNotes({
             }}
           />
           <TicketMentions repoRoot={repoRoot} content={content} />
-          <textarea
-            aria-label="Path note content"
-            value={content}
-            disabled={busy}
-            onChange={(e) => {
-              setContent(e.target.value)
-              setDirty(true)
-              setMessage('Unsaved changes')
-            }}
-            className="min-h-32 flex-1 resize-none rounded border border-[var(--gt-border)] bg-transparent p-3 font-mono text-sm"
-          />
+          <div className="min-h-32 flex-1">
+            <NoteEditor
+              textarea
+              value={content}
+              editable={!busy}
+              onChange={(value) => {
+                setContent(value)
+                setDirty(true)
+                setMessage('Unsaved changes')
+              }}
+            />
+          </div>
           <div className="flex gap-2">
             <Button size="sm" disabled={!dirty || busy} onClick={save}>
               {busy ? 'Saving…' : 'Save note'}
