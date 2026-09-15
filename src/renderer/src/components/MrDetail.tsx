@@ -1,3 +1,4 @@
+import { CommentBox } from '../tabs/mrs/ReviewActions'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { viewedProgress } from '../../../shared/viewed-progress'
 import {
@@ -1210,7 +1211,29 @@ export function MrDetailView({
         {view === 'conversation' && <ConversationPanel repoRoot={repoRoot} iid={iid} />}
         {view === 'review' && <ReviewBody mr={mr} />}
         {view === 'findings' && (
-          <FindingCards items={mr.findings} empty="No findings for this MR." />
+          <div className="flex h-full min-h-0 flex-col">
+            <div className="min-h-0 flex-1 overflow-auto">
+              <FindingCards items={mr.findings} empty="No findings for this MR." />
+            </div>
+            <div className="shrink-0 border-t border-[var(--gt-border)]">
+              <button
+                className="px-3 pt-2 text-xs underline"
+                onClick={() => setView('conversation')}
+              >
+                Open review threads
+              </button>
+              {repoRoot ? (
+                <CommentBox
+                  key={`${repoRoot}:${iid}`}
+                  repoRoot={repoRoot}
+                  iid={iid}
+                  onDone={() => {}}
+                />
+              ) : (
+                <p className="p-3 text-xs">Open a local checkout to comment on this PR/MR.</p>
+              )}
+            </div>
+          </div>
         )}
         {view === 'suggestions' && (
           <FindingCards items={mr.suggestions} muted empty="No suggestions for this MR." />
