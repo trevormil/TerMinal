@@ -38,7 +38,9 @@ function toneForState(state: string): BadgeTone {
   return 'mute'
 }
 
-const toneVariant = (tone: BadgeTone): 'default' | 'secondary' | 'destructive' | 'success' | 'warning' | 'info' =>
+const toneVariant = (
+  tone: BadgeTone,
+): 'default' | 'secondary' | 'destructive' | 'success' | 'warning' | 'info' =>
   tone === 'ok' || tone === 'green'
     ? 'success'
     : tone === 'warn' || tone === 'yellow'
@@ -93,7 +95,9 @@ export function ApprovalsRow({
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-[var(--gt-border)] px-3 py-2">
       {reviewDecision && (
-        <Badge variant={toneVariant(toneForState(reviewDecision))}>{humanState(reviewDecision)}</Badge>
+        <Badge variant={toneVariant(toneForState(reviewDecision))}>
+          {humanState(reviewDecision)}
+        </Badge>
       )}
       {reviewers.map((r) => (
         <span key={`${r.login}:${r.state}`} className="inline-flex items-center gap-1.5">
@@ -258,7 +262,13 @@ export function ConversationPanel({ repoRoot, iid }: { repoRoot: string; iid: nu
   if (!repoRoot) return <Empty>Conversation needs a local repo.</Empty>
   if (loading) return <Empty>Loading conversation…</Empty>
   if (!data) return <Empty>Could not load the conversation from gh.</Empty>
-  if (!data.supported) return <Empty>{data.reason}.</Empty>
+  if (!data.supported)
+    return (
+      <>
+        <Empty>{data.reason}. General PR/MR comments are available below.</Empty>
+        <CommentBox key={`${repoRoot}:${iid}`} repoRoot={repoRoot} iid={iid} onDone={reload} />
+      </>
+    )
 
   const nothing =
     !data.comments.length && !data.reviews.length && !data.threads.length && !data.markers.length
@@ -282,14 +292,13 @@ export function ConversationPanel({ repoRoot, iid }: { repoRoot: string; iid: nu
           {data.comments.map((c) => (
             <CommentCard key={c.id} c={c} />
           ))}
-          <CommentBox repoRoot={repoRoot} iid={iid} onDone={reload} />
         </Section>
         <Section icon={GitCommitHorizontal} title="Lineage" count={data.markers.length}>
           {data.markers.map((m, i) => (
             <MarkerRow key={`${m.kind}:${m.oid}:${i}`} m={m} />
           ))}
         </Section>
-        {nothing && <CommentBox repoRoot={repoRoot} iid={iid} onDone={reload} />}
+        <CommentBox key={`${repoRoot}:${iid}`} repoRoot={repoRoot} iid={iid} onDone={reload} />
       </div>
       <ReviewActions repoRoot={repoRoot} iid={iid} onDone={reload} />
     </div>

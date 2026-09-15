@@ -3,13 +3,7 @@ import { Hash, Loader2, Send } from 'lucide-react'
 import { slackChannelName } from '../../../../shared/slack'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import {
-  SecretInput,
-  Section,
-  Toggle,
-  type SettingsCtx,
-  type SettingsSectionSpec,
-} from './shared'
+import { SecretInput, Section, Toggle, type SettingsCtx, type SettingsSectionSpec } from './shared'
 
 function Component({ ctx }: { ctx: SettingsCtx }) {
   const { s, save } = ctx

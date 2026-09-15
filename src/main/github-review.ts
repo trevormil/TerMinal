@@ -1,6 +1,10 @@
+import { postDiscussionComment } from './forge-comment'
+import { forgeCreateAvailability } from './forge-create'
+import { readSettings } from './settings'
 // GitHub-native PR review surface: CI checks, conversation lineage, review
 // actions, approvals.
 //
+// Checks and thread replies are GitHub-first; general comments support both forges.
 // GitHub-FIRST by construction. Every exported entry point resolves the forge
 // first and returns `{ supported: false }` off GitHub, so a GitLab workspace
 // gets one quiet line instead of a broken panel. GitLab parity is a bonus, not
@@ -501,10 +505,10 @@ export async function addComment(
   iid: number,
   body: string,
 ): Promise<PrActionResult> {
-  if (!githubRepoPath(repoRoot)) return { ok: false, error: NOT_GITHUB.reason }
-  if (!body.trim()) return { ok: false, error: 'A comment needs a body.' }
-  const r = await gh(repoRoot, ['pr', 'comment', String(iid), '--body', body], { timeout: 30_000 })
-  return r.ok ? { ok: true } : { ok: false, error: r.error }
+  const repo = repoForCwd(repoRoot)
+  const error = forgeCreateAvailability(repo, readSettings().forge)
+  if (!repo || error) return { ok: false, error: error.replace('to create', 'to comment on') }
+  return postDiscussionComment(repoRoot, repo, forgeFor(repoRoot).kind, iid, body)
 }
 
 /**

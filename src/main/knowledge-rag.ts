@@ -8,7 +8,7 @@ import type { KnowledgeRagSearchResult, KnowledgeRagStatus } from '../shared/typ
 export type { KnowledgeRagSearchResult, KnowledgeRagStatus } from '../shared/types/knowledge'
 
 type RagRequest = {
-  scope: KnowledgeScope
+  scope: Extract<KnowledgeScope, string>
   repoRoot: string
   item: KnowledgeItem
 }
@@ -37,7 +37,11 @@ const slug = (input: string) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '') || 'rag'
 
-function defaultRootDir(scope: KnowledgeScope, repoRoot: string, item: KnowledgeItem): string {
+function defaultRootDir(
+  scope: Extract<KnowledgeScope, string>,
+  repoRoot: string,
+  item: KnowledgeItem,
+): string {
   const storeSlug = slug(item.rag?.category || item.title || item.categoryId || item.id)
   // Repo-scoped RAG stores are personal state → the sidecar. Resolved PER
   // STORE (not at the knowledge-rag/ dir level): an existing legacy in-repo

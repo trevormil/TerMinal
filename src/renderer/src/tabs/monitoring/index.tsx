@@ -624,7 +624,9 @@ function MonitorDetail({ m }: { m: MonitorWithState }) {
           <div className="flex items-center gap-2">
             <StatusDot status={st?.status} />
             <span className="text-[14px] font-semibold text-zinc-100">{m.name}</span>
-            <Badge variant={badgeVariantFor(stateTone(st?.status))}>{st?.status ?? 'no data'}</Badge>
+            <Badge variant={badgeVariantFor(stateTone(st?.status))}>
+              {st?.status ?? 'no data'}
+            </Badge>
             {!m.enabled && <Badge variant="secondary">disabled</Badge>}
           </div>
           <div className="min-w-0 pl-[18px]">
@@ -806,7 +808,9 @@ function MonitorDetail({ m }: { m: MonitorWithState }) {
             </Badge>
             {m.notify.onRecovery && <Badge variant="success">recovery</Badge>}
             <Badge variant="secondary">renotify {m.notify.renotifyAfterSec}s</Badge>
-            {m.notify.dailyDigest && <Badge variant="secondary">digest @ {m.notify.digestHour}h</Badge>}
+            {m.notify.dailyDigest && (
+              <Badge variant="secondary">digest @ {m.notify.digestHour}h</Badge>
+            )}
           </div>
         </div>
 
@@ -861,7 +865,9 @@ function MonitorRow({
             {m.name}
           </span>
           {m.type === 'tls-cert' && certDays(m) !== null && (
-            <Badge variant={badgeVariantFor(expiryTone(certDays(m)!))}>{expiryLabel(certDays(m)!)}</Badge>
+            <Badge variant={badgeVariantFor(expiryTone(certDays(m)!))}>
+              {expiryLabel(certDays(m)!)}
+            </Badge>
           )}
           {stale && <Badge variant="warning">stale</Badge>}
           {st?.paused && <Badge variant="secondary">paused</Badge>}

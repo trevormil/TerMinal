@@ -118,6 +118,7 @@ export type Review = {
   overall: number | null
   verdict: string
   testStatus: string
+  failedTests?: number | null
   stale: boolean
   commitsBehind: number
   /** Canonical change blast-radius, 0-5, graded by the reviewer
@@ -152,6 +153,7 @@ export type TddInfo = {
   overall: number | null
   verdict: string
   testStatus: string
+  failedTests?: number | null
   stale: boolean
   commitsBehind: number
   ts: number

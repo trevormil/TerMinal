@@ -1,3 +1,4 @@
+import { normalizeNoteTemplates } from '../shared/note-templates'
 import { readFileSync, existsSync, chmodSync, unlinkSync } from 'node:fs'
 import { isHttpUrl } from '../shared/url-safety'
 import { join, dirname } from 'node:path'
@@ -160,6 +161,7 @@ export function defaultSettings(): Settings {
     runMemoryCap: 1000,
     templateRepo: daemon.templateRepo,
     pinnedPanels: [],
+    noteTemplates: [],
     savedPrompts: [],
     openrouterApiKey: '',
     openaiCompatApiKey: '',
@@ -401,6 +403,7 @@ export function migrate(raw: unknown): Settings {
       .filter((p: unknown): p is PinnedPanel => !!p && isHttpUrl((p as PinnedPanel).url))
       .map((p: PinnedPanel) => ({ label: String(p.label ?? p.url), url: String(p.url) }))
   }
+  s.noteTemplates = normalizeNoteTemplates(r.noteTemplates)
   s.savedPrompts = savedPrompts(r.savedPrompts)
   if (typeof r.openrouterApiKey === 'string') s.openrouterApiKey = r.openrouterApiKey
   if (typeof r.openaiCompatApiKey === 'string') s.openaiCompatApiKey = r.openaiCompatApiKey
@@ -611,6 +614,10 @@ export function mergeSettingsPatch(cur: Settings, patch: SettingsPatch): Setting
     // The library replaces wholesale (it is a list the UI owns end to end), but
     // it is validated here too — same reason as pinnedPanels: an agent writes
     // settings through this path, so "the user typed it" is not a trust argument.
+    noteTemplates:
+      scalarPatch.noteTemplates === undefined
+        ? cur.noteTemplates
+        : normalizeNoteTemplates(scalarPatch.noteTemplates),
     savedPrompts:
       scalarPatch.savedPrompts === undefined
         ? cur.savedPrompts

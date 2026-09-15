@@ -10,12 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  Section,
-  emptyDaemon,
-  type SettingsCtx,
-  type SettingsSectionSpec,
-} from './shared'
+import { Section, emptyDaemon, type SettingsCtx, type SettingsSectionSpec } from './shared'
 
 // The structured readiness report from `hosts:provision` (src/main/host-provision.ts).
 type ProvisionState = Awaited<ReturnType<Window['gt']['provisionHost']>>

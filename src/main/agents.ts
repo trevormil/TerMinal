@@ -1425,7 +1425,13 @@ export function runTicketAgent(
   // so only a solo run is told to leave one behind.
   const logInstr = lane
     ? ''
-    : ` Record anything a later run would need — findings, dead ends, decisions — back onto the ticket with the comment_ticket MCP tool, not in the ticket's prose body.`
+    : provider.kind === 'linear'
+      ? ` Record anything a later run would need — findings, dead ends, decisions — on Linear issue ${ref} with the configured Linear MCP comment tool. Do not use TerMinal's local comment_ticket tool.`
+      : provider.kind === 'github'
+        ? ` Record anything a later run would need — findings, dead ends, decisions — on GitHub issue ${ref} with gh issue comment.`
+        : provider.kind === 'webview'
+          ? ''
+          : ` Record anything a later run would need — findings, dead ends, decisions — back onto the ticket with the comment_ticket MCP tool, not in the ticket's prose body.`
   const base = `Implement ticket ${ref}: ${ticket.title}\n\n${ticket.body}\n${promptLogBlock(ticket.comments)}\n${ticketProviderInstructions(provider)}${laneFraming}\n\nWork in this worktree on its branch. Implement the ticket end to end — keep changes surgical and add/adjust tests. ${ticketWriteInstr}${logInstr} End with a short summary of what changed and the PR URL.${extraContextBlock(extraContext)}`
   const resolvedPersonaId = personaId || ticketAgentContextId(ticket.agent)
   const { steps, persona, pipeline } = buildSteps(
@@ -1550,7 +1556,7 @@ export function runTicketSpawn(
     provider.kind === 'github'
       ? `File exactly ONE new GitHub Issue for the request below using the gh CLI in this repository. Set useful labels for type/priority/status when labels exist or can be safely created. Do NOT implement anything or open a PR.\n\nRequest: ${t}`
       : provider.kind === 'linear'
-        ? `File exactly ONE new Linear issue for the request below using the configured Linear MCP/CLI. Use the repo/provider conventions for team, status, and priority. Do NOT implement anything or open a PR.\n\nRequest: ${t}`
+        ? `File exactly ONE new Linear issue for the request below. ${ticketProviderInstructions(provider)} Use the repo/provider conventions for status and priority. Do NOT implement anything or open a PR.\n\nRequest: ${t}`
         : `File exactly ONE new backlog ticket for the request below, using this project's ticket conventions: allocate the next id (use ~/.config/TerMinal/plugin/skills/ticket/bin/next-ticket-id if present, else the next NNNN above the highest active backlog ticket), write $TERMINAL_BACKLOG_DIR/NNNN-slug.md with valid YAML frontmatter (id, title, status: open, priority, type, horizon: now) matching the ticket example (legacy v1 repos may use backlog/), put any detail in the body after the closing ---, and commit it. Do NOT implement anything or open a PR — just file the ticket. Request: ${t}`
   return runSpec(repoRoot, {
     id: 'ticket-spawn',

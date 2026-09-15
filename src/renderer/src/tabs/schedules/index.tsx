@@ -890,7 +890,9 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
                       {engineLabel(s.engine)}
                     </span>
                     {s.lastStatus && s.lastStatus !== 'never' && (
-                      <Badge variant={badgeVariantFor(statusTone(s.lastStatus))}>{s.lastStatus}</Badge>
+                      <Badge variant={badgeVariantFor(statusTone(s.lastStatus))}>
+                        {s.lastStatus}
+                      </Badge>
                     )}
                     {/* Kill-switch chip. For a host-assigned schedule the breaker
                         tripped on the HOST, so name it — and the re-enable writes
@@ -1079,7 +1081,9 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
                               open ? 'bg-white/5' : 'hover:bg-white/5'
                             }`}
                           >
-                            <Badge variant={badgeVariantFor(statusTone(r.status))}>{r.status}</Badge>
+                            <Badge variant={badgeVariantFor(statusTone(r.status))}>
+                              {r.status}
+                            </Badge>
                             <span className="text-zinc-500">{fmtWhen(r.startedAt)}</span>
                             <span className="text-zinc-700">·</span>
                             <span className="font-mono tabular-nums text-zinc-500">{dur}</span>

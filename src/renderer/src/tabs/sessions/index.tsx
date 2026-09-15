@@ -186,7 +186,9 @@ function SessionsTab({ ctx }: { ctx: TabContext }) {
               <div className="p-5">
                 <div className="mb-1 flex flex-wrap items-center gap-2 text-[11px] text-zinc-600">
                   <span className="font-mono">{sel.anchor || `#${sel.id}`}</span>
-                  <Badge variant={badgeVariantFor(sessionStatusTone(sel.status))}>{sel.status}</Badge>
+                  <Badge variant={badgeVariantFor(sessionStatusTone(sel.status))}>
+                    {sel.status}
+                  </Badge>
                   {sel.started && <span>started {reldate(sel.started)}</span>}
                   {sel.ended && <span>ended {reldate(sel.ended)}</span>}
                 </div>

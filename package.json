@@ -2,7 +2,7 @@
   "name": "terminal",
   "productName": "TerMinal",
   "version": "0.2.0",
-  "description": "A standalone, local-first software factory for coding agents: hosts the real Claude Code / Codex CLI with a live cockpit, autonomous build loop, scheduling, and cross-repo observability — no server, no account.",
+  "description": "A standalone, local-first software factory for coding agents: hosts the real Claude Code / Codex CLI with a live cockpit, autonomous build loop, scheduling, and cross-repo observability \u2014 no server, no account.",
   "author": "Trevor Miller",
   "license": "MIT",
   "repository": {
@@ -72,10 +72,11 @@
     "clsx": "^2.1.1",
     "highlight.js": "11.11.1",
     "lucide-react": "1.16.0",
-    "mermaid": "11.16.0",
+    "mermaid": "11.16.1",
     "nanoid": "3.3.18",
     "node-pty": "1.1.0",
     "parse-diff": "0.12.0",
+    "prettier": "3.9.5",
     "qrcode-generator": "2.0.4",
     "react-markdown": "10.1.0",
     "remark-gfm": "4.0.1",
@@ -99,7 +100,6 @@
     "electron-vite": "5.0.0",
     "eslint": "10.8.0",
     "eslint-plugin-react-hooks": "7.1.1",
-    "prettier": "3.9.5",
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "tailwindcss": "4.3.2",
@@ -108,13 +108,17 @@
     "vite": "7.3.6"
   },
   "overrides": {
+    "@xmldom/xmldom": "0.8.15",
     "app-builder-lib": "26.15.6",
     "brace-expansion": "5.0.9",
+    "browserslist": "4.28.8",
     "builder-util-runtime": "9.7.0",
-    "fast-uri": "3.1.5",
-    "js-yaml": "4.3.1",
+    "dompurify": "3.4.14",
+    "fast-uri": "3.1.6",
+    "js-yaml": "4.3.2",
     "nanoid": "3.3.18",
-    "postcss": "8.5.22",
+    "postcss": "8.5.26",
+    "tar": "7.5.22",
     "undici": "7.29.0"
   }
 }

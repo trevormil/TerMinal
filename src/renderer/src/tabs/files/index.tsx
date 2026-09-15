@@ -1,3 +1,4 @@
+import { RunCheck } from './RunCheck'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   FolderTree,
@@ -33,6 +34,7 @@ import {
   statusColor,
   type StatusMap,
 } from '../../../../shared/git-status'
+import { withinTreePath, remapTreePath, validEntryName } from '../../../../shared/file-tree-paths'
 import { moveTargetFor } from '../../../../shared/tree-dnd'
 import { ImageDiffView } from '../../components/ImageDiffView'
 import { describeIndent, detectIndent } from '../../../../shared/indent'
@@ -41,6 +43,7 @@ import { contentToWrite, minimalChange } from '../../../../shared/text-change'
 import type { Extension } from '@codemirror/state'
 import type { EditorView } from '@codemirror/view'
 import { CodeEditor } from '../../components/CodeEditor'
+import { gitGutter } from '../../lib/gitGutter'
 import { ReviewEditsView } from '../../components/ReviewEditsView'
 import { fileIcon } from '../../lib/fileIcons'
 import { WorkingDiffView } from '../../components/WorkingDiffView'
@@ -208,6 +211,7 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
   const [open, setOpen] = useState<OpenFile[]>([])
   const [activePath, setActivePath] = useState<string | null>(null)
   const [selectedDir, setSelectedDir] = useState('')
+  const [showCheck, setShowCheck] = useState(false)
   const [sidebar, setSidebar] = useState<'files' | 'search' | 'changes' | 'history' | 'branches'>(
     'files',
   )
@@ -281,9 +285,12 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
   const [resultsOpts, setResultsOpts] = useState<FilesSearchOptions>({})
   const [prompt, setPrompt] = useState<Prompt | null>(null)
   const [pv, setPv] = useState('')
+  const [fileOpError, setFileOpError] = useState('')
+  const [fileOpBusy, setFileOpBusy] = useState(false)
+  const fileOpLock = useRef(false)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [editorName, setEditorName] = useState('Cursor')
-  const [formatOnSave, setFormatOnSave] = useState(false)
+  const formatOnSave = useRef(false)
   // Live EditorViews by path, so a formatter result can be dispatched as one
   // minimal change (cursor + scroll survive) instead of a full re-render.
   const views = useRef<Record<string, EditorView>>({})
@@ -297,6 +304,74 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
   const ckptRef = useRef<string | null>(null)
 
   const activeFile = open.find((f) => f.path === activePath) || null
+  const [showGitGutter, setShowGitGutter] = useState(() => {
+    try {
+      return localStorage.getItem('gt.filesGitGutter') !== '0'
+    } catch {
+      return true
+    }
+  })
+  const [gutterPatch, setGutterPatch] = useState<{
+    path: string
+    content: string
+    patch: string
+  } | null>(null)
+  const gutterActive =
+    showGitGutter &&
+    !!ctx.repoRoot &&
+    !ctx.remote &&
+    !!activeFile &&
+    !activeFile.dirty &&
+    !activeFile.err &&
+    activeFile.content.length <= 500_000 &&
+    !needsBinaryRead(viewerKindFor(activeFile.path)) &&
+    !fileDiff &&
+    !compare &&
+    !review &&
+    (sidebar === 'files' || sidebar === 'search') &&
+    (!hasViewer(activeFile.path) || viewerSource)
+  useEffect(() => {
+    setGutterPatch(null)
+    if (!gutterActive || !activePath) return
+    let alive = true
+    let inFlight = false
+    const path = activePath
+    const content = activeFile?.content || ''
+    const load = async () => {
+      if (inFlight || !filesTabPollsActive()) return
+      inFlight = true
+      try {
+        const result = await window.gt.gitWorkingFilePatch(path)
+        const disk = await window.gt.files.read(path)
+        if (alive)
+          setGutterPatch(
+            result.ok && disk.ok && disk.content === content && result.patch.length <= 1_000_000
+              ? { path, content, patch: result.patch }
+              : null,
+          )
+      } catch {
+        if (alive) setGutterPatch(null)
+      } finally {
+        inFlight = false
+      }
+    }
+    const debounce = setTimeout(load, 350)
+    const interval = setInterval(load, FILES_GIT_STATUS_POLL_MS)
+    return () => {
+      alive = false
+      clearTimeout(debounce)
+      clearInterval(interval)
+    }
+  }, [gutterActive, activePath, activeFile?.content, ctx.repoRoot, version])
+  const gitExt = useMemo<Extension[]>(
+    () =>
+      gutterActive &&
+      gutterPatch?.path === activePath &&
+      gutterPatch?.content === activeFile?.content
+        ? [gitGutter(gutterPatch.patch)]
+        : [],
+    [gutterActive, gutterPatch, activePath, activeFile?.content],
+  )
   const bump = () => setVersion((v) => v + 1)
 
   // Opening a file always lands in the EDITOR when the content is text — a
@@ -402,10 +477,22 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
     }
   }, [ctx.repoRoot])
   useEffect(() => {
-    window.gt.settings.get().then((s) => {
+    let live = true
+    const apply = (s: Awaited<ReturnType<typeof window.gt.settings.get>>) => {
+      if (!live) return
       setEditorName(s.apps?.editor || 'Cursor')
-      setFormatOnSave(!!s.apps?.formatOnSave)
-    })
+      formatOnSave.current = !!s.apps?.formatOnSave
+    }
+    const changed = (e: Event) => apply((e as CustomEvent).detail)
+    window.gt.settings
+      .get()
+      .then(apply)
+      .catch(() => {})
+    window.addEventListener('gt.settings.changed', changed)
+    return () => {
+      live = false
+      window.removeEventListener('gt.settings.changed', changed)
+    }
   }, [])
 
   // Leaving a file closes its diff, compare, and review, so none stick across
@@ -521,7 +608,7 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
         if (ev.payload?.sidebar === 'changes') setSidebar('changes')
         const path = ev.payload?.path as string | undefined
         if (path) openFileRef.current(path, ev.payload?.line as number | undefined)
-      }),
+      }, 'files'),
     [],
   )
 
@@ -533,7 +620,7 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
       return next
     })
   const save = async () => {
-    if (!activeFile || activeFile.err) return
+    if (fileOpLock.current || !activeFile || activeFile.err) return
     const captured = activeFile.content
     // An already-scheduled autosave holds this same (now superseded) content —
     // left alone it could fire after the formatted write below and clobber it
@@ -541,9 +628,9 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
     clearTimeout(saveTimers.current[activeFile.path])
     // Format on save (opt-in, ⌘S only — the debounced auto-save stays raw so
     // the formatter never fights mid-typing). Skipped silently when the
-    // project has no prettier or prettier doesn't own the file.
+    // formatter doesn't own the file.
     let formatted: string | null = null
-    if (formatOnSave) {
+    if (formatOnSave.current) {
       const r = await window.gt.files.format(activeFile.path, captured)
       if (r.ok && r.content !== undefined && r.content !== captured) {
         formatted = r.content
@@ -567,10 +654,17 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
   // auto-save: debounce a write per file on edit (no ⌘S needed). Keyed by path
   // + content so a tab switch can't save the wrong file.
   const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+  const saveWrites = useRef<Record<string, Promise<boolean>>>({})
   const scheduleSave = (path: string, content: string) => {
     clearTimeout(saveTimers.current[path])
     saveTimers.current[path] = setTimeout(async () => {
-      if (await window.gt.files.write(path, content)) patch(path, { dirty: false })
+      const write = window.gt.files.write(path, content)
+      saveWrites.current[path] = write
+      try {
+        if (await write) patch(path, { dirty: false })
+      } finally {
+        if (saveWrites.current[path] === write) delete saveWrites.current[path]
+      }
     }, 700)
   }
   // flush any pending saves when leaving the Files tab
@@ -657,65 +751,111 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
   }
 
   const startPrompt = (p: Prompt) => {
+    if (fileOpLock.current) return
+    setFileOpError('')
+    setConfirmDelete(null)
     setPrompt(p)
     setPv(p.kind === 'rename' ? base(p.target!) : '')
   }
-  const commitPrompt = async () => {
-    const name = pv.trim()
-    if (!name || !prompt) return setPrompt(null)
-    if (prompt.kind === 'rename') {
-      const np = (parentOf(prompt.target!) ? parentOf(prompt.target!) + '/' : '') + name
-      if (await window.gt.files.rename(prompt.target!, np)) {
-        setOpen((o) => o.map((f) => (f.path === prompt.target! ? { ...f, path: np } : f)))
-        if (activePath === prompt.target!) setActivePath(np)
-        bump()
-      }
-    } else {
-      const path = (prompt.parent ? prompt.parent + '/' : '') + name
-      if (await window.gt.files.create(path, prompt.kind === 'new-folder')) {
-        bump()
-        if (prompt.kind === 'new-file') openFile(path)
-      }
+  const runFileOp = async (operation: () => Promise<void>) => {
+    if (fileOpLock.current) return
+    fileOpLock.current = true
+    setFileOpBusy(true)
+    setFileOpError('')
+    try {
+      await operation()
+    } catch (error) {
+      setFileOpError(error instanceof Error ? error.message : 'File operation failed')
+    } finally {
+      fileOpLock.current = false
+      setFileOpBusy(false)
     }
-    setPrompt(null)
-    setPv('')
   }
-  const commitDelete = async () => {
-    if (!confirmDelete) return
-    if (await window.gt.files.del(confirmDelete)) {
-      closeFile(confirmDelete)
-      bump()
-    }
-    setConfirmDelete(null)
-  }
-
-  // Tree drag-and-drop: rename under the hood, with open buffers and the
-  // active path following the file to its new home.
-  const movePath = async (from: string, toDir: string) => {
-    const dest = moveTargetFor(from, toDir)
-    if (!dest) return
-    // Flush pending autosaves for anything being moved FIRST — a debounced
-    // write firing after the rename would recreate the old path on disk.
-    for (const f of open) {
-      if (f.path !== from && !f.path.startsWith(from + '/')) continue
+  const renamePath = async (from: string, dest: string) => {
+    if (from === dest) return
+    for (const f of openRef.current) {
+      if (!withinTreePath(f.path, from)) continue
       clearTimeout(saveTimers.current[f.path])
       delete saveTimers.current[f.path]
-      if (f.dirty && !f.err) await window.gt.files.write(f.path, f.content)
+      await saveWrites.current[f.path]
+      if (f.dirty && !f.err && !(await window.gt.files.write(f.path, f.content)))
+        throw new Error('Could not save edits before renaming. Please retry.')
     }
-    if (await window.gt.files.rename(from, dest)) {
-      const remap = (p: string) =>
-        p === from ? dest : p.startsWith(from + '/') ? dest + p.slice(from.length) : p
-      setOpen((o) => o.map((f) => ({ ...f, path: remap(f.path) })))
-      if (activePath) setActivePath(remap(activePath))
-      bump()
-    }
+    if (!(await window.gt.files.rename(from, dest)))
+      throw new Error('Could not rename. Check the name, destination and permissions.')
+    const remap = (p: string) => remapTreePath(p, from, dest)
+    const next = openRef.current.map((f) => ({
+      ...f,
+      path: remap(f.path),
+      dirty: withinTreePath(f.path, from) && !f.err ? false : f.dirty,
+    }))
+    openRef.current = next
+    setOpen(next)
+    if (activePath) setActivePath(remap(activePath))
+    setSelectedDir(remap(selectedDir))
+    history.current.stack = history.current.stack.map(remap)
+    bump()
   }
+  const commitPrompt = () =>
+    runFileOp(async () => {
+      const name = pv.trim()
+      if (!prompt) return
+      if (!validEntryName(name))
+        throw new Error('Enter a name without slashes; names cannot be a single or double dot.')
+      if (prompt.kind === 'rename') {
+        const parent = parentOf(prompt.target!)
+        await renamePath(prompt.target!, (parent ? parent + '/' : '') + name)
+      } else {
+        const path = (prompt.parent ? prompt.parent + '/' : '') + name
+        if (!(await window.gt.files.create(path, prompt.kind === 'new-folder')))
+          throw new Error(
+            'Could not create. The name may already exist or the folder may be read-only.',
+          )
+        bump()
+        if (prompt.kind === 'new-file') await openFile(path)
+      }
+      setPrompt(null)
+      setPv('')
+    })
+  const commitDelete = () =>
+    runFileOp(async () => {
+      if (!confirmDelete) return
+      for (const f of openRef.current) {
+        if (!withinTreePath(f.path, confirmDelete)) continue
+        clearTimeout(saveTimers.current[f.path])
+        delete saveTimers.current[f.path]
+        await saveWrites.current[f.path]
+      }
+      if (!(await window.gt.files.del(confirmDelete)))
+        throw new Error('Could not delete. Check the path and permissions.')
+      const next = openRef.current.filter((f) => !withinTreePath(f.path, confirmDelete))
+      openRef.current = next
+      setOpen(next)
+      if (activePath && withinTreePath(activePath, confirmDelete))
+        setActivePath(next[0]?.path ?? null)
+      if (withinTreePath(selectedDir, confirmDelete)) setSelectedDir(parentOf(confirmDelete))
+      history.current = { stack: [], at: -1 }
+      setConfirmDelete(null)
+      bump()
+    })
+  const movePath = (from: string, toDir: string) =>
+    runFileOp(async () => {
+      const dest = moveTargetFor(from, toDir)
+      if (dest) await renamePath(from, dest)
+    })
 
   const nodeActs: FileTreeActions = {
     onOpen: (p) => openFile(p),
     onSelectDir: setSelectedDir,
     onRename: (p) => startPrompt({ kind: 'rename', target: p }),
-    onDelete: setConfirmDelete,
+    onDelete: (p) => {
+      if (fileOpLock.current) return
+      setPrompt(null)
+      setFileOpError('')
+      setConfirmDelete(p)
+    },
+    onNewFile: (p) => startPrompt({ kind: 'new-file', parent: p }),
+    onNewFolder: (p) => startPrompt({ kind: 'new-folder', parent: p }),
     onMove: movePath,
     onCompare: (p) => {
       // Nothing open to compare against → just open the file instead.
@@ -863,6 +1003,23 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
             </button>
           )}
           <span className="tabular-nums">{describeIndent(detectIndent(activeFile.content))}</span>
+          <button
+            type="button"
+            aria-pressed={showGitGutter}
+            title="Git gutter: saved changes vs HEAD. On by default; local text files up to 500 KB."
+            className="shrink-0 rounded px-1.5 py-0.5 hover:bg-white/5 hover:text-zinc-300"
+            onClick={() => {
+              const next = !showGitGutter
+              setShowGitGutter(next)
+              try {
+                localStorage.setItem('gt.filesGitGutter', next ? '1' : '0')
+              } catch {
+                /* storage disabled */
+              }
+            }}
+          >
+            Git gutter {showGitGutter ? 'on' : 'off'}
+          </button>
         </div>
       )}
 
@@ -967,11 +1124,13 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
                 <CodeEditor
                   key={activeFile.path}
                   value={activeFile.content}
+                  editable={!fileOpBusy}
                   onChange={(v) => {
+                    if (fileOpLock.current) return
                     patch(activeFile.path, { content: v, dirty: true })
                     scheduleSave(activeFile.path, v)
                   }}
-                  extensions={[...langForPath(activeFile.path), ...attrExt]}
+                  extensions={[...langForPath(activeFile.path), ...attrExt, ...gitExt]}
                   scrollToLine={activeFile.scrollLine}
                   onView={(v) => (views.current[activeFile.path] = v)}
                 />
@@ -1154,6 +1313,41 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
                 </button>
               </div>
 
+              <div className="flex shrink-0 gap-2 border-b border-[var(--gt-border)] px-2 py-1 text-xs">
+                <button
+                  aria-expanded={showCheck}
+                  onClick={() => setShowCheck((v) => !v)}
+                  className="rounded px-1.5 py-1 hover:bg-white/10"
+                >
+                  Run check
+                </button>
+                {!ctx.remote && ctx.repoRoot && (
+                  <>
+                    {activePath && (
+                      <button
+                        onClick={() => navigateTo('notes', { path: activePath })}
+                        className="rounded px-1.5 py-1 hover:bg-white/10"
+                      >
+                        File notes
+                      </button>
+                    )}
+                    {selectedDir && (
+                      <button
+                        onClick={() => navigateTo('notes', { path: selectedDir })}
+                        className="rounded px-1.5 py-1 hover:bg-white/10"
+                      >
+                        Folder notes
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+              {showCheck && <RunCheck key={ctx.repoRoot || ctx.cwd} />}
+              {fileOpError && (
+                <div role="alert" className="px-2 py-1 text-xs text-destructive">
+                  {fileOpError}
+                </div>
+              )}
               {prompt && (
                 <div className="flex shrink-0 items-center gap-1 border-b border-[var(--gt-border)] bg-black/30 px-2 py-1.5">
                   <span className="text-[10px] text-zinc-500">
@@ -1165,6 +1359,8 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
                   </span>
                   <Input
                     autoFocus
+                    disabled={fileOpBusy}
+                    aria-label="File or folder name"
                     value={pv}
                     onChange={(e) => setPv(e.target.value)}
                     onKeyDown={(e) => {
@@ -1178,9 +1374,14 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
               {confirmDelete && (
                 <div className="flex shrink-0 items-center gap-2 border-b border-[var(--gt-red)]/30 bg-[var(--gt-red)]/10 px-2 py-1.5 text-[11px]">
                   <span className="min-w-0 flex-1 truncate text-[var(--gt-red)]">
-                    Delete {base(confirmDelete)}?
+                    Permanently delete {base(confirmDelete)} and any contents?
                   </span>
-                  <Button variant="destructive" size="xs" onClick={commitDelete}>
+                  <Button
+                    variant="destructive"
+                    size="xs"
+                    disabled={fileOpBusy}
+                    onClick={commitDelete}
+                  >
                     Delete
                   </Button>
                   {/* Was an unlabelled icon-only <button>: nothing but a mouse
@@ -1191,6 +1392,7 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
                     size="icon"
                     aria-label="Cancel delete"
                     title="Cancel delete"
+                    disabled={fileOpBusy}
                     onClick={() => setConfirmDelete(null)}
                   >
                     <X size={12} strokeWidth={2} />
