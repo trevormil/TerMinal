@@ -8,8 +8,8 @@
 Running notes for TerMinal — deferred prompts, known gaps, and creative
 ideas. Vibe-coded; this is the "what's next / what we punted" list.
 
-TER-39 hygiene sweep (2026-09-15): shipped markers verified through TER-38;
-TER-40–42 MVPs are recorded below. `bun audit` reports zero vulnerabilities.
+TER-43 hygiene sweep (2026-09-17): shipped markers verified through TER-42;
+TER-44–46 MVPs are recorded below. `bun audit` reports zero vulnerabilities.
 Mermaid remains pinned to 11.16.1: GitHub Dependabot alerts #1–5 are still open,
 but each identifies 11.16.1 as the first patched version. The default branch
 still pins 11.16.0; merging this PR remains a human action. The registry now
@@ -39,7 +39,10 @@ offers 12.0.0, but these alerts require no major upgrade or lockfile churn.
   Inline diagnostics / LSP remain deferred.
 - **Format on save — DONE (TER-16).** Settings → Apps enables Prettier on ⌘S
   (default off). Uses repo Prettier/config or the bundled fallback; autosave stays raw.
-- **Go-to-definition / symbol search** (CM has basic; full LSP later).
+- **Go-to-definition / symbol search — MVP DONE (TER-44).** Files offers a
+  same-file declaration search over the live editor buffer. Search a name, list
+  declarations, or jump from the cursor identifier. Common declaration heuristics
+  only; cross-file resolution and full LSP remain deferred. No network/server.
 - **Replace across project — DONE.** Files search supports replacement previews,
   exclusions, and project-wide apply.
 - **Git gutter — DONE (TER-20).** Files breadcrumb toggle, default on, persisted
@@ -59,8 +62,9 @@ offers 12.0.0, but these alerts require no major upgrade or lockfile churn.
   workspaces explain availability. No automatic branch creation, push, or merge.
 - **Comment on PR/MR discussions — MVP DONE (TER-40).** Findings has an explicit
   general-comment box for GitHub and GitLab, using the existing forge CLI/API.
-  Open review threads leads to existing GitHub thread replies. GitLab thread
-  browsing/replies and resolve/unresolve remain deferred. Errors preserve the draft;
+  **GitLab thread browse/reply — MVP DONE (TER-46).** Open review threads lists
+  paginated discussions through the configured glab host and offers explicit replies.
+  GitHub replies remain available; resolve/unresolve stays deferred. Errors preserve the draft;
   posting never merges or submits an approval.
 - **Diff layouts — DONE (TER-14/15).** Unified, split and structural choices
   persist under `gt.diffViewMode`, with invalid/unavailable storage falling back safely.
@@ -111,8 +115,10 @@ offers 12.0.0, but these alerts require no major upgrade or lockfile churn.
 - **Ticket mentions — MVP DONE (TER-38).** Notes lists resolved mentions of
   ticket identifiers (including #TER-37 / TER-37) and exact local ticket slugs
   with optional .md suffix. Buttons navigate to the matching ticket or its
-  Linear view. Markdown stays unchanged; reverse ticket-to-note indexing and
-  a full graph remain deferred.
+  Linear view. **Reverse ticket → note mentions — MVP DONE (TER-45).** Ticket
+  detail scans saved repo/global knowledge items, scratch, and path notes locally;
+  hits navigate to the exact note. Unsaved edits are not indexed. Markdown stays
+  unchanged; a full graph remains deferred.
 
 ## Bigger swings
 
