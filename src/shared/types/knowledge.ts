@@ -74,3 +74,13 @@ export type KnowledgeRagSearchResult = {
   raw?: unknown
   error?: string
 }
+
+export type LocalNote = {
+  title: string
+  content: string
+  scope: 'repo' | 'global'
+  view: 'knowledge' | 'scratch' | 'path'
+  itemId?: string
+  categoryId?: string
+  path?: string
+}

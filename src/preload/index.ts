@@ -499,6 +499,8 @@ const gt: GtApi = {
     filterOptions: () => ipcRenderer.invoke('observability:filter-options'),
   },
   githubReview: {
+    gitlabReply: (repoRoot: string, iid: number, discussionId: string, body: string) =>
+      ipcRenderer.invoke('github-review:gitlab-reply', repoRoot, iid, discussionId, body),
     checks: (repoRoot: string, iid: number) =>
       ipcRenderer.invoke('github-review:checks', repoRoot, iid),
     checksSummaries: (repoRoot: string) =>
@@ -563,6 +565,7 @@ const gt: GtApi = {
   clipboardImageToFile: (): Promise<string | null> => ipcRenderer.invoke('clipboard:imageToFile'),
 
   notes: {
+    scan: (repoRoot: string) => ipcRenderer.invoke('notes:scan', repoRoot),
     read: (scope: 'repo' | 'global') => ipcRenderer.invoke('notes:read', scope),
     write: (scope: 'repo' | 'global', content: string) =>
       ipcRenderer.invoke('notes:write', scope, content),

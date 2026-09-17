@@ -145,6 +145,11 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
   useLangsReady()
   const hasRepo = !!ctx.repoRoot
   const [scope, setScope] = useState<'repo' | 'global'>('global')
+  const pendingNote = useRef<{
+    scope: 'repo' | 'global'
+    itemId: string
+    categoryId: string
+  } | null>(null)
   const [notePath, setNotePath] = useState('')
   const [noteRequest, setNoteRequest] = useState(0)
   useEffect(
@@ -154,6 +159,18 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
           setNotePath(event.payload.path)
           setNoteRequest((request) => request + 1)
           setView('path')
+        } else if (event.payload?.scope === 'repo' || event.payload?.scope === 'global') {
+          const nextScope = event.payload.scope
+          const itemId = typeof event.payload.itemId === 'string' ? event.payload.itemId : ''
+          const categoryId =
+            typeof event.payload.categoryId === 'string' ? event.payload.categoryId : ''
+          pendingNote.current = { scope: nextScope, itemId, categoryId }
+          setScope(nextScope)
+          setNoteRequest((request) => request + 1)
+          setView(event.payload.view === 'scratch' ? 'scratch' : 'knowledge')
+          setActiveItemId(itemId)
+          setActiveCategoryId(categoryId)
+          setQuery('')
         }
       }, 'notes'),
     [],
@@ -203,6 +220,11 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
       setActiveItemId((cur) =>
         normalized.items.some((i) => i.id === cur) ? cur : normalized.items[0]?.id || '',
       )
+      if (pendingNote.current?.scope === scope) {
+        setActiveItemId(pendingNote.current.itemId)
+        setActiveCategoryId(pendingNote.current.categoryId)
+        pendingNote.current = null
+      }
       setSaved(true)
     })
     window.gt.notes.read(scope).then((text) => {
@@ -213,7 +235,7 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
     return () => {
       alive = false
     }
-  }, [scope, ctx.repoRoot])
+  }, [scope, ctx.repoRoot, noteRequest])
 
   useEffect(
     () => () => {

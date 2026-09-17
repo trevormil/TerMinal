@@ -74,6 +74,7 @@ export type PrReviewSubmission = PrActor & {
 
 /** An inline review thread, anchored to a file and line. */
 export type PrReviewThread = {
+  discussionId?: string
   id: string
   path: string
   line: number | null
@@ -100,6 +101,7 @@ export type PrConversation =
   | {
       supported: true
       /** APPROVED | CHANGES_REQUESTED | REVIEW_REQUIRED | '' */
+      forge?: 'github' | 'gitlab'
       reviewDecision: string
       reviewers: PrReviewer[]
       comments: PrComment[]

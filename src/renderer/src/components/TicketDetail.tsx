@@ -1,3 +1,4 @@
+import { NoteBacklinks } from '../tabs/notes/NoteBacklinks'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Plus, Hand, ArrowUpRight, CircleDot, ListChecks, Check, X, Bot } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -604,6 +605,7 @@ export function TicketDetail({
       <div className="min-h-0 flex-1 overflow-y-auto">
         {tab === 'ticket' && (
           <div className="px-5 pb-6 pt-4">
+            <NoteBacklinks ticket={selected} repoRoot={repoRoot} />
             {selected.depends_on.length > 0 && (
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <span className="text-[10.5px] uppercase tracking-wider text-zinc-600">
@@ -691,6 +693,7 @@ export function TicketDetail({
 
         {tab === 'log' && (
           <div className="px-5 pb-6 pt-4">
+            <NoteBacklinks ticket={selected} repoRoot={repoRoot} />
             <LogSection
               comments={selected.comments || []}
               slug={selected.slug}

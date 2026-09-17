@@ -1,3 +1,4 @@
+import { scanLocalNotes } from '../note-scan'
 // Notes + knowledge-base IPC (ticket 0122 index.ts decomposition). Both are
 // repo-bound or global, and both resolve their repo through the active
 // workspace daemon — the single dependency.
@@ -22,6 +23,7 @@ import { type WorkspaceDaemon } from '../workspace-daemon'
 
 export function registerKnowledgeIpc(deps: { activeDaemon(): WorkspaceDaemon }): void {
   // ---- notes (repo-bound + global, persisted) ----
+  handle('notes:scan', (_e, repoRoot: string) => scanLocalNotes(repoRoot))
   handle('notes:read', (_e, scope: NotesScope) => {
     return deps.activeDaemon().notesRead(scope)
   })

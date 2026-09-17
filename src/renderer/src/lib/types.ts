@@ -898,9 +898,14 @@ export type GtApi = {
     ) => Promise<ObservabilityIndexQueryResult>
     filterOptions: () => Promise<{ repos: string[]; engines: string[]; models: string[] }>
   }
-  /** GitHub-native PR review. Every method answers `supported: false` (or an
-   *  error result) off GitHub — see src/main/github-review.ts. */
+  /** Forge conversations and comments; checks and review submissions are GitHub-only. */
   githubReview: {
+    gitlabReply: (
+      repoRoot: string,
+      iid: number,
+      discussionId: string,
+      body: string,
+    ) => Promise<PrActionResult>
     checks: (repoRoot: string, iid: number) => Promise<PrChecks>
     checksSummaries: (repoRoot: string) => Promise<PrChecksSummaries>
     conversation: (repoRoot: string, iid: number) => Promise<PrConversation>
@@ -989,6 +994,7 @@ export type GtApi = {
   pathForFile: (file: File) => string
   clipboardImageToFile: () => Promise<string | null>
   notes: {
+    scan: (repoRoot: string) => Promise<import('../../../shared/types/knowledge').LocalNote[]>
     read: (scope: 'repo' | 'global') => Promise<string>
     write: (scope: 'repo' | 'global', content: string) => Promise<boolean>
   }

@@ -171,10 +171,12 @@ export function ReplyBox({
   repoRoot,
   iid,
   replyToId,
+  discussionId,
   onDone,
 }: {
   repoRoot: string
   iid: number
+  discussionId?: string
   replyToId: number
   onDone: () => void
 }) {
@@ -211,7 +213,9 @@ export function ReplyBox({
           aria-busy={!!busy || undefined}
           onClick={async () => {
             const ok = await runAction('reply', () =>
-              window.gt.githubReview.reply(repoRoot, iid, replyToId, body),
+              discussionId
+                ? window.gt.githubReview.gitlabReply(repoRoot, iid, discussionId, body)
+                : window.gt.githubReview.reply(repoRoot, iid, replyToId, body),
             )
             if (ok) {
               setBody('')

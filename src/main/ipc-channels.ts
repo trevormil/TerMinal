@@ -109,6 +109,7 @@ export type ChannelMap = {
   'github-review:checks-summaries': Of<GtApi['githubReview']['checksSummaries']>
   'github-review:comment': Of<GtApi['githubReview']['comment']>
   'github-review:conversation': Of<GtApi['githubReview']['conversation']>
+  'github-review:gitlab-reply': Of<GtApi['githubReview']['gitlabReply']>
   'github-review:reply': Of<GtApi['githubReview']['reply']>
   'github-review:submit': Of<GtApi['githubReview']['submit']>
   'harness:status': Of<GtApi['harnessStatus']>
@@ -166,6 +167,7 @@ export type ChannelMap = {
   'mrs:overview': Of<GtApi['getMrOverview']>
   'mrs:structural-diff': Of<GtApi['getStructuralDiff']>
   'notes:read': Of<GtApi['notes']['read']>
+  'notes:scan': Of<GtApi['notes']['scan']>
   'notes:write': Of<GtApi['notes']['write']>
   'observability:byAgent': Of<GtApi['observability']['byAgent']>
   'observability:filter-options': Of<GtApi['observability']['filterOptions']>

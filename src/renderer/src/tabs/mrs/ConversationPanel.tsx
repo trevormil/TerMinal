@@ -185,12 +185,13 @@ function ThreadCard({
           {thread.comments.map((c) => (
             <CommentCard key={c.id} c={c} />
           ))}
-          {thread.replyToId != null && (
+          {(thread.replyToId != null || thread.discussionId) && (
             <div className="px-3">
               <ReplyBox
                 repoRoot={repoRoot}
                 iid={iid}
-                replyToId={thread.replyToId}
+                replyToId={thread.replyToId ?? 0}
+                discussionId={thread.discussionId}
                 onDone={onDone}
               />
             </div>
@@ -261,7 +262,7 @@ export function ConversationPanel({ repoRoot, iid }: { repoRoot: string; iid: nu
 
   if (!repoRoot) return <Empty>Conversation needs a local repo.</Empty>
   if (loading) return <Empty>Loading conversation…</Empty>
-  if (!data) return <Empty>Could not load the conversation from gh.</Empty>
+  if (!data) return <Empty>Could not load the conversation from the forge.</Empty>
   if (!data.supported)
     return (
       <>
@@ -300,7 +301,7 @@ export function ConversationPanel({ repoRoot, iid }: { repoRoot: string; iid: nu
         </Section>
         <CommentBox key={`${repoRoot}:${iid}`} repoRoot={repoRoot} iid={iid} onDone={reload} />
       </div>
-      <ReviewActions repoRoot={repoRoot} iid={iid} onDone={reload} />
+      {data.forge !== 'gitlab' && <ReviewActions repoRoot={repoRoot} iid={iid} onDone={reload} />}
     </div>
   )
 }
