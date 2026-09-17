@@ -1,3 +1,4 @@
+import { SymbolJump } from './SymbolJump'
 import { RunCheck } from './RunCheck'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -1120,6 +1121,7 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
                   onWantsSource={setViewerSource}
                 />
               )}
+              <SymbolJump key={activeFile.path} getView={() => views.current[activeFile.path]} />
               <div className="min-h-0 flex-1">
                 <CodeEditor
                   key={activeFile.path}
