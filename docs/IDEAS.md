@@ -8,12 +8,14 @@
 Running notes for TerMinal — deferred prompts, known gaps, and creative
 ideas. Vibe-coded; this is the "what's next / what we punted" list.
 
-TER-43 hygiene sweep (2026-09-17): shipped markers verified through TER-42;
-TER-44–46 MVPs are recorded below. `bun audit` reports zero vulnerabilities.
-Mermaid remains pinned to 11.16.1: GitHub Dependabot alerts #1–5 are still open,
-but each identifies 11.16.1 as the first patched version. The default branch
-still pins 11.16.0; merging this PR remains a human action. The registry now
-offers 12.0.0, but these alerts require no major upgrade or lockfile churn.
+**TER-47 hygiene sweep — DONE (2026-09-18):** shipped markers reconciled through TER-46;
+TER-48–50 MVPs are recorded below. `bun audit` reports zero vulnerabilities.
+Mermaid remains pinned to 11.16.1. The last successful Dependabot check (TER-43)
+identified 11.16.1 as the first patched version for alerts #1–5. Today's
+re-check returned HTTP 403 (token cannot read alerts), so their current state
+is unverified. `origin/main` still pins 11.16.0; merging remains a human action.
+The previously observed registry 12.x does not by itself require a major upgrade;
+the clean branch audit supports retaining the existing patch pin and lockfile.
 
 ## Deferred / partially-done prompts
 
@@ -42,7 +44,16 @@ offers 12.0.0, but these alerts require no major upgrade or lockfile churn.
 - **Go-to-definition / symbol search — MVP DONE (TER-44).** Files offers a
   same-file declaration search over the live editor buffer. Search a name, list
   declarations, or jump from the cursor identifier. Common declaration heuristics
-  only; cross-file resolution and full LSP remain deferred. No network/server.
+  only. **Cross-file declaration search — MVP DONE (TER-49).** Search tracked files
+  locally and choose a hit to open its file/line. Limits: 500 paths, 256 KB/file,
+  8 MB total, 100 hits, three-second scan budget after bounded git listing.
+  Searching, truncated, skipped, empty and error states are visible. Saved files
+  only; same-file navigation continues to use the active buffer. Full semantic
+  resolution and LSP remain deferred. No network/server.
+- **Current-file outline — MVP DONE (TER-50).** Optional Outline toggle (off
+  initially) lists declarations in the active buffer and selects/scrolls to a
+  chosen declaration. Uses the same TER-44 heuristics, updates while editing,
+  and has an explicit empty state.
 - **Replace across project — DONE.** Files search supports replacement previews,
   exclusions, and project-wide apply.
 - **Git gutter — DONE (TER-20).** Files breadcrumb toggle, default on, persisted
@@ -64,8 +75,12 @@ offers 12.0.0, but these alerts require no major upgrade or lockfile churn.
   general-comment box for GitHub and GitLab, using the existing forge CLI/API.
   **GitLab thread browse/reply — MVP DONE (TER-46).** Open review threads lists
   paginated discussions through the configured glab host and offers explicit replies.
-  GitHub replies remain available; resolve/unresolve stays deferred. Errors preserve the draft;
-  posting never merges or submits an approval.
+  **GitLab resolve/unresolve — MVP DONE (TER-48).** Resolvable discussion threads
+  offer explicit Resolve / Unresolve buttons through the configured glab host.
+  Failed mutations preserve the open thread and reply draft and show a retryable
+  error. GitHub replies remain available; GitHub resolution stays deferred (no
+  existing parity mutation). Posting never merges or submits an approval.
+  API contract: [GitLab discussions](https://docs.gitlab.com/api/discussions/).
 - **Diff layouts — DONE (TER-14/15).** Unified, split and structural choices
   persist under `gt.diffViewMode`, with invalid/unavailable storage falling back safely.
 - **Mark all viewed + viewed count — DONE.** Per-file checkboxes and Mark all / Clear
