@@ -900,6 +900,12 @@ export type GtApi = {
   }
   /** Forge conversations and comments; checks and review submissions are GitHub-only. */
   githubReview: {
+    gitlabResolve: (
+      repoRoot: string,
+      iid: number,
+      discussionId: string,
+      resolved: boolean,
+    ) => Promise<PrActionResult>
     gitlabReply: (
       repoRoot: string,
       iid: number,

@@ -1,6 +1,10 @@
 import { afterEach, expect, test } from 'bun:test'
 import { setForgeRunForTests } from './forge'
-import { gitlabDiscussions, postGitlabReply } from './gitlab-discussions'
+import {
+  gitlabDiscussions,
+  postGitlabReply,
+  setGitlabDiscussionResolved,
+} from './gitlab-discussions'
 const repo = { host: 'gitlab.example.com', path: 'group/repo' }
 afterEach(() => setForgeRunForTests(null))
 test('loads discussions and replies through the configured host', async () => {
@@ -90,4 +94,61 @@ test('loads subsequent pages and keeps individual notes non-replyable', async ()
     expect(result.threads).toHaveLength(101)
     expect(result.threads[100].discussionId).toBeUndefined()
   }
+})
+
+for (const resolved of [true, false]) {
+  test(`explicit GitLab discussion resolved=${resolved} uses PUT and a typed boolean`, async () => {
+    setForgeRunForTests(async (cli, args) => {
+      expect(cli).toBe('glab')
+      expect(args).toEqual([
+        'api',
+        '--method',
+        'PUT',
+        'projects/group%2Frepo/merge_requests/1/discussions/abc',
+        '--hostname',
+        repo.host,
+        '-F',
+        `resolved=${resolved}`,
+      ])
+      return { err: null, stderr: '', stdout: '{}' }
+    })
+    expect(await setGitlabDiscussionResolved('/tmp', repo, 1, 'abc', resolved)).toEqual({
+      ok: true,
+    })
+  })
+}
+test('resolution validates input and surfaces authentication/mutation failure', async () => {
+  let calls = 0
+  setForgeRunForTests(async () => {
+    calls++
+    return { err: new Error('failed'), stderr: 'authentication required', stdout: '' }
+  })
+  for (const [iid, id, resolved] of [
+    [0, 'abc', true],
+    [1, '../bad', false],
+    [1, 'abc', 'true'],
+  ] as const) {
+    expect(
+      await setGitlabDiscussionResolved('/tmp', repo, iid, id, resolved as boolean),
+    ).toMatchObject({ ok: false })
+  }
+  expect(calls).toBe(0)
+  expect(await setGitlabDiscussionResolved('/tmp', repo, 1, 'abc', true)).toMatchObject({
+    ok: false,
+    error: expect.stringContaining('auth'),
+  })
+})
+test('only non-individual resolvable discussions offer resolution', async () => {
+  setForgeRunForTests(async () => ({
+    err: null,
+    stderr: '',
+    stdout: JSON.stringify([
+      { id: 'a', notes: [{ id: 1, body: 'one', resolvable: true, resolved: false }] },
+      { id: 'b', individual_note: true, notes: [{ id: 2, body: 'two', resolvable: true }] },
+      { id: 'c', notes: [{ id: 3, body: 'three' }] },
+    ]),
+  }))
+  const result = await gitlabDiscussions('/tmp', repo, 1)
+  if (!result.supported) throw new Error(result.reason)
+  expect(result.threads.map((t) => t.resolvable)).toEqual([true, false, false])
 })

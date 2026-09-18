@@ -65,6 +65,7 @@ export async function gitlabDiscussions(
         resolved:
           notes.some((n) => n.resolvable) &&
           notes.filter((n) => n.resolvable).every((n) => n.resolved),
+        resolvable: !discussion.individual_note && notes.some((n) => n.resolvable === true),
         outdated: false,
         replyToId: null,
         comments: notes.map((n) => ({
@@ -126,6 +127,40 @@ export async function postGitlabReply(
         error:
           forgeErrorReason('glab', result.err, result.stderr) ||
           'Reply failed. Check GitLab authentication and retry.',
+      }
+    : { ok: true }
+}
+
+export async function setGitlabDiscussionResolved(
+  repoRoot: string,
+  repo: RepoId,
+  iid: number,
+  discussionId: string,
+  resolved: boolean,
+): Promise<PrActionResult> {
+  if (!validIid(iid) || !/^[a-zA-Z0-9_-]+$/.test(discussionId) || typeof resolved !== 'boolean')
+    return { ok: false, error: 'Choose a GitLab discussion and a resolution state.' }
+  const result = await run(
+    'glab',
+    [
+      'api',
+      '--method',
+      'PUT',
+      `${endpoint(repo, iid)}/${discussionId}`,
+      '--hostname',
+      repo.host,
+      '-F',
+      `resolved=${resolved}`,
+    ],
+    repoRoot,
+    { timeout: 30_000 },
+  )
+  return result.err
+    ? {
+        ok: false,
+        error:
+          forgeErrorReason('glab', result.err, result.stderr) ||
+          'Could not update this discussion. Check GitLab authentication and permissions, then retry.',
       }
     : { ok: true }
 }

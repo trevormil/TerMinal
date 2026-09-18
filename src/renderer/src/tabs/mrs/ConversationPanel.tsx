@@ -158,6 +158,27 @@ function ThreadCard({
   // A resolved thread is settled business — collapsed so the open ones read as
   // the actual work left.
   const [open, setOpen] = useState(!thread.resolved)
+  const [resolving, setResolving] = useState(false)
+  const [resolutionError, setResolutionError] = useState('')
+  const changeResolution = async () => {
+    if (!thread.discussionId || !thread.resolvable || resolving) return
+    setResolving(true)
+    setResolutionError('')
+    try {
+      const result = await window.gt.githubReview.gitlabResolve(
+        repoRoot,
+        iid,
+        thread.discussionId,
+        !thread.resolved,
+      )
+      if (result.ok) onDone()
+      else setResolutionError(result.error || 'Could not update the discussion.')
+    } catch {
+      setResolutionError('Could not update the discussion. Check your connection and retry.')
+    } finally {
+      setResolving(false)
+    }
+  }
   return (
     <div className="border-b border-[var(--gt-border)]/50 last:border-b-0">
       <button
@@ -185,6 +206,27 @@ function ThreadCard({
           {thread.comments.map((c) => (
             <CommentCard key={c.id} c={c} />
           ))}
+          {thread.discussionId && thread.resolvable && (
+            <div className="px-3 pb-2 text-xs">
+              <button
+                type="button"
+                disabled={resolving}
+                onClick={changeResolution}
+                className="underline disabled:opacity-50"
+              >
+                {resolving
+                  ? 'Updating discussion…'
+                  : thread.resolved
+                    ? 'Unresolve discussion'
+                    : 'Resolve discussion'}
+              </button>
+              {resolutionError && (
+                <p role="alert" className="pt-1 text-red-400">
+                  {resolutionError}
+                </p>
+              )}
+            </div>
+          )}
           {(thread.replyToId != null || thread.discussionId) && (
             <div className="px-3">
               <ReplyBox

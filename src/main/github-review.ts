@@ -1,4 +1,8 @@
-import { gitlabDiscussions, postGitlabReply } from './gitlab-discussions'
+import {
+  gitlabDiscussions,
+  postGitlabReply,
+  setGitlabDiscussionResolved,
+} from './gitlab-discussions'
 import { postDiscussionComment } from './forge-comment'
 import { forgeCreateAvailability } from './forge-create'
 import { readSettings } from './settings'
@@ -562,4 +566,18 @@ export async function replyToGitlabDiscussion(
   const error = forgeCreateAvailability(repo, readSettings().forge)
   if (error) return { ok: false, error }
   return postGitlabReply(repoRoot, repo, iid, discussionId, body)
+}
+
+export async function resolveGitlabDiscussion(
+  repoRoot: string,
+  iid: number,
+  discussionId: string,
+  resolved: boolean,
+): Promise<PrActionResult> {
+  const repo = repoForCwd(repoRoot)
+  if (!repo || forgeFor(repoRoot).kind !== 'gitlab')
+    return { ok: false, error: 'Discussion resolution needs a local GitLab checkout.' }
+  const error = forgeCreateAvailability(repo, readSettings().forge)
+  if (error) return { ok: false, error }
+  return setGitlabDiscussionResolved(repoRoot, repo, iid, discussionId, resolved)
 }

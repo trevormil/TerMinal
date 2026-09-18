@@ -110,6 +110,7 @@ export type ChannelMap = {
   'github-review:comment': Of<GtApi['githubReview']['comment']>
   'github-review:conversation': Of<GtApi['githubReview']['conversation']>
   'github-review:gitlab-reply': Of<GtApi['githubReview']['gitlabReply']>
+  'github-review:gitlab-resolve': Of<GtApi['githubReview']['gitlabResolve']>
   'github-review:reply': Of<GtApi['githubReview']['reply']>
   'github-review:submit': Of<GtApi['githubReview']['submit']>
   'harness:status': Of<GtApi['harnessStatus']>

@@ -499,6 +499,8 @@ const gt: GtApi = {
     filterOptions: () => ipcRenderer.invoke('observability:filter-options'),
   },
   githubReview: {
+    gitlabResolve: (repoRoot: string, iid: number, discussionId: string, resolved: boolean) =>
+      ipcRenderer.invoke('github-review:gitlab-resolve', repoRoot, iid, discussionId, resolved),
     gitlabReply: (repoRoot: string, iid: number, discussionId: string, body: string) =>
       ipcRenderer.invoke('github-review:gitlab-reply', repoRoot, iid, discussionId, body),
     checks: (repoRoot: string, iid: number) =>

@@ -74,6 +74,7 @@ export type PrReviewSubmission = PrActor & {
 
 /** An inline review thread, anchored to a file and line. */
 export type PrReviewThread = {
+  resolvable?: boolean
   discussionId?: string
   id: string
   path: string
