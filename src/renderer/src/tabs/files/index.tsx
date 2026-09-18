@@ -1121,7 +1121,13 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
                   onWantsSource={setViewerSource}
                 />
               )}
-              <SymbolJump key={activeFile.path} getView={() => views.current[activeFile.path]} />
+              <SymbolJump
+                key={activeFile.path}
+                getView={() => views.current[activeFile.path]}
+                source={activeFile.content}
+                local={!ctx.remote}
+                onOpen={(path, line) => void openFile(path, line)}
+              />
               <div className="min-h-0 flex-1">
                 <CodeEditor
                   key={activeFile.path}

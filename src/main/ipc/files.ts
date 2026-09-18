@@ -3,6 +3,7 @@
 // the active workspace daemon (local fs or SSH), which is the one piece of
 // session state, injected via deps.
 
+import { searchFileSymbols } from '../file-symbol-search'
 import { shell } from 'electron'
 import { discoverChecks, runLocalCheck } from '../local-checks'
 import { handle } from '../typed-ipc'
@@ -15,6 +16,7 @@ export function registerFilesIpc(deps: { activeDaemon(): WorkspaceDaemon }): voi
     const daemon = deps.activeDaemon()
     return daemon.remote ? '' : daemon.repoRoot()
   }
+  handle('files:symbols', (_e, query) => searchFileSymbols(localRoot(), query))
   handle('files:checks', () => discoverChecks(localRoot()))
   handle('files:runCheck', (_e, plan, id) => runLocalCheck(localRoot(), plan, id))
   // ---- files (Cursor-like editor; scoped to repo root / cwd) ----

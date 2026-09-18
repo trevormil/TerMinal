@@ -597,6 +597,7 @@ const gt: GtApi = {
     runCheck: (plan, id) => ipcRenderer.invoke('files:runCheck', plan, id),
     list: (rel: string) => ipcRenderer.invoke('files:list', rel),
     listTracked: () => ipcRenderer.invoke('files:listTracked'),
+    symbols: (query: string) => ipcRenderer.invoke('files:symbols', query),
     read: (rel: string) => ipcRenderer.invoke('files:read', rel),
     readBinary: (rel: string) => ipcRenderer.invoke('files:readBinary', rel),
     reveal: (rel: string) => ipcRenderer.invoke('files:reveal', rel),

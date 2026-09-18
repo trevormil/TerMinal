@@ -1,3 +1,6 @@
+import { execFileSync } from 'node:child_process'
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { test, expect } from './app'
 
 test('local symbol search jumps to definitions and reports misses', async ({ ux }) => {
@@ -82,6 +85,7 @@ test('GitLab discussion reply failures preserve the draft and retry succeeds', a
             line: 1,
             diffSide: 'RIGHT',
             resolved: false,
+            resolvable: true,
             outdated: false,
             replyToId: null,
             comments: [
@@ -103,6 +107,18 @@ test('GitLab discussion reply failures preserve the draft and retry succeeds', a
       ipcMain.removeHandler(channel)
       ipcMain.handle(channel, () => value)
     }
+    const conversation = responses['github-review:conversation'] as {
+      threads: { resolved: boolean }[]
+    }
+    let resolves = 0
+    ipcMain.removeHandler('github-review:gitlab-resolve')
+    ipcMain.handle('github-review:gitlab-resolve', (_event, _repo, iid, discussion, resolved) => {
+      if (iid !== 46 || discussion !== 'discussion' || typeof resolved !== 'boolean')
+        throw new Error('Wrong resolution target')
+      if (++resolves === 1) return { ok: false, error: 'GitLab resolution permission denied' }
+      conversation.threads[0].resolved = resolved
+      return { ok: true }
+    })
     let attempts = 0
     ipcMain.removeHandler('github-review:gitlab-reply')
     ipcMain.handle('github-review:gitlab-reply', (_event, _repo, iid, discussion, body) => {
@@ -121,10 +137,54 @@ test('GitLab discussion reply failures preserve the draft and retry succeeds', a
   await ux.page.getByRole('button', { name: 'Reply', exact: true }).click()
   const draft = ux.page.getByPlaceholder('Reply in this thread…')
   await draft.fill('Keep my draft')
+  await ux.page.getByRole('button', { name: 'Resolve discussion', exact: true }).click()
+  await expect(ux.page.getByRole('alert')).toContainText('GitLab resolution permission denied')
+  await expect(draft).toHaveValue('Keep my draft')
+  await expect(ux.page.getByText('Please check this', { exact: true })).toBeVisible()
+  await ux.page.getByRole('button', { name: 'Resolve discussion', exact: true }).click()
+  await expect(
+    ux.page.getByRole('button', { name: 'Unresolve discussion', exact: true }),
+  ).toBeVisible()
+  await expect(draft).toHaveValue('Keep my draft')
+  await ux.page.getByRole('button', { name: 'Unresolve discussion', exact: true }).click()
+  await expect(
+    ux.page.getByRole('button', { name: 'Resolve discussion', exact: true }),
+  ).toBeVisible()
   await ux.page.getByRole('button', { name: 'Reply', exact: true }).click()
   await expect(ux.page.getByRole('alert')).toContainText('GitLab authentication required')
   await expect(draft).toHaveValue('Keep my draft')
   await ux.page.getByRole('button', { name: 'Reply', exact: true }).click()
   await expect(draft).toHaveCount(0)
+  expect(await ux.failures.rejections()).toEqual([])
+})
+
+test('tracked symbol search opens another file and outline follows the live buffer', async ({
+  ux,
+}) => {
+  writeFileSync(join(ux.sandbox.repo, 'target.ts'), 'export function distant() {}\n')
+  execFileSync('git', ['add', '--', 'target.ts'], { cwd: ux.sandbox.repo })
+  await ux.openTab('files')
+  const pane = ux.page.locator('[data-tab-pane="files"]')
+  await pane.getByRole('button', { name: 'File', exact: true }).click()
+  const input = pane.getByRole('textbox', { name: 'File or folder name' })
+  await input.fill('source.ts')
+  await input.press('Enter')
+  await pane.locator('.cm-content[contenteditable="true"]').fill('const nearby = 1\ndistant()')
+  await expect(pane.getByRole('navigation', { name: 'Current file outline' })).toHaveCount(0)
+  await pane.getByRole('button', { name: 'Outline', exact: true }).click()
+  const outline = pane.getByRole('navigation', { name: 'Current file outline' })
+  await outline.getByRole('button', { name: 'nearby:1', exact: true }).click()
+  await expect.poll(() => ux.page.evaluate(() => window.getSelection()?.toString())).toBe('nearby')
+  await pane.locator('.cm-content[contenteditable="true"]').fill('callOnly()')
+  await expect(outline).toContainText('No declarations in this buffer.')
+  await pane.getByLabel('Local symbol', { exact: true }).fill('distant')
+  await pane.getByRole('button', { name: 'Search tracked files', exact: true }).click()
+  await pane.getByRole('button', { name: 'target.ts:1 — distant', exact: true }).click()
+  await expect(pane.locator('.cm-content[contenteditable="true"]')).toContainText(
+    'export function distant',
+  )
+  await pane.getByLabel('Local symbol', { exact: true }).fill('absent')
+  await pane.getByRole('button', { name: 'Search tracked files', exact: true }).click()
+  await expect(pane.getByRole('status')).toContainText('No tracked definition found')
   expect(await ux.failures.rejections()).toEqual([])
 })

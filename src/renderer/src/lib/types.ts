@@ -1,3 +1,4 @@
+import type { FileSymbolSearchResult } from '../../../shared/local-symbols'
 import type {
   ForgeCreateContext,
   ForgeCreateInput,
@@ -1045,6 +1046,7 @@ export type GtApi = {
     list: (rel: string) => Promise<FileEntry[]>
     /** Paths known to git, for filename quick-open (distinct from content search). */
     listTracked: () => Promise<string[]>
+    symbols: (query: string) => Promise<FileSymbolSearchResult>
     read: (rel: string) => Promise<{ ok: boolean; content: string; reason?: string }>
     /** Raw bytes as base64 — images, PDFs, and the hex dump (read() refuses
      *  anything containing a NUL byte). */

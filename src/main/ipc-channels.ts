@@ -89,6 +89,7 @@ export type ChannelMap = {
   'files:reveal': Of<GtApi['files']['reveal']>
   'files:runCheck': Of<GtApi['files']['runCheck']>
   'files:search': Of<GtApi['files']['search']>
+  'files:symbols': Of<GtApi['files']['symbols']>
   'files:write': Of<GtApi['files']['write']>
   'fleet:list': Of<GtApi['fleet']>
   'git:branches': Of<GtApi['gitBranches']>
