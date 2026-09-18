@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
-import { mkdirSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, writeFileSync, mkdtempSync, rmSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -41,12 +41,19 @@ describe('repoTicketProvider', () => {
     expect(repoTicketProvider(repo)).toMatchObject({ kind: 'local', label: 'Local backlog' })
   })
 
-  test('supports one configured external provider per repo', () => {
-    const github = repoWithTicketConfig({ provider: 'github' })
-    const linear = repoWithTicketConfig({ provider: 'linear' })
+  test('preserves all four valid provider kinds', () => {
+    const cases = [
+      ['local', 'Local backlog'],
+      ['github', 'GitHub Issues'],
+      ['linear', 'Linear'],
+      ['webview', 'Webview'],
+    ] as const
 
-    expect(repoTicketProvider(github)).toMatchObject({ kind: 'github', label: 'GitHub Issues' })
-    expect(repoTicketProvider(linear)).toMatchObject({ kind: 'linear', label: 'Linear' })
+    for (const [kind, label] of cases) {
+      const repo = repoWithTicketConfig({ provider: kind })
+      expect(repoTicketProvider(repo)).toMatchObject({ kind, label })
+      expect(readRepoTicketConfig(repo).provider).toBe(kind)
+    }
   })
 
   test('falls back to local for unknown provider values', () => {
@@ -152,6 +159,35 @@ describe('linearIssueToTicket', () => {
       body: 'Smoke body',
       url: 'https://linear.app/acme/issue/TRE-5/terminal-smoke-test',
     })
+  })
+
+  test('uses the Linear identifier for browser and agent references, not its UUID', () => {
+    const ticket = linearIssueToTicket({
+      id: 'f5cb7a03-5ab6-4ced-a5d6-2d797719f177',
+      identifier: 'TER-11',
+      title: 'Use Linear IDs',
+    })
+
+    expect(ticket).toMatchObject({
+      slug: 'linear-TER-11',
+      id: 11,
+      externalId: 'f5cb7a03-5ab6-4ced-a5d6-2d797719f177',
+      externalKey: 'TER-11',
+    })
+  })
+})
+
+describe('ticketProviderInstructions', () => {
+  test('binds Linear agents to the configured team and Linear identifiers', () => {
+    const repo = repoWithTicketConfig({
+      provider: 'linear',
+      linear: { team: 'TerMinal', teamKey: 'TER' },
+    })
+    const instructions = ticketProviderInstructions(repoTicketProvider(repo))
+
+    expect(instructions).toContain('TerMinal (TER)')
+    expect(instructions).toContain('TER-11')
+    expect(instructions).toContain('Do not use TerMinal local ticket tools')
   })
 })
 
@@ -610,4 +646,87 @@ describe('webview provider', () => {
       'no queryable ticket store',
     )
   })
+})
+
+describe('provider status write-back', () => {
+  test('local default updates the existing markdown ticket', async () => {
+    const repo = repoWithTicketConfig()
+    try {
+      const ticket = await createRepoTicket(repo, {
+        title: 'Status edit',
+        type: 'feature',
+        priority: 'low',
+        status: 'open',
+        body: 'Keep this body',
+      })
+      expect(await updateRepoTicket(repo, ticket.slug, { status: 'in-progress' })).toBe(true)
+      expect(await getRepoTicket(repo, ticket.slug)).toMatchObject({
+        status: 'in-progress',
+        body: 'Keep this body',
+      })
+    } finally {
+      rmSync(repo, { recursive: true, force: true })
+    }
+  })
+  for (const fail of [false, true])
+    test(`Linear native update with tool error=${fail}`, async () => {
+      const repo = repoWithTicketConfig()
+      const script = join(repo, 'mcp.cjs')
+      const log = join(repo, 'request.json')
+      writeFileSync(
+        script,
+        `
+      const fs = require('node:fs');
+      require('node:readline').createInterface({ input: process.stdin }).on('line', line => {
+        const msg = JSON.parse(line);
+        if (!msg.id) return;
+        let result = {};
+        if (msg.method === 'tools/call') {
+          fs.writeFileSync(${JSON.stringify(log)}, JSON.stringify(msg.params));
+          result = { isError: ${fail}, content: [{ type: 'text', text: ${JSON.stringify(fail ? 'Unknown workflow state' : '{"success":true}')} }] };
+        }
+        process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result }) + '\\n');
+      });
+    `,
+      )
+      writeFileSync(
+        join(repo, '.TerMinal', 'tickets.json'),
+        JSON.stringify({
+          provider: 'linear',
+          linear: {
+            mcp: { command: process.execPath, args: [script] },
+            tools: { update: 'save_issue' },
+          },
+        }),
+      )
+      try {
+        if (fail)
+          await expect(
+            updateRepoTicket(repo, 'linear-ENG-26', { status: 'closed' }),
+          ).rejects.toThrow('Unknown workflow state')
+        else expect(await updateRepoTicket(repo, 'linear-ENG-26', { status: 'closed' })).toBe(true)
+        expect(JSON.parse(readFileSync(log, 'utf8'))).toEqual({
+          name: 'save_issue',
+          arguments: { id: 'ENG-26', state: 'Done' },
+        })
+        if (!fail) {
+          for (const [status, state] of [
+            ['open', 'Todo'],
+            ['in-progress', 'In Progress'],
+            ['stuck', 'Blocked'],
+            ['icebox', 'Backlog'],
+          ]) {
+            expect(await updateRepoTicket(repo, 'linear-ENG-26', { status })).toBe(true)
+            expect(JSON.parse(readFileSync(log, 'utf8')).arguments).toEqual({ id: 'ENG-26', state })
+          }
+        }
+        writeFileSync(
+          join(repo, '.TerMinal', 'tickets.json'),
+          JSON.stringify({ provider: 'local' }),
+        )
+        expect(await listRepoTickets(repo)).toEqual([])
+      } finally {
+        rmSync(repo, { recursive: true, force: true })
+      }
+    })
 })

@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+import { normalizeKnowledgePath } from '../shared/knowledge-path'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { configPath } from './config-dir'
@@ -54,6 +56,16 @@ const defaultBase = (): KnowledgeBase => ({
 function pathFor(scope: KnowledgeScope, repoRoot: string, mode: 'read' | 'write'): string {
   if (scope === 'global') return GLOBAL()
   if (!repoRoot) return ''
+  if (typeof scope === 'object') {
+    if (scope?.repoRoot !== repoRoot) return ''
+    const path = normalizeKnowledgePath(scope?.path)
+    if (!path) return ''
+    const key = `path-notes/${createHash('sha256').update(path).digest('hex')}.json`
+    return mode === 'read'
+      ? repoStatePathForRead(repoRoot, key)
+      : repoStatePathForWrite(repoRoot, key)
+  }
+  if (scope !== 'repo') return ''
   return mode === 'read' ? repoKnowledgePathForRead(repoRoot) : repoKnowledgePathForWrite(repoRoot)
 }
 

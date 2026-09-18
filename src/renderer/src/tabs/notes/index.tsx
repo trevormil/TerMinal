@@ -1,3 +1,7 @@
+import { TicketMentions } from './TicketMentions'
+import { TemplateInsert } from './TemplateInsert'
+import { PathNotes } from './PathNotes'
+import { onNavigate } from '../../lib/nav'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   BookOpen,
@@ -21,7 +25,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { CodeEditor } from '../../components/CodeEditor'
+import { NoteEditor } from './NoteEditor'
 import { langExtensionFor, useLangsReady } from '../../lib/lazyLang'
 import { Markdown } from '../../components/Markdown'
 import type {
@@ -31,12 +35,11 @@ import type {
   KnowledgeItemKind,
   KnowledgeRagSearchResult,
   KnowledgeRagStatus,
-  KnowledgeScope,
   Tab,
   TabContext,
 } from '../../lib/types'
 
-type ViewMode = 'knowledge' | 'scratch'
+type ViewMode = 'knowledge' | 'scratch' | 'path'
 type PreviewMode = 'edit' | 'preview' | 'split'
 
 const kindMeta: Record<KnowledgeItemKind, { label: string; Icon: typeof FileText; hint: string }> =
@@ -141,7 +144,37 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
   // that can host an editor, and re-renders once they land. See lazyLang.ts.
   useLangsReady()
   const hasRepo = !!ctx.repoRoot
-  const [scope, setScope] = useState<KnowledgeScope>('global')
+  const [scope, setScope] = useState<'repo' | 'global'>('global')
+  const pendingNote = useRef<{
+    scope: 'repo' | 'global'
+    itemId: string
+    categoryId: string
+  } | null>(null)
+  const [notePath, setNotePath] = useState('')
+  const [noteRequest, setNoteRequest] = useState(0)
+  useEffect(
+    () =>
+      onNavigate((event) => {
+        if (typeof event.payload?.path === 'string') {
+          setNotePath(event.payload.path)
+          setNoteRequest((request) => request + 1)
+          setView('path')
+        } else if (event.payload?.scope === 'repo' || event.payload?.scope === 'global') {
+          const nextScope = event.payload.scope
+          const itemId = typeof event.payload.itemId === 'string' ? event.payload.itemId : ''
+          const categoryId =
+            typeof event.payload.categoryId === 'string' ? event.payload.categoryId : ''
+          pendingNote.current = { scope: nextScope, itemId, categoryId }
+          setScope(nextScope)
+          setNoteRequest((request) => request + 1)
+          setView(event.payload.view === 'scratch' ? 'scratch' : 'knowledge')
+          setActiveItemId(itemId)
+          setActiveCategoryId(categoryId)
+          setQuery('')
+        }
+      }, 'notes'),
+    [],
+  )
   const [view, setView] = useState<ViewMode>('knowledge')
   const [kb, setKb] = useState<KnowledgeBase>(starterKb)
   const [activeCategoryId, setActiveCategoryId] = useState('general')
@@ -187,6 +220,11 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
       setActiveItemId((cur) =>
         normalized.items.some((i) => i.id === cur) ? cur : normalized.items[0]?.id || '',
       )
+      if (pendingNote.current?.scope === scope) {
+        setActiveItemId(pendingNote.current.itemId)
+        setActiveCategoryId(pendingNote.current.categoryId)
+        pendingNote.current = null
+      }
       setSaved(true)
     })
     window.gt.notes.read(scope).then((text) => {
@@ -197,7 +235,7 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
     return () => {
       alive = false
     }
-  }, [scope, ctx.repoRoot])
+  }, [scope, ctx.repoRoot, noteRequest])
 
   useEffect(
     () => () => {
@@ -387,7 +425,7 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
       : ''
 
   const scopeButton = (
-    next: KnowledgeScope,
+    next: 'repo' | 'global',
     label: string,
     Icon: typeof Globe,
     disabled = false,
@@ -824,7 +862,7 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
       <div className="min-h-0 flex-1">
         {item.kind === 'markdown' ? (
           previewMode === 'edit' ? (
-            <CodeEditor
+            <NoteEditor
               value={item.content || ''}
               onChange={(value) => updateItem({ content: value })}
               extensions={langExtensionFor('markdown')}
@@ -835,7 +873,7 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
           ) : (
             <div className="flex h-full min-h-0">
               <div className="min-h-0 w-1/2 border-r border-[var(--gt-border)]">
-                <CodeEditor
+                <NoteEditor
                   value={item.content || ''}
                   onChange={(value) => updateItem({ content: value })}
                   extensions={langExtensionFor('markdown')}
@@ -856,7 +894,7 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
 
   const scratchBody =
     previewMode === 'edit' ? (
-      <CodeEditor
+      <NoteEditor
         value={scratch}
         onChange={saveScratch}
         extensions={langExtensionFor('markdown')}
@@ -869,7 +907,7 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
     ) : (
       <div className="flex h-full min-h-0">
         <div className="min-h-0 w-1/2 border-r border-[var(--gt-border)]">
-          <CodeEditor
+          <NoteEditor
             value={scratch}
             onChange={saveScratch}
             extensions={langExtensionFor('markdown')}
@@ -888,9 +926,13 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
         <div className="flex items-center gap-2">
           <BookOpen size={15} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
           <div>
-            <div className="text-[12px] font-semibold text-zinc-100">Knowledge Base</div>
+            <div className="text-[12px] font-semibold text-zinc-100">
+              {view === 'path' ? 'Path notes' : 'Knowledge Base'}
+            </div>
             <div className="text-[10.5px] text-zinc-600">
-              {kb.items.length} items · {kb.categories.length} categories
+              {view === 'path'
+                ? 'Local file and folder notes'
+                : `${kb.items.length} items · ${kb.categories.length} categories`}
             </div>
           </div>
         </div>
@@ -909,41 +951,81 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
             <NotebookText size={13} strokeWidth={2} />
             Scratch
           </button>
+          <button
+            onClick={() => setView('path')}
+            className={`rounded-md px-2.5 text-xs ${view === 'path' ? 'bg-white/10 text-zinc-100' : 'text-zinc-500'}`}
+          >
+            Path notes
+          </button>
         </div>
-        <div className="flex rounded-lg border border-[var(--gt-border)] p-0.5">
-          {scopeButton('global', 'Global', Globe)}
-          {scopeButton('repo', 'Repo', FolderGit2, !hasRepo)}
-        </div>
-        <div className="min-w-[180px] max-w-[360px] flex-1">
-          <div className="flex h-8 items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-black/25 px-2">
-            <Search size={13} strokeWidth={2} className="text-zinc-600" />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search knowledge..."
-              className="min-w-0 flex-1 bg-transparent text-[12px] text-zinc-300 outline-none placeholder:text-zinc-700"
+        {view !== 'path' &&
+          previewMode !== 'preview' &&
+          (view === 'scratch' || activeItem?.kind === 'markdown') && (
+            <TemplateInsert
+              value={view === 'scratch' ? scratch : activeItem?.content || ''}
+              onChange={(value) =>
+                view === 'scratch' ? saveScratch(value) : updateItem({ content: value })
+              }
             />
-          </div>
-        </div>
-        <span
-          className={`text-[10.5px] ${view === 'scratch' ? (scratchSaved ? 'text-zinc-600' : 'text-amber-400') : saved ? 'text-zinc-600' : 'text-amber-400'}`}
-        >
-          {view === 'scratch'
-            ? scratchSaved
-              ? 'saved'
-              : 'saving...'
-            : saved
-              ? 'saved'
-              : 'saving...'}
-        </span>
-        <div className="flex rounded-lg border border-[var(--gt-border)] p-0.5">
-          {modeButton('edit', 'Edit')}
-          {modeButton('split', 'Split')}
-          {modeButton('preview', 'Preview')}
-        </div>
+          )}
+        {view !== 'path' && (
+          <>
+            <div className="flex rounded-lg border border-[var(--gt-border)] p-0.5">
+              {scopeButton('global', 'Global', Globe)}
+              {scopeButton('repo', 'Repo', FolderGit2, !hasRepo)}
+            </div>
+            <div className="min-w-[180px] max-w-[360px] flex-1">
+              <div className="flex h-8 items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-black/25 px-2">
+                <Search size={13} strokeWidth={2} className="text-zinc-600" />
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search knowledge..."
+                  className="min-w-0 flex-1 bg-transparent text-[12px] text-zinc-300 outline-none placeholder:text-zinc-700"
+                />
+              </div>
+            </div>
+            <span
+              className={`text-[10.5px] ${view === 'scratch' ? (scratchSaved ? 'text-zinc-600' : 'text-amber-400') : saved ? 'text-zinc-600' : 'text-amber-400'}`}
+            >
+              {view === 'scratch'
+                ? scratchSaved
+                  ? 'saved'
+                  : 'saving...'
+                : saved
+                  ? 'saved'
+                  : 'saving...'}
+            </span>
+            <div className="flex rounded-lg border border-[var(--gt-border)] p-0.5">
+              {modeButton('edit', 'Edit')}
+              {modeButton('split', 'Split')}
+              {modeButton('preview', 'Preview')}
+            </div>
+          </>
+        )}
       </header>
 
-      {view === 'scratch' ? (
+      <div className={view === 'path' ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}>
+        <PathNotes
+          key={ctx.repoRoot}
+          repoRoot={ctx.remote ? '' : ctx.repoRoot}
+          initialPath={notePath}
+          request={noteRequest}
+        />
+      </div>
+      {view !== 'path' && (
+        <TicketMentions
+          repoRoot={ctx.repoRoot}
+          content={
+            view === 'scratch'
+              ? scratch
+              : activeItem?.kind === 'markdown'
+                ? activeItem.content || ''
+                : ''
+          }
+        />
+      )}
+      {view === 'path' ? null : view === 'scratch' ? (
         <div className="min-h-0 flex-1">{scratchBody}</div>
       ) : (
         <div className="flex min-h-0 flex-1">

@@ -929,7 +929,9 @@ export function InboxDrawer({
                           </span>
                           {chip && <CategoryChip name={chip} />}
                           <SeverityTag sev={severityOf(h)} />
-                          <Badge variant={badgeVariantFor(SOURCE_TONE[h.source] || 'mute')}>{h.source}</Badge>
+                          <Badge variant={badgeVariantFor(SOURCE_TONE[h.source] || 'mute')}>
+                            {h.source}
+                          </Badge>
                           {(h.occurrenceCount || 1) > 1 && h.source !== 'completion-hook' && (
                             <span className="shrink-0 rounded-full border border-[var(--gt-yellow)]/40 bg-[var(--gt-yellow)]/10 px-1.5 text-[9.5px] font-semibold text-[var(--gt-yellow)]">
                               x{h.occurrenceCount}

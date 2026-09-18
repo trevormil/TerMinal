@@ -1,3 +1,4 @@
+import type { NoteTemplate } from '../note-templates'
 import type { EngineId } from '../engines'
 import type { InboxDestination } from '../slack'
 import type { NotifyCategory, NotifyMatrix } from '../notifications'
@@ -161,6 +162,7 @@ export type Settings = {
   pinnedPanels: PinnedPanel[] // web dashboards pinned as the Panels tab; [] → tab hidden (personal)
   /** Named prompts offered by the New session screen's spawn options; [] → the
    *  built-in prompt and the saved agents are still offered, just no customs. */
+  noteTemplates?: NoteTemplate[]
   savedPrompts: SavedPrompt[]
   openrouterApiKey: string // sealed; injected as OPENROUTER_API_KEY for OpenRouter (or-agent) runs. '' → fall back to process env
   openaiCompatApiKey: string // sealed; injected as OPENAI_API_KEY for openai-compat (or-agent) runs. '' → fall back to process env

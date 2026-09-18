@@ -1,3 +1,5 @@
+import { UsageLookback } from '../../components/UsageLookback'
+import { UsageSoftCap } from '../../components/UsageSoftCap'
 import { Gauge as GaugeIcon } from 'lucide-react'
 import { TitledCard } from '../../components/ui/titled-card'
 import { Gauge } from '../../components/ui/gauge'
@@ -24,7 +26,9 @@ function WindowRow({ label, w }: { label: string; w: UsageWindow }) {
         <span className="tabular-nums text-foreground/90">
           {w.pct.toFixed(0)}%
           {w.resetsAt && (
-            <span className="ml-1.5 text-[10.5px] text-muted-foreground">↻ {resetIn(w.resetsAt)}</span>
+            <span className="ml-1.5 text-[10.5px] text-muted-foreground">
+              ↻ {resetIn(w.resetsAt)}
+            </span>
           )}
         </span>
       </div>
@@ -61,6 +65,11 @@ const plugin: Plugin<Usage> = {
       >
         <WindowRow label="5-hour" w={d.fiveHour} />
         <WindowRow label="Weekly" w={d.sevenDay} />
+        <UsageLookback kind="usage" pct={d.fiveHour?.pct} />
+        <UsageSoftCap
+          kind="usage"
+          pct={Math.max(d.fiveHour?.pct ?? 0, d.sevenDay?.pct ?? 0, d.overagePct ?? 0)}
+        />
         {d.overagePct != null && d.overagePct > 0 && (
           <Row
             label="Overage"

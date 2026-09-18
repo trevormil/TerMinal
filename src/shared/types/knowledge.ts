@@ -1,4 +1,4 @@
-export type KnowledgeScope = 'repo' | 'global'
+export type KnowledgeScope = 'repo' | 'global' | { path: string; repoRoot: string }
 
 export type KnowledgeItemKind = 'markdown' | 'link' | 'image' | 'video' | 'file' | 'rag'
 
@@ -73,4 +73,14 @@ export type KnowledgeRagSearchResult = {
   results: unknown[]
   raw?: unknown
   error?: string
+}
+
+export type LocalNote = {
+  title: string
+  content: string
+  scope: 'repo' | 'global'
+  view: 'knowledge' | 'scratch' | 'path'
+  itemId?: string
+  categoryId?: string
+  path?: string
 }

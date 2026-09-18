@@ -14,7 +14,11 @@ import type { PrActionResult, PrReviewEvent } from '../../lib/types'
 /** Inline error slot. The forge's own words, not a paraphrase. */
 function ActionError({ error }: { error: string }) {
   if (!error) return null
-  return <div className="mt-1.5 whitespace-pre-wrap text-[11px] text-destructive">{error}</div>
+  return (
+    <div role="alert" className="mt-1.5 whitespace-pre-wrap text-[11px] text-destructive">
+      {error}
+    </div>
+  )
 }
 
 function useAction(onDone: () => void) {
@@ -123,13 +127,15 @@ export function CommentBox({
 }) {
   const [body, setBody] = useState('')
   const { busy, error, runAction } = useAction(onDone)
+  const [posted, setPosted] = useState(false)
   return (
     <div className="px-3 py-2">
       <Textarea
         value={body}
         onChange={(e) => setBody(e.target.value)}
         rows={2}
-        placeholder="Comment on this pull request…"
+        aria-label="PR/MR discussion comment"
+        placeholder="Comment on this PR/MR…"
         className="min-h-0 resize-y"
       />
       <div className="mt-1.5 flex items-center gap-1.5">
@@ -142,6 +148,7 @@ export function CommentBox({
             const ok = await runAction('comment', () =>
               window.gt.githubReview.comment(repoRoot, iid, body),
             )
+            setPosted(ok)
             if (ok) setBody('')
           }}
         >
@@ -149,6 +156,11 @@ export function CommentBox({
           Comment
         </Button>
       </div>
+      {posted && (
+        <p role="status" className="text-xs text-muted-foreground">
+          Comment posted to the forge.
+        </p>
+      )}
       <ActionError error={error} />
     </div>
   )
@@ -159,10 +171,12 @@ export function ReplyBox({
   repoRoot,
   iid,
   replyToId,
+  discussionId,
   onDone,
 }: {
   repoRoot: string
   iid: number
+  discussionId?: string
   replyToId: number
   onDone: () => void
 }) {
@@ -199,7 +213,9 @@ export function ReplyBox({
           aria-busy={!!busy || undefined}
           onClick={async () => {
             const ok = await runAction('reply', () =>
-              window.gt.githubReview.reply(repoRoot, iid, replyToId, body),
+              discussionId
+                ? window.gt.githubReview.gitlabReply(repoRoot, iid, discussionId, body)
+                : window.gt.githubReview.reply(repoRoot, iid, replyToId, body),
             )
             if (ok) {
               setBody('')

@@ -63,7 +63,9 @@ function TicketsWidget({ data }: { data: Ticket[] | null }) {
             )}
           </div>
         )}
-        {v.closed > 0 && <div className="text-[10px] text-muted-foreground">▸ {v.closed} closed</div>}
+        {v.closed > 0 && (
+          <div className="text-[10px] text-muted-foreground">▸ {v.closed} closed</div>
+        )}
       </div>
       {openSlug && <TicketModal slug={openSlug} onClose={() => setOpenSlug(null)} />}
     </>

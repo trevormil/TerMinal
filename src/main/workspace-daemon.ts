@@ -5,6 +5,7 @@ import type { NewTicketComment } from './ticket-provider'
 import { listDocs, readDoc, type DocsTree } from './docs'
 import {
   listDir,
+  listTrackedFiles,
   readFile,
   writeFile,
   searchRepo,
@@ -190,6 +191,7 @@ export type WorkspaceDaemon = {
   notesRead(scope: NotesScope): Promise<string> | string
   notesWrite(scope: NotesScope, content: string): Promise<boolean> | boolean
   filesList(rel: string): Promise<Entry[]> | Entry[]
+  filesListTracked(): Promise<string[]>
   filesRead(rel: string): Promise<ReadResult> | ReadResult
   filesReadBinary(rel: string): Promise<ReadBinaryResult> | ReadBinaryResult
   filesWrite(rel: string, content: string): Promise<boolean> | boolean
@@ -315,6 +317,7 @@ export function createLocalWorkspaceDaemon(cwd: string): WorkspaceDaemon {
     notesRead: (scope: NotesScope) => readNotes(scope, root()),
     notesWrite: (scope: NotesScope, content: string) => writeNotes(scope, content, root()),
     filesList: (rel: string) => listDir(fileRoot(), rel || ''),
+    filesListTracked: () => listTrackedFiles(fileRoot()),
     filesRead: (rel: string) => readFile(fileRoot(), rel),
     filesReadBinary: (rel: string) => readFileBinary(fileRoot(), rel),
     filesWrite: (rel: string, content: string) => writeFile(fileRoot(), rel, content),
@@ -463,6 +466,7 @@ export function createSshWorkspaceDaemon(
     notesWrite: (scope: NotesScope, content: string) =>
       remoteNotes.write(remote, scope, content).catch(() => false),
     filesList: (rel: string) => remoteFiles.list(remote, rel || ''),
+    filesListTracked: () => remoteFiles.listTracked(remote),
     filesRead: (rel: string) => remoteFiles.read(remote, rel),
     filesReadBinary: () => ({
       ok: false,

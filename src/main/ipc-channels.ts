@@ -60,7 +60,9 @@ export type ChannelMap = {
   'data:git-status': Of<GtApi['gitStatus']>
   'data:harness-tdd': Of<GtApi['harnessTdd']>
   'data:meta': Of<GtApi['meta']>
+  'data:repo-disk': Of<GtApi['repoDiskUsage']>
   'data:session-tasks': Of<GtApi['sessionTasks']>
+  'data:timeline': Of<GtApi['sessionTimeline']>
   'data:transcript': Of<GtApi['transcript']>
   'data:usage': Of<GtApi['usage']>
   'dialog:pickDir': Of<GtApi['pickDir']>
@@ -74,16 +76,20 @@ export type ChannelMap = {
   'env:install-gt-notify': Of<GtApi['installGtNotify']>
   'favicons:cache': Of<GtApi['favicons']['cache']>
   'favicons:read': Of<GtApi['favicons']['read']>
+  'files:checks': Of<GtApi['files']['checks']>
   'files:create': Of<GtApi['files']['create']>
   'files:delete': Of<GtApi['files']['del']>
   'files:format': Of<GtApi['files']['format']>
   'files:list': Of<GtApi['files']['list']>
+  'files:listTracked': Of<GtApi['files']['listTracked']>
   'files:read': Of<GtApi['files']['read']>
   'files:readBinary': Of<GtApi['files']['readBinary']>
   'files:rename': Of<GtApi['files']['rename']>
   'files:replace': Of<GtApi['files']['replace']>
   'files:reveal': Of<GtApi['files']['reveal']>
+  'files:runCheck': Of<GtApi['files']['runCheck']>
   'files:search': Of<GtApi['files']['search']>
+  'files:symbols': Of<GtApi['files']['symbols']>
   'files:write': Of<GtApi['files']['write']>
   'fleet:list': Of<GtApi['fleet']>
   'git:branches': Of<GtApi['gitBranches']>
@@ -104,6 +110,8 @@ export type ChannelMap = {
   'github-review:checks-summaries': Of<GtApi['githubReview']['checksSummaries']>
   'github-review:comment': Of<GtApi['githubReview']['comment']>
   'github-review:conversation': Of<GtApi['githubReview']['conversation']>
+  'github-review:gitlab-reply': Of<GtApi['githubReview']['gitlabReply']>
+  'github-review:gitlab-resolve': Of<GtApi['githubReview']['gitlabResolve']>
   'github-review:reply': Of<GtApi['githubReview']['reply']>
   'github-review:submit': Of<GtApi['githubReview']['submit']>
   'harness:status': Of<GtApi['harnessStatus']>
@@ -152,6 +160,8 @@ export type ChannelMap = {
   'monitors:run': Of<GtApi['monitors']['run']>
   'monitors:save': Of<GtApi['monitors']['save']>
   'mrs:ci': Of<GtApi['getMrCi']>
+  'mrs:create': Of<GtApi['createForgeRequest']>
+  'mrs:create-context': Of<GtApi['forgeCreateContext']>
   'mrs:diff': Of<GtApi['getMrDiff']>
   'mrs:get': Of<GtApi['getMr']>
   'mrs:list': Of<GtApi['listMrs']>
@@ -159,6 +169,7 @@ export type ChannelMap = {
   'mrs:overview': Of<GtApi['getMrOverview']>
   'mrs:structural-diff': Of<GtApi['getStructuralDiff']>
   'notes:read': Of<GtApi['notes']['read']>
+  'notes:scan': Of<GtApi['notes']['scan']>
   'notes:write': Of<GtApi['notes']['write']>
   'observability:byAgent': Of<GtApi['observability']['byAgent']>
   'observability:filter-options': Of<GtApi['observability']['filterOptions']>

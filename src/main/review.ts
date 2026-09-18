@@ -1,3 +1,4 @@
+import { recordedFailCount } from './review-test-count'
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs'
 import { repoForCwd, repoRootOf } from './repo'
 import { join, resolve, extname, sep } from 'node:path'
@@ -257,6 +258,7 @@ export function reviewForPrDir(dir: string, headShort?: string): Review | null {
     overall: ov ? Number(ov) : null,
     verdict: fmField(md, 'verdict') || 'none',
     testStatus: fmField(md, 'test_status') || 'none',
+    failedTests: recordedFailCount(md),
     stale: a.stale,
     commitsBehind: a.commitsBehind,
     riskScore: rs,

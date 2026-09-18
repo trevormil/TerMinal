@@ -38,7 +38,9 @@ function toneForState(state: string): BadgeTone {
   return 'mute'
 }
 
-const toneVariant = (tone: BadgeTone): 'default' | 'secondary' | 'destructive' | 'success' | 'warning' | 'info' =>
+const toneVariant = (
+  tone: BadgeTone,
+): 'default' | 'secondary' | 'destructive' | 'success' | 'warning' | 'info' =>
   tone === 'ok' || tone === 'green'
     ? 'success'
     : tone === 'warn' || tone === 'yellow'
@@ -93,7 +95,9 @@ export function ApprovalsRow({
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-[var(--gt-border)] px-3 py-2">
       {reviewDecision && (
-        <Badge variant={toneVariant(toneForState(reviewDecision))}>{humanState(reviewDecision)}</Badge>
+        <Badge variant={toneVariant(toneForState(reviewDecision))}>
+          {humanState(reviewDecision)}
+        </Badge>
       )}
       {reviewers.map((r) => (
         <span key={`${r.login}:${r.state}`} className="inline-flex items-center gap-1.5">
@@ -154,6 +158,27 @@ function ThreadCard({
   // A resolved thread is settled business — collapsed so the open ones read as
   // the actual work left.
   const [open, setOpen] = useState(!thread.resolved)
+  const [resolving, setResolving] = useState(false)
+  const [resolutionError, setResolutionError] = useState('')
+  const changeResolution = async () => {
+    if (!thread.discussionId || !thread.resolvable || resolving) return
+    setResolving(true)
+    setResolutionError('')
+    try {
+      const result = await window.gt.githubReview.gitlabResolve(
+        repoRoot,
+        iid,
+        thread.discussionId,
+        !thread.resolved,
+      )
+      if (result.ok) onDone()
+      else setResolutionError(result.error || 'Could not update the discussion.')
+    } catch {
+      setResolutionError('Could not update the discussion. Check your connection and retry.')
+    } finally {
+      setResolving(false)
+    }
+  }
   return (
     <div className="border-b border-[var(--gt-border)]/50 last:border-b-0">
       <button
@@ -181,12 +206,34 @@ function ThreadCard({
           {thread.comments.map((c) => (
             <CommentCard key={c.id} c={c} />
           ))}
-          {thread.replyToId != null && (
+          {thread.discussionId && thread.resolvable && (
+            <div className="px-3 pb-2 text-xs">
+              <button
+                type="button"
+                disabled={resolving}
+                onClick={changeResolution}
+                className="underline disabled:opacity-50"
+              >
+                {resolving
+                  ? 'Updating discussion…'
+                  : thread.resolved
+                    ? 'Unresolve discussion'
+                    : 'Resolve discussion'}
+              </button>
+              {resolutionError && (
+                <p role="alert" className="pt-1 text-red-400">
+                  {resolutionError}
+                </p>
+              )}
+            </div>
+          )}
+          {(thread.replyToId != null || thread.discussionId) && (
             <div className="px-3">
               <ReplyBox
                 repoRoot={repoRoot}
                 iid={iid}
-                replyToId={thread.replyToId}
+                replyToId={thread.replyToId ?? 0}
+                discussionId={thread.discussionId}
                 onDone={onDone}
               />
             </div>
@@ -257,8 +304,14 @@ export function ConversationPanel({ repoRoot, iid }: { repoRoot: string; iid: nu
 
   if (!repoRoot) return <Empty>Conversation needs a local repo.</Empty>
   if (loading) return <Empty>Loading conversation…</Empty>
-  if (!data) return <Empty>Could not load the conversation from gh.</Empty>
-  if (!data.supported) return <Empty>{data.reason}.</Empty>
+  if (!data) return <Empty>Could not load the conversation from the forge.</Empty>
+  if (!data.supported)
+    return (
+      <>
+        <Empty>{data.reason}. General PR/MR comments are available below.</Empty>
+        <CommentBox key={`${repoRoot}:${iid}`} repoRoot={repoRoot} iid={iid} onDone={reload} />
+      </>
+    )
 
   const nothing =
     !data.comments.length && !data.reviews.length && !data.threads.length && !data.markers.length
@@ -282,16 +335,15 @@ export function ConversationPanel({ repoRoot, iid }: { repoRoot: string; iid: nu
           {data.comments.map((c) => (
             <CommentCard key={c.id} c={c} />
           ))}
-          <CommentBox repoRoot={repoRoot} iid={iid} onDone={reload} />
         </Section>
         <Section icon={GitCommitHorizontal} title="Lineage" count={data.markers.length}>
           {data.markers.map((m, i) => (
             <MarkerRow key={`${m.kind}:${m.oid}:${i}`} m={m} />
           ))}
         </Section>
-        {nothing && <CommentBox repoRoot={repoRoot} iid={iid} onDone={reload} />}
+        <CommentBox key={`${repoRoot}:${iid}`} repoRoot={repoRoot} iid={iid} onDone={reload} />
       </div>
-      <ReviewActions repoRoot={repoRoot} iid={iid} onDone={reload} />
+      {data.forge !== 'gitlab' && <ReviewActions repoRoot={repoRoot} iid={iid} onDone={reload} />}
     </div>
   )
 }

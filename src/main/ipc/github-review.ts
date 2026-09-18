@@ -16,11 +16,21 @@ import {
   prChecksSummaries,
   prConversation,
   replyToThread,
+  replyToGitlabDiscussion,
+  resolveGitlabDiscussion,
   submitReview,
 } from '../github-review'
 import type { PrReviewEvent } from '../../shared/types/github-review'
 
 export function registerGithubReviewIpc(): void {
+  handle('github-review:gitlab-resolve', (_e, repoRoot, iid, discussionId, resolved) =>
+    resolveGitlabDiscussion(repoRoot, iid, discussionId, resolved),
+  )
+  handle(
+    'github-review:gitlab-reply',
+    (_e, repoRoot: string, iid: number, discussionId: string, body: string) =>
+      replyToGitlabDiscussion(repoRoot, iid, discussionId, body),
+  )
   handle('github-review:checks', (_e, repoRoot: string, iid: number) => prChecks(repoRoot, iid))
 
   handle('github-review:checks-summaries', (_e, repoRoot: string) => prChecksSummaries(repoRoot))

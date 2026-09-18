@@ -177,13 +177,16 @@ steps, and git hooks can call it to push events into the cockpit.
 
 Each repo picks its own ticket provider in **Settings → Tickets**. Nothing here
 is required: the default is a local backlog in the repo, which needs no account
-and no network.
+and no network. If your organization already uses Linear, choose **Linear** for
+that repo: Linear remains the system of record, and TerMinal reads and writes
+the same team issues through its MCP instead of introducing a separate local
+backlog or TerMinal-only ticket process.
 
 | Provider | Where tickets live | Notes |
 |---|---|---|
 | `local` (default) | `.TerMinal/backlog/*.md` in the repo | full read/write, works offline |
 | `github` | GitHub Issues | needs `gh` (see §2); labels map to status/priority/type |
-| `linear` | Linear, via its MCP | needs the Linear MCP configured |
+| `linear` | Your organization's Linear workspace | first-class read/write via Linear MCP; choose a team and keep the existing org workflow |
 | `webview` | entirely in some other board's web UI | read-only embed; the app writes nothing |
 
 Pick `webview` when a repo's tickets live somewhere TerMinal shouldn't touch — a

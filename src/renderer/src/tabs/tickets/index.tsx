@@ -41,6 +41,8 @@ function TicketWebView({ url }: { url: string }) {
 }
 
 function TicketsTab({ ctx }: { ctx: TabContext }) {
+  const [mention, setMention] = useState<{ slug: string } | undefined>()
+  const navigationRequested = useRef(false)
   const [views, setViews] = useState<TicketView[]>([])
   // Set when the provider itself is a webview (no backlog at all) — the tab's
   // first slot becomes this page instead of TicketsBrowser.
@@ -58,8 +60,13 @@ function TicketsTab({ ctx }: { ctx: TabContext }) {
     () =>
       onNavigate((ev) => {
         if (ev.tabId !== 'tickets') return
+        navigationRequested.current = true
+        if (typeof ev.payload?.slug === 'string') setMention({ slug: ev.payload.slug })
         const url = typeof ev.payload?.viewUrl === 'string' ? ev.payload.viewUrl : ''
-        if (!url) return
+        if (!url) {
+          if (ev.payload?.slug) setActive(0)
+          return
+        }
         setViewUrlOverride(url)
         // Linear mode: the provider webview IS the primary slot — deep-link it.
         if (providerWebviewRef.current) {
@@ -79,7 +86,7 @@ function TicketsTab({ ctx }: { ctx: TabContext }) {
           setActive((i >= 0 ? i : 0) + 1)
           return vs
         })
-      }),
+      }, 'tickets'),
     [],
   )
 
@@ -115,7 +122,7 @@ function TicketsTab({ ctx }: { ctx: TabContext }) {
         providerWebviewRef.current = primaryView
         // A view flagged `default` opens first; index+1 since 0 is the primary slot.
         const di = rest.findIndex((v) => v.default)
-        if (di >= 0) setActive(di + 1)
+        if (di >= 0 && !navigationRequested.current) setActive(di + 1)
       })
       .catch(() => {})
     return () => {
@@ -156,7 +163,7 @@ function TicketsTab({ ctx }: { ctx: TabContext }) {
         // An override (ticket → "open in Linear view") deep-links this visit.
         <TicketWebView key={viewUrlOverride || view.url} url={viewUrlOverride || view.url} />
       ) : (
-        <TicketsBrowser ctx={ctx} />
+        <TicketsBrowser ctx={ctx} mention={mention} />
       )}
     </div>
   )

@@ -1,10 +1,16 @@
+import {
+  gitlabDiscussions,
+  postGitlabReply,
+  setGitlabDiscussionResolved,
+} from './gitlab-discussions'
+import { postDiscussionComment } from './forge-comment'
+import { forgeCreateAvailability } from './forge-create'
+import { readSettings } from './settings'
 // GitHub-native PR review surface: CI checks, conversation lineage, review
 // actions, approvals.
 //
-// GitHub-FIRST by construction. Every exported entry point resolves the forge
-// first and returns `{ supported: false }` off GitHub, so a GitLab workspace
-// gets one quiet line instead of a broken panel. GitLab parity is a bonus, not
-// a requirement — nothing here degrades the existing MR behaviour.
+// Checks and review submissions are GitHub-only. Conversation browsing,
+// general comments and explicit thread replies support GitLab as well.
 //
 // All network I/O is a `gh` subprocess from MAIN, matching forge.ts (which owns
 // the `gh` seam, including the per-repo env and the test injection point). The
@@ -456,6 +462,12 @@ export async function prChecksSummaries(repoRoot: string): Promise<PrChecksSumma
 
 /** Timeline, threads, approvals — one GraphQL round trip. */
 export async function prConversation(repoRoot: string, iid: number): Promise<PrConversation> {
+  const repo = repoForCwd(repoRoot)
+  if (repo && forgeFor(repoRoot).kind === 'gitlab') {
+    const error = forgeCreateAvailability(repo, readSettings().forge)
+    if (error) return { supported: false, reason: error }
+    return gitlabDiscussions(repoRoot, repo, iid)
+  }
   const path = githubRepoPath(repoRoot)
   if (!path) return NOT_GITHUB
   const [owner, name] = path.split('/')
@@ -501,10 +513,10 @@ export async function addComment(
   iid: number,
   body: string,
 ): Promise<PrActionResult> {
-  if (!githubRepoPath(repoRoot)) return { ok: false, error: NOT_GITHUB.reason }
-  if (!body.trim()) return { ok: false, error: 'A comment needs a body.' }
-  const r = await gh(repoRoot, ['pr', 'comment', String(iid), '--body', body], { timeout: 30_000 })
-  return r.ok ? { ok: true } : { ok: false, error: r.error }
+  const repo = repoForCwd(repoRoot)
+  const error = forgeCreateAvailability(repo, readSettings().forge)
+  if (!repo || error) return { ok: false, error: error.replace('to create', 'to comment on') }
+  return postDiscussionComment(repoRoot, repo, forgeFor(repoRoot).kind, iid, body)
 }
 
 /**
@@ -540,4 +552,32 @@ export async function replyToThread(
     { timeout: 30_000 },
   )
   return r.ok ? { ok: true } : { ok: false, error: r.error }
+}
+
+export async function replyToGitlabDiscussion(
+  repoRoot: string,
+  iid: number,
+  discussionId: string,
+  body: string,
+): Promise<PrActionResult> {
+  const repo = repoForCwd(repoRoot)
+  if (!repo || forgeFor(repoRoot).kind !== 'gitlab')
+    return { ok: false, error: 'GitLab replies need a local GitLab checkout.' }
+  const error = forgeCreateAvailability(repo, readSettings().forge)
+  if (error) return { ok: false, error }
+  return postGitlabReply(repoRoot, repo, iid, discussionId, body)
+}
+
+export async function resolveGitlabDiscussion(
+  repoRoot: string,
+  iid: number,
+  discussionId: string,
+  resolved: boolean,
+): Promise<PrActionResult> {
+  const repo = repoForCwd(repoRoot)
+  if (!repo || forgeFor(repoRoot).kind !== 'gitlab')
+    return { ok: false, error: 'Discussion resolution needs a local GitLab checkout.' }
+  const error = forgeCreateAvailability(repo, readSettings().forge)
+  if (error) return { ok: false, error }
+  return setGitlabDiscussionResolved(repoRoot, repo, iid, discussionId, resolved)
 }

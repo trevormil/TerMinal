@@ -19,7 +19,13 @@ function Dot({ ci }: { ci: PrRow['ci'] }) {
 // Verdict → variant: approve success / request-changes warning / blocked
 // destructive.
 const verdictBadgeVariant = (v: string) =>
-  v === 'approve' ? 'success' : v === 'request-changes' ? 'warning' : v === 'blocked' ? 'destructive' : 'secondary'
+  v === 'approve'
+    ? 'success'
+    : v === 'request-changes'
+      ? 'warning'
+      : v === 'blocked'
+        ? 'destructive'
+        : 'secondary'
 const verdictShort = (v: string) => (v === 'request-changes' ? 'changes' : v)
 
 // Proper component (not inline render JSX) so paging + modal state survive the
@@ -54,7 +60,10 @@ function PrsWidget({ data }: { data: MrListResult | null }) {
               {r.branch}
             </span>
             {r.verdict && (
-              <Badge variant={verdictBadgeVariant(r.verdict)} className="shrink-0 px-1 text-[8.5px]">
+              <Badge
+                variant={verdictBadgeVariant(r.verdict)}
+                className="shrink-0 px-1 text-[8.5px]"
+              >
                 {verdictShort(r.verdict)}
               </Badge>
             )}
@@ -82,7 +91,9 @@ function PrsWidget({ data }: { data: MrListResult | null }) {
             )}
           </div>
         )}
-        {v.done > 0 && <div className="text-[10px] text-muted-foreground">▸ {v.done} merged/closed</div>}
+        {v.done > 0 && (
+          <div className="text-[10px] text-muted-foreground">▸ {v.done} merged/closed</div>
+        )}
       </div>
       {openIid !== null && <PrModal iid={openIid} onClose={() => setOpenIid(null)} />}
     </>

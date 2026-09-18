@@ -114,7 +114,13 @@ export function TicketModal({ slug, onClose }: { slug: string; onClose: () => vo
               <ArrowUpRight size={11} strokeWidth={2} />
               Open in Tickets tab
             </Button>
-            <Button variant="ghost" size="icon" aria-label="Close (Esc)" title="Close (Esc)" onClick={onClose}>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Close (Esc)"
+              title="Close (Esc)"
+              onClick={onClose}
+            >
               <X size={14} strokeWidth={2} />
             </Button>
           </div>

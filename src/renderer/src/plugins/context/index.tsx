@@ -1,3 +1,5 @@
+import { UsageLookback } from '../../components/UsageLookback'
+import { UsageSoftCap } from '../../components/UsageSoftCap'
 import { Brain } from 'lucide-react'
 import { TitledCard } from '../../components/ui/titled-card'
 import { Gauge } from '../../components/ui/gauge'
@@ -37,6 +39,12 @@ const plugin: Plugin<TranscriptStats> = {
           <Big value={`${d.contextPct.toFixed(1)}%`} sub={`${fmtTokens(d.contextTokens)} tok`} />
         </div>
         <Gauge pct={d.contextPct} />
+        <UsageLookback
+          key={`${d.sessionId}:${d.model}:${d.contextLimit}`}
+          kind="context"
+          pct={d.contextPct}
+        />
+        <UsageSoftCap kind="context" pct={d.contextPct} />
       </TitledCard>
     )
   },

@@ -845,3 +845,20 @@ describe('savedPrompts (spawn prompt library)', () => {
     expect(next.savedPrompts).toEqual([{ id: 'new', name: 'New', text: 'new body' }])
   })
 })
+
+describe('local note templates', () => {
+  test('load and save preserve markdown and unrelated settings', () => {
+    const templates = [{ id: 'custom:one', title: 'One', body: '  markdown\n' }]
+    const original = migrate({ noteTemplates: templates })
+    expect(original.noteTemplates).toEqual(templates)
+    const saved = mergeSettingsPatch(original, { projectsDir: '/example' })
+    expect(saved.noteTemplates).toEqual(templates)
+    expect(mergeSettingsPatch(saved, { noteTemplates: [] }).noteTemplates).toEqual([])
+  })
+  test('invalid stored entries and reserved ids are ignored', () => {
+    expect(
+      migrate({ noteTemplates: [null, { id: 'checklist', title: 'X', body: 'X' }] }).noteTemplates,
+    ).toEqual([])
+    expect(migrate({}).noteTemplates).toEqual([])
+  })
+})
