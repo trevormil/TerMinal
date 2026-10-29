@@ -64,8 +64,9 @@ engine; keep Route 1 for bespoke protocols.
   `OPENAI_API_KEY` exported in the login shell profile or set per-schedule via
   the schedule's `env` map; keyless servers just work.
 - **Cost/usage** is logged as `0` — there is no billing endpoint to poll.
-- **Model picker chips** are empty for this engine (the server decides what it
-  serves): set the default model in Settings, or type a slug in the free-text
-  model step of the run dialog.
+- **Model picker chips** come from the server: pickers call `GET {base}/models`
+  when opened and list what it serves (e.g. `ollama list`). If the server is
+  unreachable the list is empty — set the default model in Settings, or type
+  the exact id in the free-text model step of the run dialog.
 - Anthropic-compatible (`ANTHROPIC_BASE_URL`) endpoints are not supported —
   OpenAI-compatible only (see ticket 0036 follow-ups).

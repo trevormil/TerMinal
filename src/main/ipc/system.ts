@@ -18,13 +18,16 @@ import { randomUUID } from 'node:crypto'
 import { handle } from '../typed-ipc'
 import { configPath, terminalConfigDir } from '../config-dir'
 import { listCursorModels } from '../cursor-models'
+import { listOpenAICompatModels } from '../openai-compat-models'
 import { openExternalSafe } from '../open-external'
 import { repoRootOf } from '../repo'
 import { resolveWithinAny } from '../path-guard'
 import { isExternallyOpenableUrl } from '../../shared/url-safety'
 import {
+  openAICompatBaseUrl,
   resolvedBrowserApps,
   resolvedEditorApp,
+  resolvedOpenAICompatKey,
   resolvedProjectsDir,
   resolvedWorktreesDir,
 } from '../settings'
@@ -64,6 +67,11 @@ export function registerSystemIpc(deps: SystemIpcDeps): void {
   // Router). Empty when the CLI is missing or not logged in — the renderer then
   // keeps the static catalog.
   handle('cursor:models', () => listCursorModels())
+  // The self-hosted endpoint's served models (GET {base}/models). Empty when no
+  // base URL is set or the server is unreachable — the picker keeps free text.
+  handle('openai-compat:models', () =>
+    listOpenAICompatModels(openAICompatBaseUrl(), resolvedOpenAICompatKey()),
+  )
   handle('open:external', (_e, url: string) => openExternalSafe(url))
   // Reveal ~/.config/TerMinal/ in Finder. Power-user QoL for editing
   // schedules.json, settings.json, or per-(repo, agent) state sidecars by hand.

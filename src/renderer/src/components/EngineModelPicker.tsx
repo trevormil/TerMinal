@@ -47,8 +47,14 @@ export function EngineModelPicker({
   // Cursor's catalog is served by its CLI, so new models — and anything Cursor
   // Router adds — show up without a release. Falls back to the static list.
   const [cursorModels, setCursorModels] = useState<ModelOption[] | null>(null)
+  // Self-hosted has no static catalog — offer whatever the endpoint serves.
+  const [selfHostedModels, setSelfHostedModels] = useState<ModelOption[] | null>(null)
   const modelsFor = (e: Engine): ModelOption[] =>
-    e === 'cursor' ? (cursorModels ?? MODELS.cursor) : MODELS[e]
+    e === 'cursor'
+      ? (cursorModels ?? MODELS.cursor)
+      : e === 'openai-compat'
+        ? (selfHostedModels ?? MODELS['openai-compat'])
+        : MODELS[e]
   const [menuPos, setMenuPos] = useState<MenuPos | null>(null)
   const ref = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -98,6 +104,23 @@ export function EngineModelPicker({
       alive = false
     }
   }, [open, cursorModels, engineList])
+
+  // Same lazy pull for the self-hosted endpoint's `GET /models`.
+  useEffect(() => {
+    if (!open || selfHostedModels || !engineList.includes('openai-compat')) return
+    let alive = true
+    void window.gt
+      .openaiCompatModels?.()
+      .then((live) => {
+        if (alive && live?.length) setSelfHostedModels(live)
+      })
+      .catch(() => {
+        /* no base URL / server down — Default (Settings) still works */
+      })
+    return () => {
+      alive = false
+    }
+  }, [open, selfHostedModels, engineList])
 
   useEffect(() => {
     if (!open) return

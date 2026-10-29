@@ -152,3 +152,28 @@ silent degradations in other subsystems, so they fail soft):
 
 Worth a follow-up ticket; a lint rule banning `require('./` under `src/main`
 would prevent regressions.
+
+## 2026-10-29 — Self-hosted picker lists the server's models
+
+Self-hosted (`openai-compat`) pickers now offer the models the endpoint serves
+(`GET {base}/models`) instead of an empty list. Prompted by a real miss: the
+Settings default was `qwen3-v1:8b` (digit one) while Ollama served `qwen3-vl:8b`.
+
+- New `src/main/openai-compat-models.ts` + IPC `openai-compat:models`, mirroring
+  `cursor-models.ts`. Wired into both `ModelSelect` (run dialog) and
+  `EngineModelPicker` (Agents/Schedules/etc.).
+- **Decision:** fetch in main, not the renderer — avoids CSP/CORS on arbitrary
+  LAN hosts and keeps the sealed API key out of the renderer.
+- **Decision:** no cache (Cursor caches 30 min). A local server's list changes
+  the moment a model is pulled, and the request is a 3s-timeout LAN call made
+  only when a picker opens.
+- Fixed the free-text label in `ModelSelect`, which said "Any OpenRouter model"
+  for Self-hosted too.
+- The entry wizard's compact `ModelDropdown` (added upstream in #346) uses the
+  same `useEngineModels` hook, so it lists served models too and its
+  placeholder no longer points at openrouter.ai for Self-hosted.
+- **Follow-up, not done:** warn in Settings/run dialog when the configured
+  default model isn't in the served list — that would have caught the typo
+  directly.
+- Not exercised in the running app (didn't relaunch TerMinal); verified via unit
+  tests, a live call against local Ollama, and typecheck.

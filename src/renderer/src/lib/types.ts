@@ -809,6 +809,8 @@ export type GtApi = {
   getStructuralDiff: (iid: number, path: string, width?: number) => Promise<StructuralDiffResult>
   difftAvailable: () => Promise<boolean>
   cursorModels: () => Promise<{ id: string; label: string }[]>
+  /** Models the self-hosted endpoint serves (GET {base}/models); [] if unreachable. */
+  openaiCompatModels: () => Promise<{ id: string; label: string }[]>
   getDigest: (iid: number, short?: string) => Promise<DigestArtifact | null>
   runDigest: (iid: number) => Promise<{ ok: boolean; error?: string }>
   digestStatus: (iid: number) => Promise<DigestRunState | null>
