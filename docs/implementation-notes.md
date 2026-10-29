@@ -177,3 +177,13 @@ Settings default was `qwen3-v1:8b` (digit one) while Ollama served `qwen3-vl:8b`
   directly.
 - Not exercised in the running app (didn't relaunch TerMinal); verified via unit
   tests, a live call against local Ollama, and typecheck.
+
+## 2026-10-29: self-hosted engine switched to `wire_api = responses`
+
+- Codex 0.144.6 refuses to load with `wire_api = "chat"` ("no longer
+  supported"), which broke every Self-hosted run. `or-agent` and
+  `engine-launch.ts` now pass `wire_api=responses`. This supersedes the earlier
+  note above that said self-hosted servers only implement chat completions.
+- Tradeoff: a self-hosted server with no `/v1/responses` support can no longer
+  be driven through Codex. Ollama 0.40.13 (`qwen3-vl:8b`) answers it with
+  HTTP 200, checked by hand.

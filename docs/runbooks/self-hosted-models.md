@@ -20,7 +20,8 @@ or anything else exposing an OpenAI-compatible `/v1/chat/completions`.
      placeholder is sent; such servers ignore the Authorization header).
 3. Pick **Self-hosted** wherever an engine is chosen: agent runs, ticket runs,
    background tasks, schedules, and interactive sessions (Codex TUI pointed at
-   the endpoint via an inline provider, `wire_api = chat`).
+   the endpoint via an inline provider, `wire_api = responses`). The server must
+   serve `/v1/responses`: Codex no longer accepts `wire_api = chat`.
 
 ## Standalone scripts (no app needed)
 
