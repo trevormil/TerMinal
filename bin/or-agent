@@ -9,7 +9,7 @@
 // - Selects the OpenRouter provider inline (leaves Codex's global default alone).
 // - OPENAI_BASE_URL set → drives Codex against that OpenAI-compatible endpoint
 //   instead (self-hosted vLLM / Ollama / LM Studio / TGI / llama.cpp), via an
-//   inline model_providers.openai-compat definition (wire_api=chat). The key is
+//   inline model_providers.openai-compat definition (wire_api=responses). The key is
 //   then OPENAI_API_KEY (falling back to OPENROUTER_API_KEY); --model is
 //   REQUIRED (the registry default is an OpenRouter slug your server won't know).
 // - Enforces the daily $ pool AND (when OR_SESSION is set) the per-session cap
@@ -68,13 +68,14 @@ const before = await usage()
 console.error(`or-agent: running codex on ${slug} (${custom ? baseUrl : "openrouter"}, dir=${dir})`)
 
 // Custom endpoint: define an inline provider instead of the config.toml
-// `openrouter` one. wire_api=chat matches what self-hosted servers implement.
+// `openrouter` one. Codex no longer accepts wire_api=chat, so the server must
+// serve /v1/responses (Ollama, vLLM and LM Studio do).
 const providerArgs = custom
   ? ["-c", "model_provider=openai-compat",
      "-c", "model_providers.openai-compat.name=OpenAI-compatible",
      "-c", `model_providers.openai-compat.base_url=${baseUrl}`,
      "-c", "model_providers.openai-compat.env_key=OPENAI_API_KEY",
-     "-c", "model_providers.openai-compat.wire_api=chat"]
+     "-c", "model_providers.openai-compat.wire_api=responses"]
   : ["-c", "model_provider=openrouter"]
 
 const proc = Bun.spawn(

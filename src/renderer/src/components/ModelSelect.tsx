@@ -1,5 +1,11 @@
+import { useEffect, useState } from 'react'
 import type { Engine } from '../lib/types'
-import { ENGINE_MODELS, engineAllowsCustomModel, engineEffortsOf } from '../lib/engines'
+import {
+  ENGINE_MODELS,
+  engineAllowsCustomModel,
+  engineEffortsOf,
+  type ModelOption,
+} from '../lib/engines'
 import {
   Select,
   SelectContent,
@@ -16,8 +22,33 @@ import {
 // deliberate "use the engine default" choice.
 const DEFAULT_VALUE = '__default__'
 
-/** Model as a dropdown. For engines that take an arbitrary slug (OpenRouter)
- *  the free-text field stays — a menu can't enumerate every model. */
+/** The engine's model list. Self-hosted ships no catalog, so it lists what the
+ *  endpoint serves (GET /models); `served === null` while that is loading. */
+function useEngineModels(engine: Engine) {
+  const selfHosted = engine === 'openai-compat'
+  const [served, setServed] = useState<ModelOption[] | null>(null)
+  useEffect(() => {
+    if (!selfHosted) return
+    let alive = true
+    void window.gt
+      .openaiCompatModels?.()
+      .then((live) => {
+        if (alive) setServed(live ?? [])
+      })
+      .catch(() => {
+        /* no base URL / server down — the free-text field still works */
+        if (alive) setServed([])
+      })
+    return () => {
+      alive = false
+    }
+  }, [selfHosted])
+  const models = selfHosted ? (served ?? []) : (ENGINE_MODELS[engine] ?? [])
+  return { selfHosted, served, models }
+}
+
+/** Model as a dropdown. For engines that take an arbitrary slug (OpenRouter,
+ *  Self-hosted) the free-text field stays — a menu can't enumerate every model. */
 export function ModelDropdown({
   engine,
   model,
@@ -27,7 +58,7 @@ export function ModelDropdown({
   model: string | undefined
   onChange: (model: string | undefined) => void
 }) {
-  const models = ENGINE_MODELS[engine] ?? []
+  const { selfHosted, models } = useEngineModels(engine)
   const custom = engineAllowsCustomModel(engine)
   const knownIds = new Set(models.map((m) => m.id))
   const customActive = custom && !!model && !knownIds.has(model)
@@ -53,7 +84,11 @@ export function ModelDropdown({
         <input
           value={model ?? ''}
           onChange={(e) => onChange(e.target.value.trim() || undefined)}
-          placeholder="…or any slug from openrouter.ai/models"
+          placeholder={
+            selfHosted
+              ? '…or the exact id your server lists'
+              : '…or any slug from openrouter.ai/models'
+          }
           spellCheck={false}
           autoComplete="off"
           className={`w-full rounded-lg border bg-black/30 px-2.5 py-2 font-mono text-[12px] text-zinc-200 outline-none ${
@@ -155,7 +190,7 @@ export function ModelSelect({
   model: string | undefined
   onChange: (model: string | undefined) => void
 }) {
-  const models = ENGINE_MODELS[engine] ?? []
+  const { selfHosted, served, models } = useEngineModels(engine)
   const custom = engineAllowsCustomModel(engine)
   const knownIds = new Set(models.map((m) => m.id))
   // For a custom engine, a typed slug that isn't in the menu still counts as selected.
@@ -173,19 +208,31 @@ export function ModelSelect({
       {custom && (
         <label className="block">
           <span className="mb-1 block text-[10.5px] uppercase tracking-wide text-zinc-500">
-            Any OpenRouter model
+            {selfHosted ? 'Any model your server serves' : 'Any OpenRouter model'}
           </span>
           <input
             value={model ?? ''}
             onChange={(e) => onChange(e.target.value.trim() || undefined)}
-            placeholder="e.g. deepseek/deepseek-v3.2 — any slug from openrouter.ai/models"
+            placeholder={
+              selfHosted
+                ? 'e.g. qwen3-coder — the exact id your server lists'
+                : 'e.g. deepseek/deepseek-v3.2 — any slug from openrouter.ai/models'
+            }
             spellCheck={false}
             autoComplete="off"
             className={`w-full rounded-lg border bg-black/30 px-2.5 py-2 font-mono text-[12px] text-zinc-200 outline-none ${
               customActive ? 'border-[var(--gt-accent)]/70' : 'border-[var(--gt-border)]'
             } focus:border-[var(--gt-accent)]/60`}
           />
-          <span className="mt-1 block text-[10px] text-zinc-600">Or pick a common one below.</span>
+          <span className="mt-1 block text-[10px] text-zinc-600">
+            {selfHosted
+              ? served === null
+                ? 'Checking your server…'
+                : models.length
+                  ? 'Or pick one your server serves below.'
+                  : 'Server not reachable — check Settings → Engines → Self-hosted.'
+              : 'Or pick a common one below.'}
+          </span>
         </label>
       )}
       <div className="grid grid-cols-2 gap-2">

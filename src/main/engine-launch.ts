@@ -103,7 +103,7 @@ export function buildEngineLaunch(input: EngineLaunchInput): {
       '-c',
       'model_providers.openai-compat.env_key=OPENAI_API_KEY',
       '-c',
-      'model_providers.openai-compat.wire_api=chat',
+      'model_providers.openai-compat.wire_api=responses',
       '-s',
       'danger-full-access',
       '-a',

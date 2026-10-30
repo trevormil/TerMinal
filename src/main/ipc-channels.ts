@@ -170,6 +170,7 @@ export type ChannelMap = {
   'open:external': Of<GtApi['openExternal']>
   'open:in-browser': Of<GtApi['openInBrowser']>
   'open:in-editor': Of<GtApi['openInEditor']>
+  'openai-compat:models': Of<GtApi['openaiCompatModels']>
   'persistent-agents:artifacts-list': Of<GtApi['persistentAgents']['artifacts']['list']>
   'persistent-agents:artifacts-read': Of<GtApi['persistentAgents']['artifacts']['read']>
   'persistent-agents:design': Of<GtApi['persistentAgents']['design']>
