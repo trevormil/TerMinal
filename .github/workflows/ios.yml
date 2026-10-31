@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   build:
-    runs-on: macos-15
+    runs-on: ${{ vars.USE_SELF_HOSTED == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","macOS","mbp2"]') || 'macos-15' }}
     # A hung xcodebuild would otherwise bill to GitHub's 360m default at the
     # macOS 10x rate. The job itself takes a few minutes.
     timeout-minutes: 25
