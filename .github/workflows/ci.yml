@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.USE_SELF_HOSTED == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","macOS","mbp2"]') || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -61,7 +61,7 @@ jobs:
 
   # High/Critical advisories in the dependency tree are blocking (CLAUDE.md §10).
   audit:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.USE_SELF_HOSTED == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","macOS","mbp2"]') || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -81,7 +81,7 @@ jobs:
   # release.yml, so a PR could break packaging and nobody found out until a
   # release. See scripts/ci/smoke-packaged-app.sh.
   package-smoke:
-    runs-on: macos-15
+    runs-on: ${{ vars.USE_SELF_HOSTED == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","macOS","mbp2"]') || 'macos-15' }}
     # macOS minutes bill at 10x, and `bun run dist` pulls Electron + dmgbuild
     # over the network — a network hang would otherwise run to GitHub's 360m
     # default. The job takes ~6m; 25 is generous headroom, not a target.
