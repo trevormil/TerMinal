@@ -7,8 +7,6 @@ import {
   SquareTerminal,
   RefreshCw,
   Server,
-  ArrowLeft,
-  ArrowRight,
   ArrowUp,
   Home,
   Check,
@@ -192,6 +190,18 @@ const readLastEngine = (): SessionEngine | null => {
     return null
   }
 }
+// Model + effort of the last NEW session launched from this screen — what a
+// pinned/recent chip reuses when it launches in one click.
+const LAST_MODEL_KEY = 'gt.lastModel'
+type LastModel = { engine: SessionEngine; model?: string; effort?: string }
+const readLastModel = (): LastModel | null => {
+  try {
+    const v = JSON.parse(localStorage.getItem(LAST_MODEL_KEY) || 'null')
+    return v && typeof v.engine === 'string' ? (v as LastModel) : null
+  } catch {
+    return null
+  }
+}
 
 /** WHERE the work happens. Answered first, because every other question —
  *  including whether "resume" is even on the table — depends on it. */
@@ -200,7 +210,7 @@ type Target = 'existing' | 'repo' | 'scratch'
  *  three; a fresh scaffold and a scratch dir have nothing to resume into. */
 type Action = 'new' | 'resume' | 'loop'
 /** The two axes collapsed back into the single value the rest of the screen
- *  (steps, summary, launch) is written against. */
+ *  (sections, launch) is written against. */
 type Intent = 'new' | 'resume' | 'loop' | 'scratch' | 'repo'
 
 const TARGETS: { id: Target; label: string; hint: string; icon: typeof SquareTerminal }[] = [
@@ -229,16 +239,7 @@ const ACTIONS: { id: Action; label: string; hint: string; icon: typeof SquareTer
   },
 ]
 
-type StepId = 'workspace' | 'action' | 'model' | 'goal' | 'roles' | 'sessions' | 'review'
-const STEP_TITLE: Record<StepId, string> = {
-  workspace: 'Workspace',
-  action: 'Action',
-  model: 'Model',
-  goal: 'Goal',
-  roles: 'Agents',
-  sessions: 'Session',
-  review: 'Review',
-}
+type SectionId = 'workspace' | 'action' | 'model' | 'goal' | 'roles' | 'sessions' | 'options'
 
 export function EntryScreen({
   onChoose,
@@ -264,9 +265,8 @@ export function EntryScreen({
   // Loops are experimental: with the flag off there is no loop mode at all, and
   // `loops:create` refuses in main regardless of what this screen renders.
   const loopsOn = useExperiment('loops')
-  // Top-level intent: which of the launch actions the user is composing. It is
-  // the first field of the wizard (a select), not a tab bar — every intent runs
-  // through the same one-question-per-step form.
+  // Top-level intent: which of the launch actions the user is composing. Every
+  // intent renders as one page of sections; the intent decides which apply.
   // Split across the two axes the old single list conflated: `target` is WHERE
   // (asked first — it decides which actions even exist), `action` is WHAT.
   const [target, setTarget] = useState<Target>('existing')
@@ -274,8 +274,6 @@ export function EntryScreen({
   // Everything downstream still reads one value. A non-repo target has no
   // action of its own — there is nothing to resume or loop over.
   const intent: Intent = target === 'existing' ? action : target
-  // Index into `steps` (derived from the intent below).
-  const [stepIndex, setStepIndex] = useState(0)
   useEffect(() => {
     setTarget('existing')
     setAction(initialMode === 'loop' ? 'loop' : 'new')
@@ -314,8 +312,13 @@ export function EntryScreen({
       ? recentEngine
       : 'claude',
   )
-  const [model, setModel] = useState<string | undefined>(undefined) // '' semantics: undefined = engine default
-  const [effort, setEffort] = useState<string | undefined>(undefined) // undefined = engine default
+  // Restored only when it belongs to the restored engine — models are engine-specific.
+  const [lastModel] = useState<LastModel | null>(() => {
+    const m = readLastModel()
+    return m && m.engine === (recentEngine ?? 'claude') ? m : null
+  })
+  const [model, setModel] = useState<string | undefined>(lastModel?.model) // '' semantics: undefined = engine default
+  const [effort, setEffort] = useState<string | undefined>(lastModel?.effort) // undefined = engine default
   const [openrouterHarness, setOpenrouterHarness] = useState<'codex' | 'hermes'>('codex')
   const [location, setLocation] = useState<'local' | 'remote'>(lockedRemote ? 'remote' : 'local')
   const [remoteHosts, setRemoteHosts] = useState<RemoteHost[]>([])
@@ -334,7 +337,7 @@ export function EntryScreen({
   const [pinnedWorkspaces, setPinnedWorkspaces] = useState<string[]>(() =>
     readWorkspaceList('gt.pinnedWorkspaces'),
   )
-  // Read once: the list must not reshuffle under the user mid-wizard.
+  // Read once: the list must not reshuffle under the user mid-choice.
   const [recentWorkspaces] = useState<string[]>(() => readWorkspaceList('gt.recentWorkspaces'))
   // Spawn options apply to every NEW session this screen can start — workspace,
   // scratch, a freshly scaffolded repo, and the recent-workspace chips.
@@ -576,7 +579,7 @@ export function EntryScreen({
   const canResume = isAiEngine(resumeEngine) && resumeEngine !== 'openrouter' && !lockedRemote
   const sessions = canResume ? sessionsByEngine[resumeEngine] : undefined
   /** The workspace the resume list is scoped to. Empty = every workspace —
-   *  `lockedCwd` pins it, otherwise it's whatever the workspace step selected. */
+   *  `lockedCwd` pins it, otherwise it's whatever the workspace section selected. */
   const resumeDir = (lockedCwd || cwd).trim()
   // Memoized — these scans (6 fields per session) used to re-run on every
   // keystroke AND every unrelated re-render of this large component.
@@ -662,6 +665,47 @@ export function EntryScreen({
       },
     }
   }
+  /** Launch a NEW session, remembering its model/effort for the one-click chips. */
+  const launchNew = (c: Choice) => {
+    try {
+      localStorage.setItem(
+        LAST_MODEL_KEY,
+        JSON.stringify({ engine: c.engine, model: c.model, effort: c.effort }),
+      )
+    } catch {
+      /* ignore */
+    }
+    onChoose(withSpawn(c))
+  }
+  /** A pinned/recent chip's one-click launch: that workspace + the current
+   *  (i.e. last-used) engine, model, and effort — nothing else to answer. */
+  const chipChoice = (path: string): Choice => {
+    const local: Choice = { ...buildChoice(), name: undefined, cwd: path, remote: undefined }
+    if (!isRemotePath(path)) return local
+    const rest = path.replace(/^ssh:\/\//, '')
+    const slash = rest.indexOf('/')
+    const target = slash >= 0 ? rest.slice(0, slash) : rest
+    const remotePath = slash >= 0 ? '/' + rest.slice(slash + 1).replace(/^\/+/, '') : '~'
+    const host = remoteHosts.find(
+      (h) => h.label === target || h.sshTarget === target || h.id === target,
+    )
+    if (!host) return local
+    const remoteEngine = engine === 'local' ? host.daemon.defaultEngine || 'claude' : engine
+    return {
+      ...local,
+      engine: remoteEngine,
+      ...(remoteEngine === engine ? {} : { model: undefined, effort: undefined }),
+      cwd: remotePath,
+      remote: {
+        hostId: host.id,
+        label: host.label || host.sshTarget,
+        sshTarget: host.sshTarget,
+        cwd: remotePath,
+        platform: host.platform,
+        daemon: host.daemon,
+      },
+    }
+  }
   const resumeCountLabel = sessions ? ` · ${shown.length}` : ''
   const projectParentLabel =
     location === 'remote'
@@ -682,48 +726,28 @@ export function EntryScreen({
         ? tilde(cwd.trim())
         : '~'
 
-  // ── Wizard ───────────────────────────────────────────────────────────────
-  // Workspace FIRST, then what to do in it. The old single "start" list mixed
-  // the two, so you had to commit to "new session" before knowing the repo —
-  // and it offered Resume for a scratch dir that can never have one.
+  // ── Sections ─────────────────────────────────────────────────────────────
+  // One page: workspace first, then what to do in it, then whatever that action
+  // needs. The intent decides which sections apply; all of them show at once.
   // A locked repo answers the workspace question already, so the target picker
   // (and the scaffold/scratch options it carries) has nothing left to ask.
   const targetOptions = lockedCwd ? [] : TARGETS
   const actionOptions = ACTIONS.filter((a) => a.id !== 'loop' || loopsOn)
-  const steps: StepId[] = useMemo(() => {
-    const tail: StepId[] =
+  const sections: SectionId[] = useMemo(() => {
+    const tail: SectionId[] =
       intent === 'resume'
         ? ['sessions']
         : intent === 'loop'
           ? ['goal', 'roles']
-          : ['model', 'review']
-    // A locked repo skips the workspace step; every other path opens on it.
-    // The action step only earns its place when more than one action applies.
-    const head: StepId[] = lockedCwd
+          : ['model', 'options']
+    const head: SectionId[] = lockedCwd
       ? ['action']
       : target === 'existing'
         ? ['workspace', 'action']
         : ['workspace']
     return [...head, ...tail]
   }, [intent, target, lockedCwd])
-  const step = steps[Math.min(stepIndex, steps.length - 1)]
-  const stepNumber = steps.indexOf(step) + 1
-  const back = () => setStepIndex((i) => Math.max(0, i - 1))
-  const next = () => setStepIndex((i) => Math.min(steps.length - 1, i + 1))
-  // Changing the intent re-derives the steps; never strand the user past the end.
-  useEffect(() => {
-    setStepIndex((i) => Math.min(i, steps.length - 1))
-  }, [steps.length])
-  // A step that can't be left until its one question is answered. Everything
-  // up to (and including) the FIRST such step is reachable, so the rail can be
-  // clicked forward as well as back — you don't have to walk through Next.
-  const stepBlocked = (s: StepId) =>
-    (s === 'workspace' && target === 'repo' && !projName.trim()) ||
-    (s === 'goal' && !goal.trim()) ||
-    (s === 'workspace' && intent === 'loop' && !loopRepoRoot)
-  const firstBlocked = steps.findIndex(stepBlocked)
-  const maxReachable = firstBlocked === -1 ? steps.length - 1 : firstBlocked
-  const nextBlocked = stepBlocked(step)
+  const has = (id: SectionId) => sections.includes(id)
 
   const sectionTitle = 'text-[10px] font-bold uppercase tracking-[0.16em] text-zinc-500'
   const pickButton = (active: boolean, disabled = false) =>
@@ -751,29 +775,30 @@ export function EntryScreen({
         : 'border-border bg-muted/30 text-muted-foreground hover:border-primary/50 hover:text-foreground'
     }`
 
-  const STEP_COPY: Record<StepId, { title: string; hint: string }> = {
-    workspace: {
-      title: 'Which workspace?',
-      hint: 'Where the work happens — nothing launches until the last step.',
-    },
-    action: { title: 'What do you want to do here?', hint: 'Scoped to the workspace above.' },
-    model: { title: 'Which model?', hint: 'Engine first, then the model it runs.' },
-    goal: {
-      title: 'What should the loop converge on?',
-      hint: 'The driver turns this into a gradable contract.',
-    },
-    roles: { title: 'Who runs the loop?', hint: 'Each role gets its own engine and model.' },
-    sessions: {
-      title: 'Pick a session to resume',
-      hint: 'Sessions are listed per engine, newest first.',
-    },
-    review: { title: 'Ready to launch', hint: 'Last look before anything starts.' },
+  const SECTION_COPY: Record<SectionId, { title: string; hint: string }> = {
+    workspace: { title: 'Workspace', hint: 'Where the work happens.' },
+    action: { title: 'Action', hint: 'What to do in this workspace.' },
+    model: { title: 'Model', hint: 'Engine first, then the model it runs.' },
+    goal: { title: 'Goal', hint: 'The driver turns this into a gradable contract.' },
+    roles: { title: 'Agents', hint: 'Each role gets its own engine and model.' },
+    sessions: { title: 'Session', hint: 'Pick one to resume — listed per engine, newest first.' },
+    options: { title: 'Options', hint: 'Optional — the defaults are fine.' },
   }
-  const { title: stepTitle, hint: stepHint } = STEP_COPY[step]
+  /** A titled block of the page; rendered only when the intent uses it. */
+  const section = (id: SectionId, body: React.ReactNode) =>
+    has(id) && (
+      <section key={id} data-section={id} className="space-y-3">
+        <div>
+          <h2 className="text-[13px] font-semibold text-foreground">{SECTION_COPY[id].title}</h2>
+          <p className="text-[11px] text-muted-foreground">{SECTION_COPY[id].hint}</p>
+        </div>
+        {body}
+      </section>
+    )
   const samePath = (a: string, b: string) => a.replace(/\/+$/, '') === b.replace(/\/+$/, '')
 
-  // Pinned + recent workspaces, as SELECTABLE chips (they set the target repo;
-  // the wizard's last step is the only thing that launches).
+  // Pinned + recent workspaces. A click launches with the current engine/model;
+  // ⇧-click (and the resume/loop actions) only select the repo.
   const pins = pinnedWorkspaces
   const recents = recentWorkspaces.filter((r) => !pins.includes(r)).slice(0, 8)
   const workspaceChip = (r: string) => {
@@ -790,7 +815,13 @@ export function EntryScreen({
         }`}
       >
         <button
-          onClick={() => selectWorkspace(r)}
+          onClick={(e) =>
+            // One click launches a new session with the last-used engine/model.
+            // Loop/resume still need the repo selected; ⇧-click selects only.
+            intent === 'loop' || intent === 'resume' || e.shiftKey
+              ? selectWorkspace(r)
+              : launchNew(chipChoice(r))
+          }
           className="inline-flex min-w-0 items-center gap-1.5 text-left"
         >
           {isSelected ? (
@@ -817,15 +848,6 @@ export function EntryScreen({
       </div>
     )
   }
-
-  const summaryRow = (label: string, value: string, mono = false) => (
-    <div className="flex justify-between gap-3">
-      <span className="shrink-0 text-muted-foreground">{label}</span>
-      <span className={`truncate text-foreground ${mono ? 'font-mono' : 'font-medium'}`}>
-        {value}
-      </span>
-    </div>
-  )
 
   return (
     <div className="h-full w-full overflow-y-auto bg-background">
@@ -855,192 +877,50 @@ export function EntryScreen({
           )}
         </header>
 
-        {/* Step rail — any reachable step is clickable, forward or back. A step
-            is unreachable only when an earlier one is still unanswered. */}
-        <div className="mb-3 flex flex-wrap items-center gap-1.5">
-          {steps.map((s, i) => {
-            const done = i < stepNumber - 1
-            const active = i === stepNumber - 1
-            const reachable = i <= maxReachable
-            return (
-              <button
-                key={s}
-                onClick={() => reachable && setStepIndex(i)}
-                disabled={!reachable}
-                title={reachable ? undefined : `Finish ${STEP_TITLE[steps[maxReachable]]} first`}
-                className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
-                  active
-                    ? 'border-primary/60 bg-primary/15 text-foreground'
-                    : reachable
-                      ? 'border-border text-muted-foreground hover:border-primary/50 hover:text-foreground'
-                      : 'cursor-not-allowed border-transparent text-muted-foreground/40'
-                }`}
-              >
-                {done ? (
-                  <Check size={11} strokeWidth={2.5} />
-                ) : (
-                  <span className="tabular-nums opacity-60">{i + 1}</span>
-                )}
-                {STEP_TITLE[s]}
-              </button>
-            )
-          })}
-          <span className="ml-auto text-[10.5px] tabular-nums text-muted-foreground">
-            {stepNumber}/{steps.length}
-          </span>
-        </div>
-        <div className="mb-3 h-1 overflow-hidden rounded-full bg-muted">
-          <div
-            className="h-1 rounded-full bg-primary transition-all"
-            style={{ width: `${(stepNumber / steps.length) * 100}%` }}
-          />
-        </div>
-
-        {/* Step nav sits outside the card's width while staying full-height, so
-            the arrows stay put without narrowing the content between them. */}
-        <div data-testid="wizard-step-frame" className="relative">
-          <Button
-            variant="ghost"
-            onClick={back}
-            disabled={stepIndex === 0}
-            aria-label="Back"
-            title="Back"
-            className="absolute inset-y-0 right-full mr-2 h-auto w-9 px-0"
-          >
-            <ArrowLeft className="size-4" />
-          </Button>
-          <Card data-testid="wizard-step-card" className="min-w-0 w-full">
-            <CardHeader className="py-3">
-              <CardTitle className="text-[13px]">{stepTitle}</CardTitle>
-              <p className="text-[11px] text-muted-foreground">{stepHint}</p>
-            </CardHeader>
-            <CardContent className="space-y-3 pt-3">
-              {/* ── Step · Action ────────────────────────────────────────── */}
-              {step === 'action' && (
-                <div className="grid grid-cols-2 gap-2">
-                  {actionOptions.map(({ id, label, hint, icon: Icon }) => (
-                    <button
-                      key={id}
-                      onClick={() => selectAction(id)}
-                      className={optionCard(action === id)}
-                    >
-                      <Icon
-                        className={`mt-0.5 size-4 shrink-0 ${
-                          action === id ? 'text-[var(--gt-accent-2)]' : 'text-muted-foreground'
-                        }`}
-                      />
-                      <span className="min-w-0">
-                        <span className="block text-[12.5px] font-semibold text-foreground">
-                          {label}
-                        </span>
-                        <span className="block text-[10.5px] leading-snug text-muted-foreground">
-                          {hint}
-                        </span>
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {/* ── Step · Workspace ─────────────────────────────────────── */}
-              {step === 'workspace' && (
-                <>
-                  {targetOptions.length > 0 && (
-                    <div>
-                      <div className={sectionTitle + ' mb-1.5'}>Target</div>
-                      <div className="grid grid-cols-3 gap-2">
-                        {targetOptions.map(({ id, label, hint, icon: Icon }) => (
-                          <button
-                            key={id}
-                            onClick={() => selectTarget(id)}
-                            className={optionCard(target === id)}
-                          >
-                            <Icon
-                              className={`mt-0.5 size-4 shrink-0 ${
-                                target === id
-                                  ? 'text-[var(--gt-accent-2)]'
-                                  : 'text-muted-foreground'
-                              }`}
-                            />
-                            <span className="min-w-0">
-                              <span className="block text-[12.5px] font-semibold text-foreground">
-                                {label}
-                              </span>
-                              <span className="block text-[10.5px] leading-snug text-muted-foreground">
-                                {hint}
-                              </span>
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {target === 'scratch' && (
-                    <p className="text-[11.5px] text-muted-foreground">
-                      A throwaway session in the app-owned scratch dir. No repo, nothing to file
-                      away.
-                    </p>
-                  )}
-
-                  {target === 'repo' && (
-                    <>
-                      {remoteHosts.length > 0 && (
-                        <div>
-                          <div className={sectionTitle + ' mb-1.5'}>Location</div>
-                          <div className="grid grid-cols-2 gap-2">
-                            <button
-                              onClick={() => switchLocation('local')}
-                              className={pickButton(location === 'local')}
-                            >
-                              <FolderOpen size={16} strokeWidth={2} className="shrink-0" />
-                              <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold">
-                                Local
-                              </span>
-                            </button>
-                            <button
-                              onClick={() => switchLocation('remote')}
-                              className={pickButton(location === 'remote')}
-                            >
-                              <Server size={16} strokeWidth={2} className="shrink-0" />
-                              <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold">
-                                Remote SSH
-                              </span>
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                      <div>
-                        <div className={sectionTitle + ' mb-1.5'}>Name</div>
-                        <div className="flex items-center gap-2">
-                          <Input
-                            value={projName}
-                            onChange={(e) => {
-                              setProjName(e.target.value)
-                              setScaffoldErr('')
-                            }}
-                            placeholder="project-name"
-                            className="flex-1 font-mono"
+        <Card data-testid="entry-card" className="min-w-0 w-full">
+          <CardContent className="space-y-5 divide-y divide-border/60 py-4 [&>section+section]:pt-5">
+            {/* ── Section · Workspace ─────────────────────────────────────── */}
+            {section(
+              'workspace',
+              <>
+                {targetOptions.length > 0 && (
+                  <div>
+                    <div className={sectionTitle + ' mb-1.5'}>Target</div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {targetOptions.map(({ id, label, hint, icon: Icon }) => (
+                        <button
+                          key={id}
+                          onClick={() => selectTarget(id)}
+                          className={optionCard(target === id)}
+                        >
+                          <Icon
+                            className={`mt-0.5 size-4 shrink-0 ${
+                              target === id ? 'text-[var(--gt-accent-2)]' : 'text-muted-foreground'
+                            }`}
                           />
-                          <Button
-                            variant="secondary"
-                            onClick={pickParent}
-                            title="Choose parent directory"
-                          >
-                            {location === 'remote' ? (
-                              <Server size={13} strokeWidth={2} />
-                            ) : (
-                              <FolderOpen size={13} strokeWidth={2} />
-                            )}
-                            <span className="max-w-[180px] truncate">{projectParentLabel}</span>
-                          </Button>
-                        </div>
-                      </div>
-                    </>
-                  )}
+                          <span className="min-w-0">
+                            <span className="block text-[12.5px] font-semibold text-foreground">
+                              {label}
+                            </span>
+                            <span className="block text-[10.5px] leading-snug text-muted-foreground">
+                              {hint}
+                            </span>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-                  {target === 'existing' && (
-                    <>
+                {target === 'scratch' && (
+                  <p className="text-[11.5px] text-muted-foreground">
+                    A throwaway session in the app-owned scratch dir. No repo, nothing to file away.
+                  </p>
+                )}
+
+                {target === 'repo' && (
+                  <>
+                    {remoteHosts.length > 0 && (
                       <div>
                         <div className={sectionTitle + ' mb-1.5'}>Location</div>
                         <div className="grid grid-cols-2 gap-2">
@@ -1055,8 +935,7 @@ export function EntryScreen({
                           </button>
                           <button
                             onClick={() => switchLocation('remote')}
-                            disabled={remoteHosts.length === 0}
-                            className={pickButton(location === 'remote', remoteHosts.length === 0)}
+                            className={pickButton(location === 'remote')}
                           >
                             <Server size={16} strokeWidth={2} className="shrink-0" />
                             <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold">
@@ -1064,544 +943,602 @@ export function EntryScreen({
                             </span>
                           </button>
                         </div>
-                        {remoteHosts.length === 0 && (
-                          <div className="mt-1.5 text-[10.5px] text-muted-foreground">
-                            SSH profiles are configured in Settings → SSH Hosts.
-                          </div>
-                        )}
                       </div>
+                    )}
+                    <div>
+                      <div className={sectionTitle + ' mb-1.5'}>Name</div>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          value={projName}
+                          onChange={(e) => {
+                            setProjName(e.target.value)
+                            setScaffoldErr('')
+                          }}
+                          placeholder="project-name"
+                          className="flex-1 font-mono"
+                        />
+                        <Button
+                          variant="secondary"
+                          onClick={pickParent}
+                          title="Choose parent directory"
+                        >
+                          {location === 'remote' ? (
+                            <Server size={13} strokeWidth={2} />
+                          ) : (
+                            <FolderOpen size={13} strokeWidth={2} />
+                          )}
+                          <span className="max-w-[180px] truncate">{projectParentLabel}</span>
+                        </Button>
+                      </div>
+                    </div>
+                  </>
+                )}
 
-                      {location === 'remote' && remoteHosts.length > 0 && (
-                        <div>
-                          <div className={sectionTitle + ' mb-1.5'}>Host</div>
-                          <div className="flex flex-wrap gap-1.5">
-                            {remoteHosts.map((h) => (
-                              <button
-                                key={h.id}
-                                onClick={() => {
-                                  setRemoteHostId(h.id)
-                                  const nextCwd = h.defaultCwd || h.daemon.projectsDir || ''
-                                  setCwd(nextCwd)
-                                  setProjParent(nextCwd)
-                                }}
-                                className={chip(remoteHostId === h.id)}
-                              >
-                                <Server size={12} strokeWidth={2} className="shrink-0" />
-                                <span className="max-w-[180px] truncate">
-                                  {h.label || h.sshTarget}
-                                </span>
-                              </button>
-                            ))}
-                          </div>
+                {target === 'existing' && (
+                  <>
+                    <div>
+                      <div className={sectionTitle + ' mb-1.5'}>Location</div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => switchLocation('local')}
+                          className={pickButton(location === 'local')}
+                        >
+                          <FolderOpen size={16} strokeWidth={2} className="shrink-0" />
+                          <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold">
+                            Local
+                          </span>
+                        </button>
+                        <button
+                          onClick={() => switchLocation('remote')}
+                          disabled={remoteHosts.length === 0}
+                          className={pickButton(location === 'remote', remoteHosts.length === 0)}
+                        >
+                          <Server size={16} strokeWidth={2} className="shrink-0" />
+                          <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold">
+                            Remote SSH
+                          </span>
+                        </button>
+                      </div>
+                      {remoteHosts.length === 0 && (
+                        <div className="mt-1.5 text-[10.5px] text-muted-foreground">
+                          SSH profiles are configured in Settings → SSH Hosts.
                         </div>
                       )}
+                    </div>
 
-                      {location === 'remote' ? (
-                        <div className="rounded-lg border border-border bg-muted/20">
-                          <div className="flex items-center gap-1.5 border-b border-border p-2">
+                    {location === 'remote' && remoteHosts.length > 0 && (
+                      <div>
+                        <div className={sectionTitle + ' mb-1.5'}>Host</div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {remoteHosts.map((h) => (
+                            <button
+                              key={h.id}
+                              onClick={() => {
+                                setRemoteHostId(h.id)
+                                const nextCwd = h.defaultCwd || h.daemon.projectsDir || ''
+                                setCwd(nextCwd)
+                                setProjParent(nextCwd)
+                              }}
+                              className={chip(remoteHostId === h.id)}
+                            >
+                              <Server size={12} strokeWidth={2} className="shrink-0" />
+                              <span className="max-w-[180px] truncate">
+                                {h.label || h.sshTarget}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {location === 'remote' ? (
+                      <div className="rounded-lg border border-border bg-muted/20">
+                        <div className="flex items-center gap-1.5 border-b border-border p-2">
+                          <Input
+                            value={cwd}
+                            onChange={(e) => setCwd(e.target.value)}
+                            onKeyDown={(e) =>
+                              e.key === 'Enter' && loadRemoteDir(cwd, { select: true })
+                            }
+                            placeholder={remoteHost?.defaultCwd || '~ (remote home)'}
+                            className="border-0 bg-transparent font-mono shadow-none focus-visible:ring-0"
+                          />
+                          <button
+                            onClick={() => loadRemoteDir('~', { select: true })}
+                            title="Remote home"
+                            className="rounded-md border border-border p-1.5 text-muted-foreground hover:border-primary/50 hover:text-foreground"
+                          >
+                            <Home size={13} strokeWidth={2} />
+                          </button>
+                          <button
+                            onClick={() =>
+                              remoteListing?.parent &&
+                              loadRemoteDir(remoteListing.parent, { select: true })
+                            }
+                            disabled={!remoteListing?.parent}
+                            title="Parent folder"
+                            className="rounded-md border border-border p-1.5 text-muted-foreground hover:border-primary/50 hover:text-foreground disabled:opacity-35"
+                          >
+                            <ArrowUp size={13} strokeWidth={2} />
+                          </button>
+                          <button
+                            onClick={() =>
+                              loadRemoteDir(cwd || remoteListing?.cwd || '~', { select: true })
+                            }
+                            title="Refresh"
+                            className="rounded-md border border-border p-1.5 text-muted-foreground hover:border-primary/50 hover:text-foreground"
+                          >
+                            <RefreshCw
+                              size={13}
+                              strokeWidth={2}
+                              className={remoteListingLoading ? 'animate-spin' : ''}
+                            />
+                          </button>
+                        </div>
+                        <div className="max-h-44 overflow-y-auto p-1.5">
+                          {remoteListingLoading && !remoteListing ? (
+                            <div className="flex items-center justify-center gap-2 py-6 text-[11px] text-muted-foreground">
+                              <RefreshCw size={12} strokeWidth={2} className="animate-spin" />{' '}
+                              Loading folders…
+                            </div>
+                          ) : remoteListingErr ? (
+                            <div className="px-2 py-3 text-[11px] text-destructive">
+                              {remoteListingErr}
+                            </div>
+                          ) : remoteListing && remoteListing.entries.length === 0 ? (
+                            <div className="px-2 py-3 text-[11px] text-muted-foreground">
+                              No child folders.
+                            </div>
+                          ) : (
+                            remoteListing?.entries.map((d) => (
+                              <button
+                                key={d.path}
+                                onClick={() => loadRemoteDir(d.path, { select: true })}
+                                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12px] text-foreground/80 hover:bg-muted"
+                              >
+                                <FolderOpen
+                                  size={13}
+                                  strokeWidth={2}
+                                  className="shrink-0 text-muted-foreground"
+                                />
+                                <span className="truncate">{d.name}</span>
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        {(pins.length > 0 || recents.length > 0) && (
+                          <div className="space-y-2">
+                            {pins.length > 0 && (
+                              <div>
+                                <div className={sectionTitle + ' mb-1.5'}>Pinned</div>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {pins.map(workspaceChip)}
+                                </div>
+                              </div>
+                            )}
+                            {recents.length > 0 && (
+                              <div>
+                                <div className={sectionTitle + ' mb-1.5'}>Recent</div>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {recents.map(workspaceChip)}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        <div>
+                          <div className={sectionTitle + ' mb-1.5'}>Folder</div>
+                          <div className="flex items-center gap-2">
+                            <Button variant="secondary" size="sm" onClick={browse}>
+                              <FolderOpen size={13} strokeWidth={2} /> Browse
+                            </Button>
                             <Input
                               value={cwd}
                               onChange={(e) => setCwd(e.target.value)}
-                              onKeyDown={(e) =>
-                                e.key === 'Enter' && loadRemoteDir(cwd, { select: true })
-                              }
-                              placeholder={remoteHost?.defaultCwd || '~ (remote home)'}
-                              className="border-0 bg-transparent font-mono shadow-none focus-visible:ring-0"
+                              placeholder={intent === 'resume' ? 'Every workspace' : '~ (home)'}
+                              className="flex-1 font-mono"
                             />
-                            <button
-                              onClick={() => loadRemoteDir('~', { select: true })}
-                              title="Remote home"
-                              className="rounded-md border border-border p-1.5 text-muted-foreground hover:border-primary/50 hover:text-foreground"
-                            >
-                              <Home size={13} strokeWidth={2} />
-                            </button>
-                            <button
-                              onClick={() =>
-                                remoteListing?.parent &&
-                                loadRemoteDir(remoteListing.parent, { select: true })
-                              }
-                              disabled={!remoteListing?.parent}
-                              title="Parent folder"
-                              className="rounded-md border border-border p-1.5 text-muted-foreground hover:border-primary/50 hover:text-foreground disabled:opacity-35"
-                            >
-                              <ArrowUp size={13} strokeWidth={2} />
-                            </button>
-                            <button
-                              onClick={() =>
-                                loadRemoteDir(cwd || remoteListing?.cwd || '~', { select: true })
-                              }
-                              title="Refresh"
-                              className="rounded-md border border-border p-1.5 text-muted-foreground hover:border-primary/50 hover:text-foreground"
-                            >
-                              <RefreshCw
-                                size={13}
-                                strokeWidth={2}
-                                className={remoteListingLoading ? 'animate-spin' : ''}
-                              />
-                            </button>
-                          </div>
-                          <div className="max-h-44 overflow-y-auto p-1.5">
-                            {remoteListingLoading && !remoteListing ? (
-                              <div className="flex items-center justify-center gap-2 py-6 text-[11px] text-muted-foreground">
-                                <RefreshCw size={12} strokeWidth={2} className="animate-spin" />{' '}
-                                Loading folders…
-                              </div>
-                            ) : remoteListingErr ? (
-                              <div className="px-2 py-3 text-[11px] text-destructive">
-                                {remoteListingErr}
-                              </div>
-                            ) : remoteListing && remoteListing.entries.length === 0 ? (
-                              <div className="px-2 py-3 text-[11px] text-muted-foreground">
-                                No child folders.
-                              </div>
-                            ) : (
-                              remoteListing?.entries.map((d) => (
-                                <button
-                                  key={d.path}
-                                  onClick={() => loadRemoteDir(d.path, { select: true })}
-                                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12px] text-foreground/80 hover:bg-muted"
-                                >
-                                  <FolderOpen
-                                    size={13}
-                                    strokeWidth={2}
-                                    className="shrink-0 text-muted-foreground"
-                                  />
-                                  <span className="truncate">{d.name}</span>
-                                </button>
-                              ))
+                            {/* Resume can legitimately span every repo — a new
+                            session cannot, so the escape hatch is resume-only. */}
+                            {intent === 'resume' && cwd.trim() && (
+                              <Button variant="ghost" size="sm" onClick={() => setCwd('')}>
+                                <X className="size-3.5" /> Clear
+                              </Button>
                             )}
                           </div>
                         </div>
-                      ) : (
-                        <>
-                          {(pins.length > 0 || recents.length > 0) && (
-                            <div className="space-y-2">
-                              {pins.length > 0 && (
-                                <div>
-                                  <div className={sectionTitle + ' mb-1.5'}>Pinned</div>
-                                  <div className="flex flex-wrap gap-1.5">
-                                    {pins.map(workspaceChip)}
-                                  </div>
-                                </div>
-                              )}
-                              {recents.length > 0 && (
-                                <div>
-                                  <div className={sectionTitle + ' mb-1.5'}>Recent</div>
-                                  <div className="flex flex-wrap gap-1.5">
-                                    {recents.map(workspaceChip)}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                          <div>
-                            <div className={sectionTitle + ' mb-1.5'}>Folder</div>
-                            <div className="flex items-center gap-2">
-                              <Button variant="secondary" size="sm" onClick={browse}>
-                                <FolderOpen size={13} strokeWidth={2} /> Browse
-                              </Button>
-                              <Input
-                                value={cwd}
-                                onChange={(e) => setCwd(e.target.value)}
-                                placeholder={intent === 'resume' ? 'Every workspace' : '~ (home)'}
-                                className="flex-1 font-mono"
-                              />
-                              {/* Resume can legitimately span every repo — a new
-                            session cannot, so the escape hatch is resume-only. */}
-                              {intent === 'resume' && cwd.trim() && (
-                                <Button variant="ghost" size="sm" onClick={() => setCwd('')}>
-                                  <X className="size-3.5" /> Clear
-                                </Button>
-                              )}
-                            </div>
-                          </div>
-                        </>
-                      )}
+                      </>
+                    )}
 
-                      {/* Remote only — the local path input above already IS the
+                    {/* Remote only — the local path input above already IS the
                         confirmation, so repeating it there is noise. */}
-                      {location === 'remote' && (
-                        <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/20 px-3 py-2 text-[12px]">
-                          <Check
-                            size={13}
-                            strokeWidth={2.5}
-                            className="shrink-0 text-[var(--gt-accent-2)]"
-                          />
-                          <span className="shrink-0 text-muted-foreground">{daemonLabel}</span>
-                          <span className="min-w-0 truncate font-mono text-foreground">
-                            {selectedWorkspaceLabel}
-                          </span>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </>
-              )}
-
-              {/* ── Step · Model ─────────────────────────────────────────── */}
-              {step === 'model' && (
-                <>
-                  <div>
-                    <div className={sectionTitle + ' mb-1.5'}>Engine</div>
-                    <div className="grid grid-cols-3 gap-2">
-                      {engineOptions.map((e) => (
-                        <button
-                          key={e}
-                          onClick={() => selectEngine(e)}
-                          aria-pressed={engine === e}
-                          className={pickButton(engine === e)}
-                        >
-                          {e === 'local' ? (
-                            <SquareTerminal size={16} strokeWidth={2} className="shrink-0" />
-                          ) : (
-                            <EngineLogo engine={e} size={16} />
-                          )}
-                          <span className="min-w-0 truncate text-[12.5px] font-semibold">
-                            {sessionEngineLabel(e)}
-                          </span>
-                          {e === recentEngine && (
-                            <span className="ml-auto shrink-0 rounded-full border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-[var(--gt-accent-2)]">
-                              Recent
-                            </span>
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {engine === 'openrouter' && (
-                    <div>
-                      <div className={sectionTitle + ' mb-1.5'}>Harness</div>
-                      <div className="grid grid-cols-2 gap-2">
-                        {(['codex', 'hermes'] as const).map((h) => (
-                          <button
-                            key={h}
-                            onClick={() => setOpenrouterHarness(h)}
-                            className={pickButton(openrouterHarness === h)}
-                          >
-                            <EngineLogo engine={h} size={15} />
-                            <span className="min-w-0 truncate text-[12px] font-semibold">
-                              {h === 'codex' ? 'Codex' : 'Hermes'}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {isAiEngine(engine) ? (
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <div className={sectionTitle + ' mb-1.5'}>Model</div>
-                        <ModelDropdown engine={engine} model={model} onChange={setModel} />
-                      </div>
-                      {!(engine === 'openrouter' && openrouterHarness === 'hermes') && (
-                        <div>
-                          <div className={sectionTitle + ' mb-1.5'}>Reasoning effort</div>
-                          <EffortDropdown engine={engine} effort={effort} onChange={setEffort} />
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <p className="text-[11.5px] text-muted-foreground">
-                      A plain shell — no model, no agent.
-                    </p>
-                  )}
-                </>
-              )}
-
-              {/* ── Step · Loop goal ─────────────────────────────────────── */}
-              {step === 'goal' && (
-                <>
-                  <div>
-                    <div className={sectionTitle + ' mb-1.5'}>Goal</div>
-                    <Textarea
-                      value={goal}
-                      onChange={(e) => setGoal(e.target.value)}
-                      placeholder="What should this loop converge on?"
-                      rows={4}
-                    />
-                  </div>
-                  <div>
-                    <div className={sectionTitle + ' mb-1.5'}>Topology</div>
-                    <div className="grid grid-cols-2 gap-2">
-                      {(
-                        [
-                          ['paired', 'Paired', 'Two live sessions grade each other'],
-                          ['single', 'Single', 'One generator + a fresh grader per turn'],
-                        ] as const
-                      ).map(([val, label, hint]) => (
-                        <button
-                          key={val}
-                          onClick={() => setLoopTopology(val)}
-                          className={`rounded-xl border p-3 text-left transition-colors ${
-                            loopTopology === val
-                              ? 'border-primary/70 bg-primary/10'
-                              : 'border-border bg-muted/20 hover:border-primary/50'
-                          }`}
-                        >
-                          <div className="text-[12.5px] font-semibold text-foreground">{label}</div>
-                          <div className="text-[10.5px] leading-snug text-muted-foreground">
-                            {hint}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {/* ── Step · Loop roles ────────────────────────────────────── */}
-              {step === 'roles' && (
-                <>
-                  <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/20 px-3 py-2 text-[12px]">
-                    <FolderOpen
-                      size={13}
-                      strokeWidth={2}
-                      className="shrink-0 text-muted-foreground"
-                    />
-                    <span className="min-w-0 truncate font-mono text-foreground">
-                      {tilde(loopRepoRoot) || '~'}
-                    </span>
-                    <Badge variant="secondary" className="ml-auto">
-                      Local
-                    </Badge>
-                  </div>
-                  <div className="flex gap-3">
-                    <RoleCard
-                      label={loopTopology === 'single' ? 'Generator' : 'Worker'}
-                      hint={
-                        loopTopology === 'single'
-                          ? 'Writes code; a fresh grader reviews each turn'
-                          : 'Writes code in the worktree'
-                      }
-                      engine={workerEngine}
-                      model={workerModel}
-                      onEngine={setWorkerEngine}
-                      onModel={setWorkerModel}
-                    />
-                    {loopTopology === 'paired' && (
-                      <RoleCard
-                        label="Driver"
-                        hint="Plans + grades, in the main repo"
-                        engine={driverEngine}
-                        model={driverModel}
-                        onEngine={setDriverEngine}
-                        onModel={setDriverModel}
-                      />
-                    )}
-                  </div>
-                  {loopErr && <div className="text-[11px] text-destructive">{loopErr}</div>}
-                </>
-              )}
-
-              {/* ── Step · Resume ────────────────────────────────────────── */}
-              {step === 'sessions' && (
-                <>
-                  <div>
-                    <div className={sectionTitle + ' mb-1.5'}>Engine</div>
-                    {/* Same control as the model step's engine picker — this is
-                      the question the step opens on, so it gets the same weight
-                      there rather than reading as a filter chip. */}
-                    <div className="grid grid-cols-3 gap-2">
-                      {ENGINE_IDS.filter((e) => e !== 'openrouter').map((e) => (
-                        <button
-                          key={e}
-                          onClick={() => selectResumeEngine(e)}
-                          className={pickButton(resumeEngine === e)}
-                        >
-                          <EngineLogo engine={e} size={16} />
-                          <span className="min-w-0 truncate text-[12.5px] font-semibold">
-                            {engineLabel(e)}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  {/* What the list is scoped to — the workspace step's answer. */}
-                  <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                    <FolderOpen size={12} strokeWidth={2} className="shrink-0" />
-                    {resumeDir ? (
-                      <>
-                        <span className="min-w-0 truncate font-mono text-foreground/80">
-                          {tilde(resumeDir)}
+                    {location === 'remote' && (
+                      <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/20 px-3 py-2 text-[12px]">
+                        <Check
+                          size={13}
+                          strokeWidth={2.5}
+                          className="shrink-0 text-[var(--gt-accent-2)]"
+                        />
+                        <span className="shrink-0 text-muted-foreground">{daemonLabel}</span>
+                        <span className="min-w-0 truncate font-mono text-foreground">
+                          {selectedWorkspaceLabel}
                         </span>
-                        <button
-                          onClick={() => setCwd('')}
-                          className="shrink-0 underline-offset-2 hover:text-foreground hover:underline"
-                        >
-                          show every workspace
-                        </button>
-                      </>
-                    ) : (
-                      <span>Every workspace</span>
+                      </div>
                     )}
-                    <span className="ml-auto shrink-0 text-[10.5px]">{resumeCountLabel}</span>
-                    <Button
-                      variant="secondary"
-                      size="xs"
-                      className="shrink-0"
-                      onClick={() => loadEngineSessions(resumeEngine, true)}
-                      disabled={isLoadingThisEngine}
-                    >
-                      <RefreshCw
-                        size={11}
-                        strokeWidth={2}
-                        className={isLoadingThisEngine ? 'animate-spin' : ''}
-                      />
-                      {sessions ? 'Refresh' : 'Load'}
-                    </Button>
+                  </>
+                )}
+              </>,
+            )}
+
+            {/* ── Section · Action ────────────────────────────────────────── */}
+            {section(
+              'action',
+              <div className="grid grid-cols-2 gap-2">
+                {actionOptions.map(({ id, label, hint, icon: Icon }) => (
+                  <button
+                    key={id}
+                    onClick={() => selectAction(id)}
+                    className={optionCard(action === id)}
+                  >
+                    <Icon
+                      className={`mt-0.5 size-4 shrink-0 ${
+                        action === id ? 'text-[var(--gt-accent-2)]' : 'text-muted-foreground'
+                      }`}
+                    />
+                    <span className="min-w-0">
+                      <span className="block text-[12.5px] font-semibold text-foreground">
+                        {label}
+                      </span>
+                      <span className="block text-[10.5px] leading-snug text-muted-foreground">
+                        {hint}
+                      </span>
+                    </span>
+                  </button>
+                ))}
+              </div>,
+            )}
+
+            {/* ── Section · Model ─────────────────────────────────────────── */}
+            {section(
+              'model',
+              <>
+                <div>
+                  <div className={sectionTitle + ' mb-1.5'}>Engine</div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {engineOptions.map((e) => (
+                      <button
+                        key={e}
+                        onClick={() => selectEngine(e)}
+                        aria-pressed={engine === e}
+                        className={pickButton(engine === e)}
+                      >
+                        {e === 'local' ? (
+                          <SquareTerminal size={16} strokeWidth={2} className="shrink-0" />
+                        ) : (
+                          <EngineLogo engine={e} size={16} />
+                        )}
+                        <span className="min-w-0 truncate text-[12.5px] font-semibold">
+                          {sessionEngineLabel(e)}
+                        </span>
+                        {e === recentEngine && (
+                          <span className="ml-auto shrink-0 rounded-full border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-[var(--gt-accent-2)]">
+                            Recent
+                          </span>
+                        )}
+                      </button>
+                    ))}
                   </div>
-                  {sessions && (
-                    <label className="relative block">
-                      <Search
-                        size={11}
-                        strokeWidth={2}
-                        className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground"
-                      />
-                      <input
-                        value={sessionSearch}
-                        onChange={(e) => setSessionSearch(e.target.value)}
-                        placeholder="Search sessions…"
-                        className="w-full rounded-md border border-border bg-muted/40 py-1.5 pl-6 pr-2 text-[11px] text-foreground outline-none placeholder:text-muted-foreground focus:border-primary/60"
-                      />
-                    </label>
-                  )}
-                  {!sessions && !isLoadingThisEngine ? (
-                    <button
-                      onClick={() => loadEngineSessions(resumeEngine)}
-                      className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border p-6 text-center text-[12px] text-muted-foreground hover:border-primary/50 hover:text-foreground"
-                    >
-                      <EngineLogo engine={resumeEngine} size={13} /> Load prior{' '}
-                      {engineLabel(resumeEngine)} sessions
-                    </button>
-                  ) : isLoadingThisEngine ? (
-                    <div className="flex items-center justify-center gap-2 rounded-xl border border-dashed border-border p-6 text-[12px] text-muted-foreground">
-                      <RefreshCw size={13} strokeWidth={2} className="animate-spin" /> Scanning{' '}
-                      {engineLabel(resumeEngine)} sessions…
-                    </div>
-                  ) : shown.length === 0 ? (
-                    <div className="rounded-xl border border-dashed border-border p-6 text-center text-[12px] text-muted-foreground">
-                      {sessionSearch.trim()
-                        ? 'No sessions match that search.'
-                        : resumeDir
-                          ? `No prior ${engineLabel(resumeEngine)} sessions in ${tilde(resumeDir)}.`
-                          : `No prior ${engineLabel(resumeEngine)} sessions found.`}
-                    </div>
-                  ) : (
-                    <div className="space-y-1.5">
-                      {visibleShown.map((s) => (
+                </div>
+
+                {engine === 'openrouter' && (
+                  <div>
+                    <div className={sectionTitle + ' mb-1.5'}>Harness</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(['codex', 'hermes'] as const).map((h) => (
                         <button
-                          key={s.id}
-                          onClick={() =>
-                            onChoose({
-                              mode: 'resume',
-                              engine: s.engine,
-                              sessionId: s.id,
-                              cwd: s.cwd,
-                            })
-                          }
-                          className="group flex w-full items-center gap-3 rounded-xl border border-border/40 bg-black/20 p-2.5 text-left transition-colors hover:border-primary/50 hover:bg-muted/30"
+                          key={h}
+                          onClick={() => setOpenrouterHarness(h)}
+                          className={pickButton(openrouterHarness === h)}
                         >
-                          <div className="min-w-0 flex-1">
-                            <div className="truncate text-[13px] text-foreground/65 transition-colors group-hover:text-foreground">
-                              {s.firstUserText || (
-                                <span className="italic text-muted-foreground/60">
-                                  Untitled session
-                                </span>
-                              )}
-                            </div>
-                            <div className="mt-0.5 flex items-center gap-2 truncate text-[11px] text-muted-foreground/55">
-                              <span className="font-mono">{tilde(s.cwd) || '~'}</span>
-                              {s.gitBranch && (
-                                <span className="inline-flex items-center gap-0.5">
-                                  <GitBranch size={11} strokeWidth={2} /> {s.gitBranch}
-                                </span>
-                              )}
-                              <span>· {s.turns} turns</span>
-                            </div>
-                          </div>
-                          <div className="shrink-0 text-right text-[10.5px] text-muted-foreground/50">
-                            <div>{rel(s.mtime)}</div>
-                            <div className="font-mono">{s.id.slice(0, 8)}</div>
-                          </div>
-                        </button>
-                      ))}
-                      {hiddenShown > 0 && (
-                        <button
-                          onClick={() => setVisibleSessionCount((n) => n + SESSION_PAGE_SIZE)}
-                          className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-muted/20 p-2.5 text-[12px] text-muted-foreground hover:border-primary/50 hover:text-foreground"
-                        >
-                          Load {Math.min(SESSION_PAGE_SIZE, hiddenShown)} more
-                          <span className="text-muted-foreground/70">
-                            · {hiddenShown} remaining
+                          <EngineLogo engine={h} size={15} />
+                          <span className="min-w-0 truncate text-[12px] font-semibold">
+                            {h === 'codex' ? 'Codex' : 'Hermes'}
                           </span>
                         </button>
-                      )}
+                      ))}
                     </div>
-                  )}
-                </>
-              )}
+                  </div>
+                )}
 
-              {/* ── Step · Review ────────────────────────────────────────── */}
-              {step === 'review' && (
-                <>
-                  <div className="space-y-1.5 rounded-lg border border-border bg-muted/30 p-3 text-[12px]">
-                    {summaryRow('Engine', sessionEngineLabel(engine))}
-                    {isAiEngine(engine) && summaryRow('Model', model ?? 'Default')}
-                    {isAiEngine(engine) && effort && summaryRow('Effort', effort)}
-                    {intent === 'scratch' ? (
-                      summaryRow('Workspace', 'Scratch dir — no repo', true)
-                    ) : intent === 'repo' ? (
-                      <>
-                        {summaryRow('Project', projName.trim(), true)}
-                        {summaryRow('Parent', projectParentLabel, true)}
-                      </>
-                    ) : (
-                      <>
-                        {location === 'remote' && summaryRow('Host', daemonLabel)}
-                        {summaryRow('Workspace', selectedWorkspaceLabel, true)}
-                      </>
+                {isAiEngine(engine) ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <div className={sectionTitle + ' mb-1.5'}>Model</div>
+                      <ModelDropdown engine={engine} model={model} onChange={setModel} />
+                    </div>
+                    {!(engine === 'openrouter' && openrouterHarness === 'hermes') && (
+                      <div>
+                        <div className={sectionTitle + ' mb-1.5'}>Reasoning effort</div>
+                        <EffortDropdown engine={engine} effort={effort} onChange={setEffort} />
+                      </div>
                     )}
                   </div>
+                ) : (
+                  <p className="text-[11.5px] text-muted-foreground">
+                    A plain shell — no model, no agent.
+                  </p>
+                )}
+              </>,
+            )}
 
-                  <SpawnOptions
-                    value={spawn}
-                    onChange={changeSpawn}
-                    savedPrompts={savedPrompts}
-                    onSaveCustom={(p) => persistPrompts([...savedPrompts, p])}
-                    onDeleteCustom={(id) => persistPrompts(savedPrompts.filter((p) => p.id !== id))}
+            {/* ── Section · Loop goal ─────────────────────────────────────── */}
+            {section(
+              'goal',
+              <>
+                <div>
+                  <div className={sectionTitle + ' mb-1.5'}>Goal</div>
+                  <Textarea
+                    value={goal}
+                    onChange={(e) => setGoal(e.target.value)}
+                    placeholder="What should this loop converge on?"
+                    rows={4}
                   />
+                </div>
+                <div>
+                  <div className={sectionTitle + ' mb-1.5'}>Topology</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(
+                      [
+                        ['paired', 'Paired', 'Two live sessions grade each other'],
+                        ['single', 'Single', 'One generator + a fresh grader per turn'],
+                      ] as const
+                    ).map(([val, label, hint]) => (
+                      <button
+                        key={val}
+                        onClick={() => setLoopTopology(val)}
+                        className={`rounded-xl border p-3 text-left transition-colors ${
+                          loopTopology === val
+                            ? 'border-primary/70 bg-primary/10'
+                            : 'border-border bg-muted/20 hover:border-primary/50'
+                        }`}
+                      >
+                        <div className="text-[12.5px] font-semibold text-foreground">{label}</div>
+                        <div className="text-[10.5px] leading-snug text-muted-foreground">
+                          {hint}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </>,
+            )}
 
-                  {scaffoldErr && (
-                    <div className="text-[11px] text-destructive">
-                      {scaffoldErr}
-                      <div className="mt-0.5 text-[10.5px] leading-snug text-muted-foreground">
-                        Check your network/VPN and that the template repo (Settings → Projects →
-                        templateRepo) is reachable — a private repo needs your git auth.
-                      </div>
-                    </div>
+            {/* ── Section · Loop roles ────────────────────────────────────── */}
+            {section(
+              'roles',
+              <>
+                <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/20 px-3 py-2 text-[12px]">
+                  <FolderOpen
+                    size={13}
+                    strokeWidth={2}
+                    className="shrink-0 text-muted-foreground"
+                  />
+                  <span className="min-w-0 truncate font-mono text-foreground">
+                    {tilde(loopRepoRoot) || '~'}
+                  </span>
+                  <Badge variant="secondary" className="ml-auto">
+                    Local
+                  </Badge>
+                </div>
+                <div className="flex gap-3">
+                  <RoleCard
+                    label={loopTopology === 'single' ? 'Generator' : 'Worker'}
+                    hint={
+                      loopTopology === 'single'
+                        ? 'Writes code; a fresh grader reviews each turn'
+                        : 'Writes code in the worktree'
+                    }
+                    engine={workerEngine}
+                    model={workerModel}
+                    onEngine={setWorkerEngine}
+                    onModel={setWorkerModel}
+                  />
+                  {loopTopology === 'paired' && (
+                    <RoleCard
+                      label="Driver"
+                      hint="Plans + grades, in the main repo"
+                      engine={driverEngine}
+                      model={driverModel}
+                      onEngine={setDriverEngine}
+                      onModel={setDriverModel}
+                    />
                   )}
-                </>
-              )}
-            </CardContent>
-          </Card>
-          <Button
-            variant="ghost"
-            onClick={next}
-            disabled={nextBlocked || stepIndex >= steps.length - 1}
-            aria-label="Next"
-            title="Next"
-            className="absolute inset-y-0 left-full ml-2 h-auto w-9 px-0"
-          >
-            <ArrowRight className="size-4" />
-          </Button>
-        </div>
+                </div>
+                {loopErr && <div className="text-[11px] text-destructive">{loopErr}</div>}
+              </>,
+            )}
 
-        {/* Footer — one primary action, always bottom-right */}
-        <div className="mt-3 flex items-center justify-end gap-2">
+            {/* ── Section · Resume ────────────────────────────────────────── */}
+            {section(
+              'sessions',
+              <>
+                <div>
+                  <div className={sectionTitle + ' mb-1.5'}>Engine</div>
+                  {/* Same control as the model section's engine picker — this is
+                      the question the section opens on, so it gets the same weight
+                      there rather than reading as a filter chip. */}
+                  <div className="grid grid-cols-3 gap-2">
+                    {ENGINE_IDS.filter((e) => e !== 'openrouter').map((e) => (
+                      <button
+                        key={e}
+                        onClick={() => selectResumeEngine(e)}
+                        className={pickButton(resumeEngine === e)}
+                      >
+                        <EngineLogo engine={e} size={16} />
+                        <span className="min-w-0 truncate text-[12.5px] font-semibold">
+                          {engineLabel(e)}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {/* What the list is scoped to — the workspace section's answer. */}
+                <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                  <FolderOpen size={12} strokeWidth={2} className="shrink-0" />
+                  {resumeDir ? (
+                    <>
+                      <span className="min-w-0 truncate font-mono text-foreground/80">
+                        {tilde(resumeDir)}
+                      </span>
+                      <button
+                        onClick={() => setCwd('')}
+                        className="shrink-0 underline-offset-2 hover:text-foreground hover:underline"
+                      >
+                        show every workspace
+                      </button>
+                    </>
+                  ) : (
+                    <span>Every workspace</span>
+                  )}
+                  <span className="ml-auto shrink-0 text-[10.5px]">{resumeCountLabel}</span>
+                  <Button
+                    variant="secondary"
+                    size="xs"
+                    className="shrink-0"
+                    onClick={() => loadEngineSessions(resumeEngine, true)}
+                    disabled={isLoadingThisEngine}
+                  >
+                    <RefreshCw
+                      size={11}
+                      strokeWidth={2}
+                      className={isLoadingThisEngine ? 'animate-spin' : ''}
+                    />
+                    {sessions ? 'Refresh' : 'Load'}
+                  </Button>
+                </div>
+                {sessions && (
+                  <label className="relative block">
+                    <Search
+                      size={11}
+                      strokeWidth={2}
+                      className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground"
+                    />
+                    <input
+                      value={sessionSearch}
+                      onChange={(e) => setSessionSearch(e.target.value)}
+                      placeholder="Search sessions…"
+                      className="w-full rounded-md border border-border bg-muted/40 py-1.5 pl-6 pr-2 text-[11px] text-foreground outline-none placeholder:text-muted-foreground focus:border-primary/60"
+                    />
+                  </label>
+                )}
+                {!sessions && !isLoadingThisEngine ? (
+                  <button
+                    onClick={() => loadEngineSessions(resumeEngine)}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border p-6 text-center text-[12px] text-muted-foreground hover:border-primary/50 hover:text-foreground"
+                  >
+                    <EngineLogo engine={resumeEngine} size={13} /> Load prior{' '}
+                    {engineLabel(resumeEngine)} sessions
+                  </button>
+                ) : isLoadingThisEngine ? (
+                  <div className="flex items-center justify-center gap-2 rounded-xl border border-dashed border-border p-6 text-[12px] text-muted-foreground">
+                    <RefreshCw size={13} strokeWidth={2} className="animate-spin" /> Scanning{' '}
+                    {engineLabel(resumeEngine)} sessions…
+                  </div>
+                ) : shown.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-border p-6 text-center text-[12px] text-muted-foreground">
+                    {sessionSearch.trim()
+                      ? 'No sessions match that search.'
+                      : resumeDir
+                        ? `No prior ${engineLabel(resumeEngine)} sessions in ${tilde(resumeDir)}.`
+                        : `No prior ${engineLabel(resumeEngine)} sessions found.`}
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    {visibleShown.map((s) => (
+                      <button
+                        key={s.id}
+                        onClick={() =>
+                          onChoose({
+                            mode: 'resume',
+                            engine: s.engine,
+                            sessionId: s.id,
+                            cwd: s.cwd,
+                          })
+                        }
+                        className="group flex w-full items-center gap-3 rounded-xl border border-border/40 bg-black/20 p-2.5 text-left transition-colors hover:border-primary/50 hover:bg-muted/30"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-[13px] text-foreground/65 transition-colors group-hover:text-foreground">
+                            {s.firstUserText || (
+                              <span className="italic text-muted-foreground/60">
+                                Untitled session
+                              </span>
+                            )}
+                          </div>
+                          <div className="mt-0.5 flex items-center gap-2 truncate text-[11px] text-muted-foreground/55">
+                            <span className="font-mono">{tilde(s.cwd) || '~'}</span>
+                            {s.gitBranch && (
+                              <span className="inline-flex items-center gap-0.5">
+                                <GitBranch size={11} strokeWidth={2} /> {s.gitBranch}
+                              </span>
+                            )}
+                            <span>· {s.turns} turns</span>
+                          </div>
+                        </div>
+                        <div className="shrink-0 text-right text-[10.5px] text-muted-foreground/50">
+                          <div>{rel(s.mtime)}</div>
+                          <div className="font-mono">{s.id.slice(0, 8)}</div>
+                        </div>
+                      </button>
+                    ))}
+                    {hiddenShown > 0 && (
+                      <button
+                        onClick={() => setVisibleSessionCount((n) => n + SESSION_PAGE_SIZE)}
+                        className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-muted/20 p-2.5 text-[12px] text-muted-foreground hover:border-primary/50 hover:text-foreground"
+                      >
+                        Load {Math.min(SESSION_PAGE_SIZE, hiddenShown)} more
+                        <span className="text-muted-foreground/70">· {hiddenShown} remaining</span>
+                      </button>
+                    )}
+                  </div>
+                )}
+              </>,
+            )}
+
+            {/* ── Section · Options ───────────────────────────────────────── */}
+            {section(
+              'options',
+              <>
+                <SpawnOptions
+                  value={spawn}
+                  onChange={changeSpawn}
+                  savedPrompts={savedPrompts}
+                  onSaveCustom={(p) => persistPrompts([...savedPrompts, p])}
+                  onDeleteCustom={(id) => persistPrompts(savedPrompts.filter((p) => p.id !== id))}
+                />
+
+                {scaffoldErr && (
+                  <div className="text-[11px] text-destructive">
+                    {scaffoldErr}
+                    <div className="mt-0.5 text-[10.5px] leading-snug text-muted-foreground">
+                      Check your network/VPN and that the template repo (Settings → Projects →
+                      templateRepo) is reachable — a private repo needs your git auth.
+                    </div>
+                  </div>
+                )}
+              </>,
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Footer — the launch action for the current intent, sticky so it never
+            scrolls out of reach. Resume launches from the session list itself. */}
+        <div className="sticky bottom-0 mt-3 flex items-center justify-end gap-2 bg-background/90 py-2 backdrop-blur">
           <div className="flex min-w-0 items-center justify-end gap-2">
-            {step === 'review' && intent !== 'repo' && (
+            {has('options') && intent !== 'repo' && (
               <Input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -1609,7 +1546,7 @@ export function EntryScreen({
                 className="max-w-[200px]"
               />
             )}
-            {step === 'review' ? (
+            {has('options') ? (
               intent === 'scratch' ? (
                 <Button onClick={() => void startScratch()}>
                   <Zap className="size-4" /> Start scratch session
@@ -1621,13 +1558,13 @@ export function EntryScreen({
                 </Button>
               ) : (
                 <Button
-                  onClick={() => onChoose(withSpawn(buildChoice()))}
+                  onClick={() => launchNew(buildChoice())}
                   disabled={location === 'remote' && !remoteHost}
                 >
                   <Plus className="size-4" /> New session
                 </Button>
               )
-            ) : step === 'roles' ? (
+            ) : has('roles') ? (
               <Button
                 onClick={() => void launchLoop()}
                 disabled={!goal.trim() || !loopRepoRoot || loopBusy}
