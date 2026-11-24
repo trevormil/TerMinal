@@ -25,6 +25,8 @@ const LOGO: Record<Engine, string> = {
   pi: piLogo,
   hermes: hermesLogo,
   'openai-compat': '',
+  // No wordmark asset shipped — renders nothing; the label carries identity.
+  antigravity: '',
 }
 
 // Single source for the engine wordmark — anywhere we show an engine

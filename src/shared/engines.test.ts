@@ -6,6 +6,9 @@ import {
   engineEffortsOf,
   engineSupportsEffort,
   coerceEffort,
+  seedArgs,
+  resumeArgs,
+  modelArgs,
 } from './engines'
 
 const modelIds = (engine: keyof typeof ENGINES): string[] =>
@@ -134,5 +137,16 @@ describe('engine effort registry', () => {
 
   test('every engine declares effort explicitly (supported or null)', () => {
     for (const e of Object.values(ENGINES)) expect('effort' in e).toBe(true)
+  })
+})
+
+describe('antigravity (agy)', () => {
+  test('seeds with -i and resumes with --conversation', () => {
+    expect(seedArgs('antigravity', 'hi')).toEqual(['-i', 'hi'])
+    expect(resumeArgs('antigravity', 'abc')).toEqual(['--conversation', 'abc'])
+    expect(modelArgs('antigravity', 'Gemini 3.1 Pro (High)')).toEqual([
+      '--model',
+      'Gemini 3.1 Pro (High)',
+    ])
   })
 })

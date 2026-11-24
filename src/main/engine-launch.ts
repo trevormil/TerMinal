@@ -123,6 +123,14 @@ export function buildEngineLaunch(input: EngineLaunchInput): {
     } else {
       sessionId = input.sessionId || mint()
     }
+  } else if (engine === 'antigravity') {
+    // agy has no flag to pre-assign an id; it resumes with `--conversation`.
+    if (input.mode === 'resume' && input.sessionId) {
+      sessionId = input.sessionId
+      args.push(...resumeArgs('antigravity', sessionId))
+    } else {
+      sessionId = input.sessionId || mint()
+    }
   } else if (input.mode === 'resume' && input.sessionId) {
     sessionId = input.sessionId
     args.push('--resume', sessionId)

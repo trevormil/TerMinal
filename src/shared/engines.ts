@@ -23,6 +23,7 @@ export type SeedStyle =
   | 'positional' // claude/codex/cursor: `<bin> [flags] "<prompt>"`
   | 'flag:-z' // hermes
   | 'flag:--prompt' // opencode
+  | 'flag:-i' // antigravity: `agy -i "<prompt>"` (--prompt-interactive)
   | 'none' // cannot be seeded (a bare shell)
 
 /** How an engine takes a reasoning-effort level, or null when it has none.
@@ -44,6 +45,7 @@ export type ResumeStyle =
   | 'flag:--resume' // cursor, hermes, claude
   | 'sub:resume' // codex: `codex resume <id>`
   | 'flag:-s' // opencode: `-s <id>`
+  | 'flag:--conversation' // antigravity: `--conversation <id>`
   | 'flag:--session' // pi: `--session <path|id>` (bare --resume is an interactive picker)
   | 'none'
 
@@ -249,6 +251,23 @@ export const ENGINES = {
     baseArgs: ['--tui'],
     caps: { resumable: true, remote: false, orAgentHarness: false },
   },
+  antigravity: {
+    id: 'antigravity',
+    label: 'Antigravity',
+    vendor: 'Google Antigravity CLI',
+    // Installer drops `agy` in ~/.local/bin, which a GUI-launched Electron
+    // process's PATH can miss.
+    bin: { name: 'agy', envVar: 'GT_AGY_BIN', candidates: ['~/.local/bin/agy'] },
+    models: [{ id: 'Gemini 3.1 Pro (High)', label: 'Gemini 3.1 Pro (High)' }],
+    // `agy --model <slug>` takes display-name slugs the catalog changes often.
+    allowsCustomModel: true,
+    modelFlag: '--model',
+    seed: 'flag:-i',
+    resume: 'flag:--conversation',
+    effort: null,
+    baseArgs: [],
+    caps: { resumable: false, remote: false, orAgentHarness: false },
+  },
   openrouter: {
     id: 'openrouter',
     label: 'OpenRouter',
@@ -346,6 +365,8 @@ export function seedArgs(id: string, prompt: string): string[] {
       return ['-z', prompt]
     case 'flag:--prompt':
       return ['--prompt', prompt]
+    case 'flag:-i':
+      return ['-i', prompt]
     default:
       return []
   }
@@ -368,6 +389,8 @@ export function resumeArgs(id: string, sessionId: string): string[] {
       return ['-s', sessionId]
     case 'flag:--session':
       return ['--session', sessionId]
+    case 'flag:--conversation':
+      return ['--conversation', sessionId]
     default:
       return []
   }
