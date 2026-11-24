@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Plus, Hand, ArrowUpRight, CircleDot, ListChecks, Check, X, Bot } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -69,7 +69,11 @@ function FieldSelect({
   options,
   tone,
   onChange,
+  disabled = false,
+  label,
 }: {
+  disabled?: boolean
+  label?: string
   value: string
   options: string[]
   tone: BadgeTone
@@ -77,6 +81,8 @@ function FieldSelect({
 }) {
   return (
     <select
+      aria-label={label}
+      disabled={disabled}
       value={value}
       onChange={(e) => onChange(e.target.value)}
       // field-sizing:content makes the <select> hug the selected value instead of
@@ -153,12 +159,7 @@ function AcceptanceSection({
           >
             <Check size={12} strokeWidth={2.5} /> Save
           </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={() => setEditing(false)}
-          >
+          <Button type="button" variant="secondary" size="sm" onClick={() => setEditing(false)}>
             <X size={12} strokeWidth={2.5} /> Cancel
           </Button>
         </div>
@@ -426,6 +427,29 @@ export function TicketDetail({
   children?: ReactNode
 }) {
   const selected = ticket
+  const updating = useRef(false)
+  const [fieldSave, setFieldSave] = useState<{ slug: string; busy: boolean; error: string } | null>(
+    null,
+  )
+  const updateField = async (field: 'status' | 'priority', value: string) => {
+    if (updating.current) return
+    updating.current = true
+    setFieldSave({ slug: selected.slug, busy: true, error: '' })
+    try {
+      if (!(await window.gt.tickets.update(selected.slug, { [field]: value })))
+        throw new Error('The ticket provider did not save this change. Please retry.')
+      setFieldSave(null)
+      onChanged()
+    } catch (error) {
+      setFieldSave({
+        slug: selected.slug,
+        busy: false,
+        error: error instanceof Error ? error.message : 'Could not update ticket',
+      })
+    } finally {
+      updating.current = false
+    }
+  }
   const [agentRecommendation, setAgentRecommendation] = useState<TicketAgentRecommendation | null>(
     null,
   )
@@ -473,10 +497,9 @@ export function TicketDetail({
                 value={selected.status}
                 options={STATUSES}
                 tone={statusTone(selected.status)}
-                onChange={async (v) => {
-                  await window.gt.tickets.update(selected.slug, { status: v })
-                  onChanged()
-                }}
+                label="Ticket status"
+                disabled={fieldSave?.busy}
+                onChange={(v) => void updateField('status', v)}
               />
               <LinearPriorityChip meta={selected.linear} showNone />
               {selected.linear.assignee && <LinearAssignee name={selected.linear.assignee} />}
@@ -488,26 +511,34 @@ export function TicketDetail({
                 value={selected.status}
                 options={STATUSES}
                 tone={statusTone(selected.status)}
-                onChange={async (v) => {
-                  await window.gt.tickets.update(selected.slug, { status: v })
-                  onChanged()
-                }}
+                label="Ticket status"
+                disabled={fieldSave?.busy}
+                onChange={(v) => void updateField('status', v)}
               />
               <Badge variant={toneVariant(typeTone(selected.type))}>{selected.type}</Badge>
               <FieldSelect
                 value={selected.priority}
                 options={PRIORITIES}
                 tone={priorityTone(selected.priority)}
-                onChange={async (v) => {
-                  await window.gt.tickets.update(selected.slug, { priority: v })
-                  onChanged()
-                }}
+                label="Ticket priority"
+                disabled={fieldSave?.busy}
+                onChange={(v) => void updateField('priority', v)}
               />
               {selected.horizon !== 'now' && (
-                <Badge variant={toneVariant(horizonTone(selected.horizon))}>{selected.horizon}</Badge>
+                <Badge variant={toneVariant(horizonTone(selected.horizon))}>
+                  {selected.horizon}
+                </Badge>
               )}
             </>
           )}
+          {fieldSave?.slug === selected.slug &&
+            (fieldSave.busy ? (
+              <span role="status">Saving…</span>
+            ) : fieldSave.error ? (
+              <span role="alert" className="text-destructive">
+                {fieldSave.error}
+              </span>
+            ) : null)}
           {selected.provider === 'linear' && selected.url && (
             <Button
               type="button"

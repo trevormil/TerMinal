@@ -1,3 +1,4 @@
+import { normalizeSoftCap } from './usageSoftCap'
 import { useEffect, useState } from 'react'
 import { ALL as ALL_INBOX_CATEGORIES } from '../../../shared/inbox-categories'
 
@@ -54,6 +55,14 @@ const strArray = (key: string, fallback: string[]): PrefDef<string[]> => ({
  * in every existing install, so they must never be "tidied".
  */
 export const PREFS = {
+  contextSoftCap: { ...num('gt.context.softCap', 0), read: normalizeSoftCap },
+  usageSoftCap: { ...num('gt.usage.softCap', 0), read: normalizeSoftCap },
+  diffViewMode: {
+    key: 'gt.diffViewMode',
+    fallback: 'unified' as 'unified' | 'split' | 'structural',
+    read: (raw: string) => (raw === 'split' || raw === 'structural' ? raw : 'unified'),
+    write: (value: string) => value,
+  },
   // '__auto__' = follow the current repo; '' = all repos.
   schedulesRepoFilter: str('gt.schedules.repoFilter', '__auto__'),
   runsRepoFilter: str('gt.runs.repoFilter', '__auto__'),

@@ -132,7 +132,12 @@ export function PersistentAgentEditor({
   }
 
   return (
-    <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose()
+      }}
+    >
       <DialogContent
         showCloseButton={false}
         className="w-[640px] rounded-xl bg-[var(--gt-panel)] p-5"

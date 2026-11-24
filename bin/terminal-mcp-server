@@ -207,6 +207,9 @@ function areaPath(root, area) {
 function areaPathsFor(root, area) {
   return repoState().areaPathsFor(root, area, areaCandidates(area));
 }
+function statePathForRead(root, rel) {
+  return repoState().statePathForRead(root, rel);
+}
 function statePathForWrite(root, rel) {
   return repoState().statePathForWrite(root, rel);
 }
@@ -250,6 +253,17 @@ function prsRoot() {
 // src/mcp/repo.ts
 import { existsSync as existsSync3, readFileSync as readFileSync2, readdirSync as readdirSync2 } from "fs";
 import { basename as basename2, join as join5 } from "path";
+function readTicketConfig(root) {
+  try {
+    const p = statePathForRead(root, "tickets.json");
+    if (!existsSync3(p))
+      return {};
+    const parsed = JSON.parse(readFileSync2(p, "utf8"));
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
 function backlogReadDirs(root) {
   return areaPathsFor(root, "backlog");
 }
@@ -1430,6 +1444,18 @@ function fileTicket(args) {
   const repoRoot = findRepoRoot(repo);
   if (!repoRoot)
     throw new Error(`no repo matching "${repo}"`);
+  const ticketConfig = readTicketConfig(repoRoot);
+  if (ticketConfig.provider === "linear") {
+    const team = ticketConfig.linear?.team;
+    const teamKey = ticketConfig.linear?.teamKey;
+    const teamLabel = team && teamKey ? `${team} (${teamKey})` : team || teamKey || "not selected";
+    const issueExample = teamKey ? `${teamKey}-11` : "TEAM-123";
+    throw new Error(`Linear ticket provider is active for bound team ${teamLabel}. Use the configured Linear MCP with an issue identifier such as ${issueExample}; TerMinal file_ticket only writes local markdown and is disabled for this repo.`);
+  }
+  if (ticketConfig.provider === "github")
+    throw new Error("GitHub Issues is this repo's ticket provider. Use the gh CLI; TerMinal file_ticket only writes local markdown and is disabled for this repo.");
+  if (ticketConfig.provider === "webview")
+    throw new Error("This repo uses a ticket webview with no local ticket store. File the issue in the embedded provider page.");
   const backlogDir = backlogWriteDir(repoRoot);
   mkdirSync2(backlogDir, { recursive: true });
   const nextIdFile = join9(backlogDir, ".next-id");

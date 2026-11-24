@@ -1,13 +1,7 @@
 import { useState } from 'react'
 import { Loader2, MessageCircle, Send } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import {
-  SecretInput,
-  Section,
-  Toggle,
-  type SettingsCtx,
-  type SettingsSectionSpec,
-} from './shared'
+import { SecretInput, Section, Toggle, type SettingsCtx, type SettingsSectionSpec } from './shared'
 
 function Component({ ctx }: { ctx: SettingsCtx }) {
   const { s, save } = ctx

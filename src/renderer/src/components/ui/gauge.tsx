@@ -10,15 +10,7 @@ import { cn } from '@/lib/utils'
 const defaultColor = (pct: number): string =>
   pct > 85 ? 'var(--gt-red)' : pct > 65 ? 'var(--gt-yellow)' : 'var(--gt-accent-2)'
 
-function Gauge({
-  pct,
-  color,
-  className,
-}: {
-  pct: number
-  color?: string
-  className?: string
-}) {
+function Gauge({ pct, color, className }: { pct: number; color?: string; className?: string }) {
   const value = Math.min(100, Math.max(0, pct))
   return (
     <div className={cn('h-2 w-full overflow-hidden rounded-full bg-black/40', className)}>

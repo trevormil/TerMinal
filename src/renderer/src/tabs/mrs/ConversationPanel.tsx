@@ -38,7 +38,9 @@ function toneForState(state: string): BadgeTone {
   return 'mute'
 }
 
-const toneVariant = (tone: BadgeTone): 'default' | 'secondary' | 'destructive' | 'success' | 'warning' | 'info' =>
+const toneVariant = (
+  tone: BadgeTone,
+): 'default' | 'secondary' | 'destructive' | 'success' | 'warning' | 'info' =>
   tone === 'ok' || tone === 'green'
     ? 'success'
     : tone === 'warn' || tone === 'yellow'
@@ -93,7 +95,9 @@ export function ApprovalsRow({
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-[var(--gt-border)] px-3 py-2">
       {reviewDecision && (
-        <Badge variant={toneVariant(toneForState(reviewDecision))}>{humanState(reviewDecision)}</Badge>
+        <Badge variant={toneVariant(toneForState(reviewDecision))}>
+          {humanState(reviewDecision)}
+        </Badge>
       )}
       {reviewers.map((r) => (
         <span key={`${r.login}:${r.state}`} className="inline-flex items-center gap-1.5">

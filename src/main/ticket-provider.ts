@@ -79,6 +79,8 @@ export type RepoTicketProvider = {
   kind: TicketProviderKind
   label: string
   configPath?: string
+  linearTeam?: string
+  linearTeamKey?: string
 }
 
 const DEFAULT_STATUS_LABELS: Record<string, string> = {
@@ -300,6 +302,8 @@ export function repoTicketProvider(repoRoot: string): RepoTicketProvider {
     kind,
     label: PROVIDER_LABEL[kind],
     ...(existsSync(configPath(repoRoot)) ? { configPath: configPath(repoRoot) } : {}),
+    ...(kind === 'linear' && cfg.linear?.team ? { linearTeam: cfg.linear.team } : {}),
+    ...(kind === 'linear' && cfg.linear?.teamKey ? { linearTeamKey: cfg.linear.teamKey } : {}),
   }
 }
 
@@ -773,6 +777,7 @@ async function callMcpTool(
       .map((c: any) => (typeof c?.text === 'string' ? c.text : ''))
       .join('\n')
       .trim()
+    if (result?.isError) throw new Error(text || 'Linear MCP tool failed')
     if (text) {
       try {
         return JSON.parse(text)
@@ -1023,7 +1028,12 @@ export function ticketProviderInstructions(provider: RepoTicketProvider): string
     return 'Ticket provider: GitHub Issues. Use the gh CLI in this repository for ticket reads/writes. Do not create or edit local backlog markdown files for ticket state.'
   }
   if (provider.kind === 'linear') {
-    return 'Ticket provider: Linear. Use the configured Linear MCP/CLI for ticket reads/writes. Do not create or edit local backlog markdown files for ticket state.'
+    const team =
+      provider.linearTeam && provider.linearTeamKey
+        ? `${provider.linearTeam} (${provider.linearTeamKey})`
+        : provider.linearTeam || provider.linearTeamKey || 'the team selected in Settings → Tickets'
+    const issueExample = provider.linearTeamKey ? `${provider.linearTeamKey}-11` : 'TEAM-123'
+    return `Ticket provider: Linear. Use the configured Linear MCP/CLI for reads and writes, the bound team ${team}, and Linear issue identifiers such as ${issueExample}. Do not use TerMinal local ticket tools (file_ticket, comment_ticket, update_ticket) or create/edit local backlog markdown files for ticket state.`
   }
   return 'Ticket provider: local backlog. Tickets are NNNN-slug.md markdown files in the per-project sidecar at $TERMINAL_BACKLOG_DIR (resolve with `tm-state-dir backlog` when the env is unset) — NOT inside the repo working tree. Legacy tickets still committed in the repo remain readable, but never write new ones there.'
 }

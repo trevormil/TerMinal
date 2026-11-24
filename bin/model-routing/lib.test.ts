@@ -1,5 +1,40 @@
 import { describe, expect, test } from 'bun:test'
 import { resolveEndpoint, OPENROUTER_BASE_URL } from './lib.ts'
+import registry from './models.json'
+
+describe('cheap OpenRouter registry', () => {
+  test('includes the weekly Flash additions with base pricing and tool support', () => {
+    expect(registry.models).toMatchObject({
+      'google/gemini-3.8-flash': {
+        inPerM: 0.75,
+        outPerM: 3.75,
+        ctx: 1048576,
+        agentic: true,
+      },
+      'qwen/qwen3.7-flash': {
+        inPerM: 0.03,
+        outPerM: 0.13,
+        ctx: 1000000,
+        agentic: true,
+      },
+    })
+  })
+
+  test('keeps existing Flash choices and defaults', () => {
+    expect(Object.keys(registry.models)).toContain('google/gemini-3.7-flash')
+    expect(Object.keys(registry.models)).toContain('qwen/qwen3.8-flash')
+    expect(registry.defaults).toEqual({
+      agentic: 'deepseek/deepseek-chat',
+      raw: 'google/gemini-2.5-flash-lite',
+    })
+  })
+
+  test('excludes expensive frontier models from the cheap tier', () => {
+    for (const id of ['anthropic/claude-fable-5.1', 'openai/gpt-6-astra', 'openai/gpt-5.6-sol']) {
+      expect(Object.keys(registry.models)).not.toContain(id)
+    }
+  })
+})
 
 describe('resolveEndpoint', () => {
   test('env unset → the OpenRouter default, keyed by OPENROUTER_API_KEY only', () => {

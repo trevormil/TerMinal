@@ -96,7 +96,12 @@ export function AgentDesigner({
   }
 
   return (
-    <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose()
+      }}
+    >
       <DialogContent
         showCloseButton={false}
         className="flex max-h-[86vh] w-[640px] flex-col gap-3 overflow-y-auto rounded-2xl bg-[var(--gt-panel)] p-5"

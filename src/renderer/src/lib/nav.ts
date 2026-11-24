@@ -11,12 +11,22 @@ export type NavEvent = {
   payload?: Record<string, unknown>
 }
 
+let pending: NavEvent | undefined
+
 export function navigateTo(tabId: string, payload?: Record<string, unknown>): void {
-  window.dispatchEvent(new CustomEvent('gt:nav', { detail: { tabId, payload } }))
+  pending = { tabId, payload }
+  window.dispatchEvent(new CustomEvent('gt:nav', { detail: pending }))
 }
 
-export function onNavigate(fn: (e: NavEvent) => void): () => void {
-  const handler = (e: Event) => fn((e as CustomEvent).detail as NavEvent)
+export function onNavigate(fn: (e: NavEvent) => void, receiveFor?: string): () => void {
+  const receive = (event: NavEvent) => {
+    if (receiveFor && event.tabId !== receiveFor) return
+    if (receiveFor && pending === event) pending = undefined
+    fn(event)
+  }
+  const handler = (e: Event) => receive((e as CustomEvent).detail as NavEvent)
   window.addEventListener('gt:nav', handler)
+  // A cold tab subscribes after the event that mounted it; deliver its payload once.
+  if (receiveFor && pending?.tabId === receiveFor) receive(pending)
   return () => window.removeEventListener('gt:nav', handler)
 }

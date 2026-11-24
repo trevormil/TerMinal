@@ -30,7 +30,13 @@ import {
   slackQuietsTelegram,
   trackEffect,
 } from './notify'
-import { backlogReadDirs, backlogWriteDir, findRepoRoot, knownRepoRoots } from './repo'
+import {
+  backlogReadDirs,
+  backlogWriteDir,
+  findRepoRoot,
+  knownRepoRoots,
+  readTicketConfig,
+} from './repo'
 import { aiSpendToday } from './reads'
 import {
   normalizeModelTier,
@@ -56,6 +62,24 @@ export function fileTicket(args: Args): { slug: string; id: string; path: string
   if (!title) throw new Error('title is required')
   const repoRoot = findRepoRoot(repo)
   if (!repoRoot) throw new Error(`no repo matching "${repo}"`)
+  const ticketConfig = readTicketConfig(repoRoot)
+  if (ticketConfig.provider === 'linear') {
+    const team = ticketConfig.linear?.team
+    const teamKey = ticketConfig.linear?.teamKey
+    const teamLabel = team && teamKey ? `${team} (${teamKey})` : team || teamKey || 'not selected'
+    const issueExample = teamKey ? `${teamKey}-11` : 'TEAM-123'
+    throw new Error(
+      `Linear ticket provider is active for bound team ${teamLabel}. Use the configured Linear MCP with an issue identifier such as ${issueExample}; TerMinal file_ticket only writes local markdown and is disabled for this repo.`,
+    )
+  }
+  if (ticketConfig.provider === 'github')
+    throw new Error(
+      "GitHub Issues is this repo's ticket provider. Use the gh CLI; TerMinal file_ticket only writes local markdown and is disabled for this repo.",
+    )
+  if (ticketConfig.provider === 'webview')
+    throw new Error(
+      'This repo uses a ticket webview with no local ticket store. File the issue in the embedded provider page.',
+    )
   const backlogDir = backlogWriteDir(repoRoot)
   mkdirSync(backlogDir, { recursive: true })
   // Atomic-ish ID allocation via .next-id (matches bin/next-backlog-id semantics)

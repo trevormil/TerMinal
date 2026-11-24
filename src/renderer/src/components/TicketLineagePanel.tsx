@@ -193,9 +193,7 @@ export function TicketLineagePanel({
                     {forgeLabel}
                     {iid}
                   </span>
-                  {mr && (
-                    <Badge variant={toneVariant(stateTone(mr.state))}>{mr.state}</Badge>
-                  )}
+                  {mr && <Badge variant={toneVariant(stateTone(mr.state))}>{mr.state}</Badge>}
                   {mr?.review && (
                     <Badge variant={toneVariant(verdictTone(mr.review.verdict))}>
                       {mr.review.verdict}

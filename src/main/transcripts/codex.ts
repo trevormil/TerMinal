@@ -13,8 +13,21 @@ import {
   walkJsonlFiles,
 } from './common'
 import type { SessionMeta } from '../../shared/types/observability'
+import { isValidSessionId } from './claude'
 
 const CODEX_SESSIONS_DIR = join(homedir(), '.codex', 'sessions')
+
+let located: { root: string; sessionId: string; file: string } | undefined
+
+export function findCodexSessionFile(sessionId: string, root = CODEX_SESSIONS_DIR): string | null {
+  if (!isValidSessionId(sessionId) || !existsSync(root)) return null
+  if (located?.root === root && located.sessionId === sessionId && existsSync(located.file))
+    return located.file
+  const file = walkJsonlFiles(root).find((path) => path.endsWith(`-${sessionId}.jsonl`))
+  if (!file) return null
+  located = { root, sessionId, file }
+  return file
+}
 
 export function parseCodexSessionFile(file: string): SessionMeta | null {
   const win = readPickerWindow(file)

@@ -152,11 +152,7 @@ function MobileSection({
                   <ClipboardCopy strokeWidth={2} />
                   {copied ? 'Copied' : 'Copy pairing code'}
                 </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => setRevealed((v) => !v)}
-                >
+                <Button type="button" variant="secondary" onClick={() => setRevealed((v) => !v)}>
                   <Eye strokeWidth={2} />
                   {revealed ? 'Hide' : 'Show'} pairing code
                 </Button>

@@ -123,7 +123,8 @@ body,
    never scrolls. Subtle on purpose (depth, not decoration); it shows through
    only where surfaces are transparent, i.e. the window background and gaps. */
 #root {
-  background-image: radial-gradient(
+  background-image:
+    radial-gradient(
       1100px 700px at 12% -8%,
       color-mix(in srgb, var(--gt-accent) 8%, transparent),
       transparent 60%

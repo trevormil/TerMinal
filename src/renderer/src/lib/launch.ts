@@ -25,11 +25,13 @@ export const engineInstanceLabel = (engine: Engine): string =>
       ? 'Cursor Agent'
       : engine === 'hermes'
         ? 'Hermes'
-        : engine === 'openrouter'
-          ? 'OpenRouter'
-          : engine === 'openai-compat'
-            ? 'Self-hosted'
-            : 'Codex'
+        : engine === 'antigravity'
+          ? 'Antigravity'
+          : engine === 'openrouter'
+            ? 'OpenRouter'
+            : engine === 'openai-compat'
+              ? 'Self-hosted'
+              : 'Codex'
 
 export function openPromptInTerminal(input: {
   engine: Engine

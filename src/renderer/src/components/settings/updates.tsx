@@ -129,12 +129,7 @@ function UpdatesPanel() {
         </Button>
       </div>
       {error && <div className="text-[11px] text-amber-400">{error}</div>}
-      <Button
-        type="button"
-        variant="secondary"
-        className="w-full justify-start"
-        onClick={copyCmd}
-      >
+      <Button type="button" variant="secondary" className="w-full justify-start" onClick={copyCmd}>
         {copied ? (
           <CircleCheck strokeWidth={2} className="shrink-0 text-[var(--gt-green)]" />
         ) : (

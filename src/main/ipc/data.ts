@@ -1,3 +1,6 @@
+import { readSessionTimeline } from '../session-timeline'
+import { findCodexSessionFile } from '../transcripts/codex'
+import { findSessionFile } from '../data'
 // Session-data IPC (ticket 0122 index.ts decomposition) — the plugin pollers.
 // Every read is keyed to the attached session, so the focused session and the
 // active workspace daemon are the whole dependency surface.
@@ -16,6 +19,19 @@ export type DataIpcDeps = {
 
 export function registerDataIpc(deps: DataIpcDeps): void {
   // ---- data IPC (plugin pollers; all keyed to the attached session) ----
+  handle('data:timeline', () => {
+    const session = deps.cur()
+    return readSessionTimeline(
+      session.sessionId,
+      session.remote
+        ? null
+        : session.engine === 'codex'
+          ? findCodexSessionFile(session.sessionId)
+          : session.engine === 'claude'
+            ? findSessionFile(session.sessionId)
+            : null,
+    )
+  })
   handle('data:transcript', () => readTranscriptStats(deps.cur().sessionId))
   handle('data:harness-tdd', () => readHarnessTdd(deps.cur().cwd))
   handle('data:usage', () => readUsage(deps.cur().sessionId))

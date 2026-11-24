@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { viewedProgress } from '../../../shared/viewed-progress'
 import {
   FileText,
   ScanSearch,
@@ -553,7 +554,7 @@ export function DiffView({
     edge: 'right',
   })
   const [selected, setSelected] = useState<string>('')
-  const [mode, setMode] = useState<'unified' | 'split' | 'structural'>('unified')
+  const [mode, setMode] = usePref('diffViewMode')
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
   const [viewed, setViewed, setAll] = useViewed(scope)
   // Probe difft once so the Structural toggle can disable itself (with an
@@ -676,6 +677,24 @@ export function DiffView({
             </button>
           )}
         </div>
+        {showViewed && (
+          <div className="px-3 pb-2 pt-1">
+            <div
+              role="progressbar"
+              aria-label="Files viewed"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={viewedProgress(viewedCount, paths.length)}
+              aria-valuetext={`${viewedCount} of ${paths.length} files viewed`}
+              className="h-1 overflow-hidden rounded-full bg-[var(--gt-border)]"
+            >
+              <div
+                className="h-full bg-[var(--gt-accent)]"
+                style={{ width: `${viewedProgress(viewedCount, paths.length)}%` }}
+              />
+            </div>
+          </div>
+        )}
         {renderTree(tree.children)}
       </div>
       <ResizeHandle onMouseDown={fileList.onResizeStart} />
@@ -715,14 +734,14 @@ export function DiffView({
           )}
         </div>
         <div className="min-h-0 flex-1 overflow-auto">
-          {mode === 'structural' ? (
+          {mode === 'structural' && difftOk === true ? (
             <StructuralFileDiff
               key={`${iid}:${selected}`}
               path={selected}
               fetch={structuralFetch}
             />
           ) : (
-            <FileDiff file={file} mode={mode} />
+            <FileDiff file={file} mode={mode === 'split' ? 'split' : 'unified'} />
           )}
         </div>
       </div>

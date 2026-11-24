@@ -63,7 +63,7 @@ function Component({ ctx }: { ctx: SettingsCtx }) {
           on={s.apps.formatOnSave}
           onToggle={() => save({ apps: { formatOnSave: !s.apps.formatOnSave } })}
           label="Format on save (Files tab)"
-          hint="⌘S runs the project's own prettier before writing. Skipped when the project has no prettier install or prettier doesn't own the file."
+          hint="Off by default. ⌘S uses project Prettier or the bundled fallback, respecting repo config and ignored files. Autosave stays unformatted."
         />
       </div>
     </Section>
